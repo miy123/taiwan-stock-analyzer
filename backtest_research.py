@@ -241,6 +241,8 @@ def main():
     ap.add_argument("--every", type=int, default=10, help="每隔幾個交易日換股一次")
     ap.add_argument("--years", type=float, default=2.0, help="回測涵蓋幾年")
     ap.add_argument("--topn", type=int, default=10, help="每次選前幾名")
+    ap.add_argument("--valuation", action="store_true",
+                    help="抓歷史估值(本益比/殖利率/PB)。證交所會限流，需節流故很慢，預設關閉")
     args = ap.parse_args()
 
     print(f"設定: 前{args.stocks}檔流動股 / 每{args.every}交易日換股 / "
@@ -320,7 +322,7 @@ def main():
         date = common[i]
         # 該日的估值與融資快照（每個換股日各 1 次請求，已快取）
         dstr = date.strftime("%Y%m%d")
-        val_map = get_hist_valuation(dstr)
+        val_map = get_hist_valuation(dstr) if args.valuation else {}
         mgn_map = get_hist_margin(dstr)
         day_sigs = []
         for code, d in enriched.items():
