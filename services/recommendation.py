@@ -262,28 +262,31 @@ def _action_for(score: int) -> dict:
 
 # Per-horizon weighting of the component scores. Margin risk is a penalty applied
 # after weighting, scaled by horizon (斷頭 pressure bites hardest short-term).
+# ⚠️ 命名說明：name 指的是「**用多長週期的指標計算**」，不是「建議你抱多久」。
+# 這兩件事互相獨立——實證顯示即使只想抱一週，用「長線分」選股仍然最好。
+# span 因此改寫為「取樣的指標長度」，避免被誤讀成建議持有期。
 _HORIZON_CONFIG = [
     {
-        "key": "ultra_short", "name": "極短線", "span": "1–3 天",
-        "desc": "當沖／隔日沖，看當日動能與量價、KD/RSI 極值",
+        "key": "ultra_short", "name": "極短線分", "span": "指標：1–3 天",
+        "desc": "當日動能與量價、KD/RSI 極值、MA5",
         "weights": {"tech": 0.72, "news": 0.28},
         "margin_scale": 1.0,
     },
     {
-        "key": "short", "name": "短線", "span": "1 週內",
-        "desc": "波段進出，看短均、MACD 交叉、量能",
+        "key": "short", "name": "短線分", "span": "指標：約 1 週",
+        "desc": "MA5/MA10、MACD 交叉、量能",
         "weights": {"tech": 0.70, "news": 0.18, "fund": 0.12},
         "margin_scale": 0.8,
     },
     {
-        "key": "medium", "name": "中線", "span": "1 個月以上",
-        "desc": "看中期均線排列、基本面與目標價",
+        "key": "medium", "name": "中線分", "span": "指標：約 1 個月",
+        "desc": "MA20/MA60 排列與斜率、近月報酬",
         "weights": {"tech": 0.42, "fund": 0.30, "tp": 0.20, "news": 0.08},
         "margin_scale": 0.35,
     },
     {
-        "key": "long", "name": "長線", "span": "半年以上",
-        "desc": "以基本面與估值為主，長多結構為輔",
+        "key": "long", "name": "長線分", "span": "指標：半年結構",
+        "desc": "季線 MA120、MA60>MA120、半年報酬",
         "weights": {"fund": 0.45, "tp": 0.30, "tech": 0.20, "news": 0.05},
         "margin_scale": 0.1,
     },

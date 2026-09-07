@@ -165,6 +165,16 @@ MODELS = [
     _m("長線×動能", lambda s: s["h_long"] * (1 + (s["r120"] or 0) / 100),
        lambda s: s["r120"] is not None, "長線分乘上120日動能"),
 
+    # ── 週期分數的組合（檢驗中/短/極短線是否能為長線加值）──────────────────
+    _m("長線+中線雙確認", lambda s: s["h_long"], lambda s: s["h_medium"] >= 60,
+       "長線分排序，且中線分≥60"),
+    _m("長線+短線確認", lambda s: s["h_long"], lambda s: s["h_short"] >= 60,
+       "長線分排序，且短線分≥60"),
+    _m("長線+極短線確認", lambda s: s["h_long"], lambda s: s["h_ultra"] >= 60,
+       "長線分排序，且極短線分≥60"),
+    _m("長線+中線平均", lambda s: 0.5 * s["h_long"] + 0.5 * s["h_medium"], None,
+       "長線與中線各半加權"),
+
     # ── 估值面（歷史可還原：證交所 BWIBBU_d）──────────────────────────────
     _m("低本益比(價值)", lambda s: -(s["pe"] or 9999),
        lambda s: s["pe"] is not None and 0 < s["pe"] < 100, "純價值：本益比越低越前面"),

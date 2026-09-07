@@ -30,6 +30,7 @@ from services.evidence import (
     benchmark_return as ev_bench, meta as ev_meta,
     regime_stats as ev_regime_stats, best_strategies_for_regime as ev_best_for_regime,
     score_bucket_stats as ev_bucket, buy_threshold as ev_threshold,
+    horizon_efficacy as ev_horizon_efficacy,
     MODEL_TO_STRATEGY,
 )
 from services.portfolio import (
@@ -1265,24 +1266,32 @@ def render_recommendation_tab(
 
     # ── Timeframe-specific recommendations ────────────────────────────────────
     st.markdown("---")
-    st.markdown("#### ⏱ 分時間週期買賣建議")
-    st.caption(
-        "同一支股票在不同持有期間的訊號可能相反（短線超買 ≠ 長線看壞）。"
-        "以下依各週期最相關的指標分別評分：極短線重當日動能與量價、"
-        "長線重基本面與估值。"
+    st.markdown("#### ⏱ 四種週期評分")
+    st.info(
+        "📌 **這四個分數的差別是「用多長週期的指標計算」，不是「建議你抱多久」。**\n\n"
+        "兩者互相獨立——實證顯示**即使你只想抱一週，用「長線分」選股仍然最好**"
+        "（持有1週：長線分超額 +0.53%／t=2.61，優於短線分 +0.39%）。"
+        "所以不要因為想做短線就去看短線分。"
     )
     tf_cols = st.columns(4)
     for tcol, h in zip(tf_cols, timeframe_recs):
         with tcol:
+            eff = ev_horizon_efficacy(h["key"])
             drivers_html = "".join(
                 f"<div style='font-size:11px;color:#b0bec5;margin-top:3px;'>• {d}</div>"
                 for d in h["drivers"]
+            )
+            eff_badge = (
+                f"<span style='font-size:10px;background:{eff['color']}22;"
+                f"color:{eff['color']};border:1px solid {eff['color']};"
+                f"border-radius:4px;padding:1px 5px;margin-left:6px;'>"
+                f"{eff['tag']} {eff['label']}</span>" if eff else ""
             )
             st.markdown(f"""
 <div style="background:{rec['bg_color'] if False else '#1a2035'};
             border:1px solid {h['color']};border-radius:10px;padding:12px 14px;
             margin:4px 0;min-height:200px;">
-  <div style="font-size:15px;font-weight:800;">{h['name']}</div>
+  <div style="font-size:15px;font-weight:800;">{h['name']}{eff_badge}</div>
   <div style="font-size:11px;color:#90a4ae;margin-bottom:8px;">{h['span']}</div>
   <div style="display:flex;align-items:baseline;gap:8px;">
     <span style="font-size:30px;font-weight:900;color:{h['color']};">{h['score']}</span>
@@ -1295,6 +1304,8 @@ def render_recommendation_tab(
               padding-top:6px;">{h['desc']}</div>
   {drivers_html}
 </div>""", unsafe_allow_html=True)
+            if eff:
+                st.caption(f"{eff['tag']} {eff['note']}")
 
     # ── Potential (潛力) — borrowed from 智能選股 so the detail page explains
     #    why this stock does (or doesn't) qualify as a 潛伏股 ──────────────────
@@ -2522,14 +2533,18 @@ def _render_smart_card(rank, r, strategy, horizon_key=None):
             hc = h.get("color", "#78909c")
             sel = (key == horizon_key)
             box = (f"border:1px solid {hc};border-radius:4px;" if sel else "")
+            e = ev_horizon_efficacy(key)
             cells.append(
                 f"<div style='text-align:center;padding:1px 4px;{box}'>"
                 f"<div style='font-size:13px;font-weight:800;color:{hc};'>{sc}</div>"
-                f"<div style='font-size:9px;color:#90a4ae;'>{short}</div></div>"
+                f"<div style='font-size:9px;color:#90a4ae;'>{short}"
+                f"<span style='font-size:8px;'>{e.get('tag','')}</span></div></div>"
             )
         horizon_html = (
-            "<div style='min-width:120px;'>"
-            "<div style='font-size:10px;color:#78909c;margin-bottom:2px;'>週期評分</div>"
+            "<div style='min-width:126px;'>"
+            "<div style='font-size:10px;color:#78909c;margin-bottom:2px;' "
+            "title='✅有效 🟡偏弱 🔴雜訊'>週期評分 <span style='font-size:8px;'>"
+            "✅有效 🔴雜訊</span></div>"
             "<div style='display:flex;gap:3px;'>" + "".join(cells) + "</div></div>"
         )
     else:
@@ -2843,7 +2858,9 @@ def render_portfolio_page():
                 f"{'border:1px solid ' + (hz.get(k) or {}).get('color', '#78909c') + ';border-radius:4px;' if (k == 'long' and rank_by_long) else ''}'>"
                 f"<div style='font-size:12px;font-weight:800;color:{(hz.get(k) or {}).get('color', '#78909c')};'>"
                 f"{(hz.get(k) or {}).get('score', '-')}</div>"
-                f"<div style='font-size:9px;color:#90a4ae;'>{s}</div></div>"
+                f"<div style='font-size:9px;color:#90a4ae;'>{s}"
+                f"<span style='font-size:8px;'>{ev_horizon_efficacy(k).get('tag','')}</span>"
+                f"</div></div>"
                 for k, s in [("ultra_short", "極短"), ("short", "短"),
                              ("medium", "中"), ("long", "長")]
             )
