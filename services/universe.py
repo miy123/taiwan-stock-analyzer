@@ -192,12 +192,17 @@ def scan_universe(min_turnover=1e7, period="2y", progress_cb=None):
             long_sc = next((h["score"] for h in tfr if h["key"] == "long"), 50)
             v_adj = volume_signal.get("score_adj", 0)
             prelim_bestproven = long_sc + (5 if v_adj >= 0 else -15)
+            # 超低本益比：越低越前面（排序用負值）。排除 <3 倍者——多半是業外一次性
+            # 收益灌大 EPS 造成的假低估（價值陷阱），而非真的便宜。
+            _pe = meta.get("pe")
+            prelim_lowpe = (-_pe if (_pe is not None and 3 <= _pe <= 100) else -9999)
 
             rows.append({
                 "prelim_sleeper": round(prelim_sleeper, 1),
                 "prelim_momentum": rec["total_score"],
                 "prelim_balanced": round(prelim_balanced, 1),
                 "prelim_bestproven": round(prelim_bestproven, 1),
+                "prelim_lowpe": round(prelim_lowpe, 2),
                 # bestproven 的最終過濾需要它（先前只存在深度分析結果中）
                 "volume_adj": v_adj,
                 "stock_id": code,

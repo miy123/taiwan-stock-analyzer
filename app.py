@@ -1725,18 +1725,21 @@ def render_smart_screener_page():
 
     strat_label = st.radio(
         "選股策略",
-        ["🏆 長線+量能確認", "🚀 綜合強勢", "🔥 漲停動能", "🌱 潛力潛伏", "⚖️ 攻守兼備"],
+        ["🏆 長線+量能確認", "🚀 綜合強勢", "💎 超低本益比", "🔥 漲停動能",
+         "🌱 潛力潛伏", "⚖️ 攻守兼備"],
         horizontal=True, key="smart_strategy",
         captions=[
             "長線結構強且量價未轉弱　✅回測最佳",
             "趨勢已成、順勢操作　✅回測有效",
+            "本益比最低的便宜股　❔未驗證",
             "連日漲停高動能　❔未回測",
             "題材浮現但還沒漲　⛔回測顯著為負",
             "體質強又有餘裕　⛔回測顯著為負",
         ],
     )
     strategy = {"🏆 長線+量能確認": "bestproven", "🚀 綜合強勢": "momentum",
-                "🔥 漲停動能": "limitup", "🌱 潛力潛伏": "sleeper",
+                "💎 超低本益比": "lowpe", "🔥 漲停動能": "limitup",
+                "🌱 潛力潛伏": "sleeper",
                 "⚖️ 攻守兼備": "balanced"}[strat_label]
 
     # The limit-up universe is only fetched for the 漲停動能 strategy — that toggle
@@ -1848,6 +1851,16 @@ def render_smart_screener_page():
                 "屬於逆勢型策略；但**走查驗證中，靠盤勢切換到這類策略並未帶來好處**"
                 "（+3.05% vs 穩定用長線型 +5.27%）——因為等你確認是空頭，跌勢常已走完一段。"
             )
+    elif strategy == "lowpe":
+        st.warning(
+            "❔ **這個策略我無法給你實證數據——請當作探索工具，不是有依據的建議。**\n\n"
+            "我試過用證交所歷史本益比回測，但 `BWIBBU_d` 端點**限流極嚴**"
+            "（60 個日期有 43 個被擋，只成功 17 個），樣本太少且非隨機，"
+            "所以那份結果我**作廢不採用**。因此「低本益比在台股有沒有效」目前是**未知數**。\n\n"
+            "⚠️ 已知風險：低本益比常伴隨**價值陷阱**——便宜是因為獲利即將衰退，"
+            "或 EPS 被業外一次性收益灌大（本策略已排除 <3 倍者，但無法完全過濾）。"
+            "建議搭配「長線結構分」與營收趨勢一起看，別只看本益比。"
+        )
     else:
         st.caption(f"❔ 此策略尚未納入回測驗證（{ev_v['note']}）")
 
@@ -1855,6 +1868,7 @@ def render_smart_screener_page():
     # is redundant — it was just the 綜合強勢 bar expressed as a filter.
     bar_note = {
         "bestproven": "門檻：長線結構分 ≥ 買進線 且 量價未轉弱（回測最佳組合）",
+        "lowpe": "門檻：本益比 3–12 倍（排除 <3 倍的一次性收益假低估），由低到高排序",
         "momentum": "門檻：綜合評分 ≥ 買進線（依大盤環境動態調整）",
         "limitup":  "門檻：近期有連日漲停紀錄，依綜合評分排序",
         "sleeper":  "門檻：通過『有題材且尚未起漲』檢核",
@@ -1906,7 +1920,7 @@ def render_smart_screener_page():
             return
 
         # Shortlist on the signals that actually vary in the bulk pass
-        prelim_key = {"bestproven": "prelim_bestproven",
+        prelim_key = {"bestproven": "prelim_bestproven", "lowpe": "prelim_lowpe",
                       "momentum": "prelim_momentum", "limitup": "prelim_momentum",
                       "sleeper": "prelim_sleeper",
                       "balanced": "prelim_balanced"}.get(strategy, "prelim_momentum")
@@ -2026,6 +2040,11 @@ def render_smart_screener_page():
                     if (r.get("horizon") or {}).get("long", {}).get("score", 0) >= buy_bar]
         view.sort(key=lambda r: (r.get("horizon") or {}).get("long", {}).get("score", 0),
                   reverse=True)
+    elif strategy == "lowpe":
+        # 本益比 3–12 倍：<3 倍多為業外一次性收益灌大 EPS 的假低估（價值陷阱）
+        view = [r for r in results
+                if r.get("pe_ratio") is not None and 3 <= r["pe_ratio"] <= 12]
+        view.sort(key=lambda r: r["pe_ratio"])          # 由低到高
     elif strategy == "momentum":
         view = [r for r in results if _hscore(r) >= buy_bar]
         view.sort(key=_hscore, reverse=True)
@@ -2085,12 +2104,13 @@ def render_smart_screener_page():
 
     metric_of = {
         "bestproven": lambda r: (r.get("horizon") or {}).get("long", {}).get("score", 0),
+        "lowpe": lambda r: r.get("pe_ratio") or 0,
         "momentum": _hscore,
         "limitup": _hscore,
         "sleeper": lambda r: (r.get("potential") or {}).get("total", 0),
         "balanced": lambda r: r["combined_score"],
     }.get(strategy, _hscore)
-    base_name = {"bestproven": "長線結構分", "momentum": "綜合評分",
+    base_name = {"bestproven": "長線結構分", "lowpe": "本益比", "momentum": "綜合評分",
                  "limitup": "綜合評分", "sleeper": "潛力分",
                  "balanced": "攻守兼備分"}.get(strategy, "評分")
     metric_name = (f"{horizon_label} 評分"
@@ -2101,7 +2121,8 @@ def render_smart_screener_page():
 
     # Score distribution chart (of the strategy's primary metric)
     if len(display) > 0:
-        primary_color = {"bestproven": "#66bb6a", "momentum": None, "limitup": None,
+        primary_color = {"bestproven": "#66bb6a", "lowpe": "#ffd54f",
+                         "momentum": None, "limitup": None,
                          "sleeper": "#7986cb", "balanced": "#4dd0e1"}.get(strategy)
         bar_colors = [r["color"] for r in display] if primary_color is None \
             else [primary_color] * len(display)
@@ -2473,6 +2494,23 @@ def _render_smart_card(rank, r, strategy, horizon_key=None):
     else:
         rr_html = "<div style='min-width:96px;'></div>"
 
+    # 本益比（估值面一眼可見；超低本益比策略會加框強調）
+    pe = r.get("pe_ratio")
+    if pe is not None and pe > 0:
+        pe_color = "#4caf50" if pe < 12 else "#a9e34b" if pe < 20 else "#ff9800" if pe < 35 else "#f44336"
+        pe_box = ("border:1px solid #ffd54f;border-radius:4px;padding:1px 4px;"
+                  if strategy == "lowpe" else "")
+        dy = r.get("dividend_yield")
+        dy_txt = f"殖利率 {dy * 100:.1f}%" if dy else "殖利率 —"
+        pe_html = (
+            f"<div style='min-width:88px;font-size:11px;color:#aaa;{pe_box}'>"
+            f"<div>本益比 <span style='color:{pe_color};font-weight:800;font-size:14px;'>"
+            f"{pe:.1f}</span></div><div>{dy_txt}</div></div>"
+        )
+    else:
+        pe_html = ("<div style='min-width:88px;font-size:11px;color:#666;'>"
+                   "本益比 —<div>（虧損或無資料）</div></div>")
+
     # Four horizon scores (borrowed from 個股分析) — the selected one is boxed
     hz = r.get("horizon") or {}
     if hz:
@@ -2528,6 +2566,7 @@ def _render_smart_card(rank, r, strategy, horizon_key=None):
       </div>
       <div style="font-size:12px;">目標 <span style="color:{up_color};font-weight:700;">{upside_str}</span></div>
     </div>
+    {pe_html}
     {horizon_html}
     {rr_html}
     <!-- tech/fund/news mini -->
@@ -2810,6 +2849,15 @@ def render_portfolio_page():
             )
             rr_txt = (f"風報比 <b style='color:#fafafa;'>{rr:.2f}</b>　停損 {abs(stop_pct):.1f}%"
                       if rr is not None and stop_pct is not None else "")
+            _pe = r.get("pe_ratio")
+            if _pe is not None and _pe > 0:
+                _pc = ("#4caf50" if _pe < 12 else "#a9e34b" if _pe < 20
+                       else "#ff9800" if _pe < 35 else "#f44336")
+                _dy = r.get("dividend_yield")
+                pe_txt = (f"本益比 <b style='color:{_pc};'>{_pe:.1f}</b>"
+                          + (f"　殖利率 {_dy * 100:.1f}%" if _dy else ""))
+            else:
+                pe_txt = "<span style='color:#666;'>本益比 —（虧損或無資料）</span>"
             # 該檔長線分落在哪個實證區間 → 歷史勝率（與選股頁同一套標準）
             _lg = (hz.get("long") or {}).get("score")
             _bk = ev_bucket("長線+量能確認", _lg, 20) if _lg is not None else {}
@@ -2828,7 +2876,7 @@ def render_portfolio_page():
         else:
             color, icon, action, total, pot = "#78909c", "❔", "無資料", 0, 0
             price, t_w, f_w, n_w = 0, 0, 0, 0
-            hz_html, rr_txt, evid_html = "", "", ""
+            hz_html, rr_txt, evid_html, pe_txt = "", "", "", ""
 
         pl_color = "#f03e3e" if pos["pnl"] >= 0 else "#2f9e44"
         pnl_pct_txt = f"{pos['pnl_pct']:+.2f}%" if pos["pnl_pct"] is not None else "N/A"
@@ -2876,6 +2924,7 @@ def render_portfolio_page():
            基 <span style="color:#a9e34b;font-weight:700;">{f_w}</span>
            息 <span style="color:#ffd43b;font-weight:700;">{n_w}</span></div>
       <div style="margin-top:3px;">{rr_txt}</div>
+      <div style="margin-top:2px;">{pe_txt}</div>
     </div>
     {evid_html}
   </div>
