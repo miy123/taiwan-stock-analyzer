@@ -1,0 +1,18 @@
+# 個人資料（絕不上傳）
+# 註解必須自成一行 —— .gitignore 不支援行尾註解，
+# 寫成 "holdings.json  # 說明" 會讓整行變成字面樣式而失效。
+holdings.json
+watchlist.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# macOS
+.DS_Store
+
+# 回測暫存輸出
+*.log
