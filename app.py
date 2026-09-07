@@ -1859,7 +1859,7 @@ def render_smart_screener_page():
         "limitup":  "門檻：近期有連日漲停紀錄，依綜合評分排序",
         "sleeper":  "門檻：通過『有題材且尚未起漲』檢核",
         "balanced": "門檻：綜合評分不弱 + 尚未過熱 + 風報比 ≥ 1.5",
-    }[strategy]
+    }.get(strategy, "")
     st.caption(f"📋 {bar_note}")
 
     # ── 分數門檻實證：幾分以上才值得買 ────────────────────────────────────────
@@ -1890,7 +1890,7 @@ def render_smart_screener_page():
             st.caption(f"上次掃描: {last_t.strftime('%H:%M:%S')}  (四種策略共用同一份掃描，切換策略免重掃)")
 
     # ── Full-market scan: analyse EVERY liquid listed stock, then deep-enrich ──
-    if full_market and (run_btn or cache_key not in st.session_state):
+    if full_market and run_btn:
         prog = st.progress(0.0, text="下載全市場歷史資料...")
         status = st.empty()
 
@@ -1906,8 +1906,10 @@ def render_smart_screener_page():
             return
 
         # Shortlist on the signals that actually vary in the bulk pass
-        prelim_key = {"momentum": "prelim_momentum", "limitup": "prelim_momentum",
-                      "sleeper": "prelim_sleeper", "balanced": "prelim_balanced"}[strategy]
+        prelim_key = {"bestproven": "prelim_bestproven",
+                      "momentum": "prelim_momentum", "limitup": "prelim_momentum",
+                      "sleeper": "prelim_sleeper",
+                      "balanced": "prelim_balanced"}.get(strategy, "prelim_momentum")
         n_enrich = min(int(top_n) * 2 + 6, 40)   # ~5s per deep analysis
         shortlist = sorted(rows, key=lambda r: r.get(prelim_key, 0), reverse=True)[:n_enrich]
 
@@ -1930,7 +1932,7 @@ def render_smart_screener_page():
         st.session_state[last_run_key] = datetime.datetime.now()
 
     # Run analysis if needed
-    if (not full_market) and (run_btn or cache_key not in st.session_state):
+    if (not full_market) and run_btn:
 
         # ── Build analysis pool ───────────────────────────────────────────────
         # Base pool: predefined popular stocks
@@ -1989,7 +1991,11 @@ def render_smart_screener_page():
 
     results = st.session_state.get(cache_key, [])
     if not results:
-        st.info("點擊「重新掃描」開始分析")
+        st.info(
+            "👆 **請按上方「🔄 重新掃描」開始分析**"
+            + ("（全市場模式約需 3–5 分鐘）" if full_market else "（熱門股池約需 1–2 分鐘）")
+            + "。掃描結果會保留，切換策略或持有週期都**不會重跑**。"
+        )
         # 實證資料是靜態參考，尚未掃描時也該看得到
         render_evidence_table()
         return
@@ -2083,10 +2089,10 @@ def render_smart_screener_page():
         "limitup": _hscore,
         "sleeper": lambda r: (r.get("potential") or {}).get("total", 0),
         "balanced": lambda r: r["combined_score"],
-    }[strategy]
+    }.get(strategy, _hscore)
     base_name = {"bestproven": "長線結構分", "momentum": "綜合評分",
                  "limitup": "綜合評分", "sleeper": "潛力分",
-                 "balanced": "攻守兼備分"}[strategy]
+                 "balanced": "攻守兼備分"}.get(strategy, "評分")
     metric_name = (f"{horizon_label} 評分"
                    if horizon_key and strategy in ("momentum", "limitup") else base_name)
 
@@ -2096,7 +2102,7 @@ def render_smart_screener_page():
     # Score distribution chart (of the strategy's primary metric)
     if len(display) > 0:
         primary_color = {"bestproven": "#66bb6a", "momentum": None, "limitup": None,
-                         "sleeper": "#7986cb", "balanced": "#4dd0e1"}[strategy]
+                         "sleeper": "#7986cb", "balanced": "#4dd0e1"}.get(strategy)
         bar_colors = [r["color"] for r in display] if primary_color is None \
             else [primary_color] * len(display)
         fig_bar = go.Figure()
@@ -2591,10 +2597,41 @@ def render_portfolio_page():
         ],
     )
     rank_by_long = rank_label.startswith("🏆")
-    st.caption(
-        "📊 依 139 期滾動回測，**長線結構分的選股能力遠強於綜合評分**"
-        "（超額報酬 +3.10% vs +0.81%），因此預設以長線分排名。詳見 BACKTEST_FINDINGS.md。"
-    )
+    with st.expander("📖 這些分數與門檻是什麼意思？（實證說明）", expanded=False):
+        st.markdown("""
+**為什麼預設用「長線結構分」而非「綜合評分」？**
+179 期滾動回測顯示，長線結構分的選股能力遠強於綜合評分
+（超額報酬 **+3.10% vs +0.81%**），且在多頭／震盪／空頭三種環境都是正的。
+
+**「超額報酬」是什麼？為什麼看它而不是報酬率？**
+超額報酬 =（這批股票的報酬）−（當天全市場等權平均報酬）。
+多頭時什麼都在漲，看絕對報酬會誤以為模型很神；**只有贏過「隨便買」才證明選股有價值**。
+
+**70 分門檻怎麼來的？**
+把所有個股**依分數分桶**（不是排名），統計每個區間後續的實際表現：
+
+| 長線分區間 | 1個月超額報酬 |
+|---|---|
+| 低於 70 分 | **全部為負**（−0.06% ~ −0.95%）|
+| 70–75 分 | **+1.30%** ✅ |
+| 80 分以上 | **+0.92%** ✅ |
+
+所以 70 分是分水嶺——**低於 70 分的股票，歷史上買了平均跑輸大盤**。
+
+**為什麼建議抱 3 個月？**
+同樣一批 70 分以上的股票，持有越久表現越好：
+
+| 持有 | 勝率 | 扣成本後報酬 | 超額報酬 |
+|---|---|---|---|
+| 1 週 | 50.2% | +0.38% | +0.30% |
+| 1 個月 | 53.6% | +3.23% | +0.94% |
+| **3 個月** | **58.7%** | **+10.79%** | **+2.61%** |
+
+1 週幾乎等於丟銅板（50.2%），而且頻繁進出還要一直付 0.585% 的手續費與證交稅。
+
+⚠️ **限制**：測試期含多頭124/震盪28/空頭27期，空頭樣本較少；且有存活者偏誤
+（已下市公司不在樣本內）。詳見 `BACKTEST_FINDINGS.md`。
+""")
 
     holdings = load_holdings()
 
@@ -2640,7 +2677,7 @@ def render_portfolio_page():
         if f"{cache_key}_time" in st.session_state:
             st.caption(f"上次評分：{st.session_state[f'{cache_key}_time'].strftime('%H:%M:%S')}")
 
-    if refresh or cache_key not in st.session_state:
+    if refresh:
         scores = {}
         prog = st.progress(0.0)
         status = st.empty()
@@ -2657,6 +2694,18 @@ def render_portfolio_page():
         st.session_state[f"{cache_key}_time"] = datetime.datetime.now()
 
     scores = st.session_state.get(cache_key, {})
+    if not scores:
+        st.info(
+            f"👆 **請按「🔄 重新評分」開始分析**（{len(holdings)} 檔約需 "
+            f"{max(1, len(holdings) * 5 // 60)}–{len(holdings) * 8 // 60 + 1} 分鐘）。"
+            "評分結果會保留，切換排名依據不會重跑。"
+        )
+        st.markdown("---")
+        st.markdown("### 目前持股（尚未評分）")
+        for h in holdings:
+            st.markdown(f"- **{h['stock_id']} {h.get('name', '')}**　"
+                        f"{float(h.get('shares') or 0):,.0f} 股 @ {float(h.get('cost') or 0):,.2f}")
+        return
 
     # ── Build rows ────────────────────────────────────────────────────────────
     rows = []
@@ -2703,6 +2752,24 @@ def render_portfolio_page():
         st.metric(f"持股平均{score_name}", f"{avg_score:.0f}",
                   f"市值加權 {w_score:.0f}")
 
+    # ── 用與選股頁相同的實證門檻判讀（避免兩頁標準不一致造成混亂）──────────────
+    pf_thr = ev_threshold("長線+量能確認", 20) or 70
+    if rank_by_long:
+        below = [x for x in scored if _key_score(x["r"]) < pf_thr]
+        above = [x for x in scored if _key_score(x["r"]) >= pf_thr]
+        mv_below = sum(x["pos"]["market_value"] for x in below)
+        pct_below = mv_below / mv_total * 100 if mv_total else 0
+        st.markdown(f"""
+<div style="background:#161b26;border-left:4px solid {'#f44336' if pct_below > 50 else '#ff9800' if pct_below > 20 else '#4caf50'};
+            border-radius:6px;padding:10px 14px;margin:6px 0;">
+  <span style="font-weight:700;">🎯 實證門檻檢視（長線結構分 {pf_thr:.0f} 分）</span>
+  <span style="color:#cfd8dc;font-size:13px;">
+    —— {len(above)} 檔達標、<b>{len(below)} 檔未達標</b>，
+    未達標部位佔總市值 <b>{pct_below:.0f}%</b>。
+    回測顯示低於 {pf_thr:.0f} 分的區間，持有1個月的超額報酬全為負。
+  </span>
+</div>""", unsafe_allow_html=True)
+
     if weak:
         st.warning(
             f"⚠️ **需留意的部位**（{score_name} < 48）："
@@ -2743,10 +2810,25 @@ def render_portfolio_page():
             )
             rr_txt = (f"風報比 <b style='color:#fafafa;'>{rr:.2f}</b>　停損 {abs(stop_pct):.1f}%"
                       if rr is not None and stop_pct is not None else "")
+            # 該檔長線分落在哪個實證區間 → 歷史勝率（與選股頁同一套標準）
+            _lg = (hz.get("long") or {}).get("score")
+            _bk = ev_bucket("長線+量能確認", _lg, 20) if _lg is not None else {}
+            if _bk:
+                _ok = _bk.get("excess", 0) > 0
+                _bc = "#4caf50" if _ok else "#f44336"
+                evid_html = (
+                    f"<div style='min-width:150px;font-size:11px;'>"
+                    f"<div style='color:#78909c;'>長線分 {_lg} 實證區間 {_bk['range']}</div>"
+                    f"<div style='color:{_bc};font-weight:700;'>"
+                    f"{'✅' if _ok else '⚠️'} 勝率 {_bk.get('win_rate', 0):.0f}%　"
+                    f"超額 {_bk.get('excess', 0):+.2f}%</div></div>"
+                )
+            else:
+                evid_html = "<div style='min-width:150px;'></div>"
         else:
             color, icon, action, total, pot = "#78909c", "❔", "無資料", 0, 0
             price, t_w, f_w, n_w = 0, 0, 0, 0
-            hz_html, rr_txt = "", ""
+            hz_html, rr_txt, evid_html = "", "", ""
 
         pl_color = "#f03e3e" if pos["pnl"] >= 0 else "#2f9e44"
         pnl_pct_txt = f"{pos['pnl_pct']:+.2f}%" if pos["pnl_pct"] is not None else "N/A"
@@ -2795,6 +2877,7 @@ def render_portfolio_page():
            息 <span style="color:#ffd43b;font-weight:700;">{n_w}</span></div>
       <div style="margin-top:3px;">{rr_txt}</div>
     </div>
+    {evid_html}
   </div>
 </div>""", unsafe_allow_html=True)
 

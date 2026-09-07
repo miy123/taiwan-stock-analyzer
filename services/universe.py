@@ -188,11 +188,18 @@ def scan_universe(min_turnover=1e7, period="2y", progress_cb=None):
             lb = potential.get("low_base", 50)
             prelim_sleeper = 0.60 * lb + 0.25 * tech_score + 0.15 * fund_score
             prelim_balanced = math.sqrt(max(rec["total_score"], 0) * max(lb, 0))
+            # 回測最佳策略（長線分 + 量價未轉弱）的初篩分數
+            long_sc = next((h["score"] for h in tfr if h["key"] == "long"), 50)
+            v_adj = volume_signal.get("score_adj", 0)
+            prelim_bestproven = long_sc + (5 if v_adj >= 0 else -15)
 
             rows.append({
                 "prelim_sleeper": round(prelim_sleeper, 1),
                 "prelim_momentum": rec["total_score"],
                 "prelim_balanced": round(prelim_balanced, 1),
+                "prelim_bestproven": round(prelim_bestproven, 1),
+                # bestproven 的最終過濾需要它（先前只存在深度分析結果中）
+                "volume_adj": v_adj,
                 "stock_id": code,
                 "company_name": meta.get("name") or code,
                 "current_price": close,
