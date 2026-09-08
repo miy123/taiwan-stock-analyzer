@@ -34,6 +34,7 @@ from services.evidence import (
     horizon_efficacy as ev_horizon_efficacy,
     MODEL_TO_STRATEGY,
 )
+from services.sector import analyse_sectors, get_industry_map, industry_name
 from services.portfolio import (
     load_holdings, upsert_holding, remove_holding, update_holding_name,
     get_holding, compute_position, portfolio_totals,
@@ -1761,11 +1762,12 @@ def render_smart_screener_page():
 
     strat_label = st.radio(
         "選股策略",
-        ["🏆 長線+量能確認", "🚀 綜合強勢", "💎 超低本益比", "🔥 漲停動能",
-         "🌱 潛力潛伏", "⚖️ 攻守兼備"],
+        ["🏭 強勢族群+長線分", "🏆 長線+量能確認", "🚀 綜合強勢", "💎 超低本益比",
+         "🔥 漲停動能", "🌱 潛力潛伏", "⚖️ 攻守兼備"],
         horizontal=True, key="smart_strategy",
         captions=[
-            "長線結構強且量價未轉弱　✅回測最佳",
+            "熱門族群中的強股　✅回測第一",
+            "長線結構強且量價未轉弱　✅次佳",
             "趨勢已成、順勢操作　✅回測有效",
             "本益比最低的便宜股　❔未驗證",
             "連日漲停高動能　❔未回測",
@@ -1773,7 +1775,8 @@ def render_smart_screener_page():
             "體質強又有餘裕　⛔回測顯著為負",
         ],
     )
-    strategy = {"🏆 長線+量能確認": "bestproven", "🚀 綜合強勢": "momentum",
+    strategy = {"🏭 強勢族群+長線分": "sectorhot",
+                "🏆 長線+量能確認": "bestproven", "🚀 綜合強勢": "momentum",
                 "💎 超低本益比": "lowpe", "🔥 漲停動能": "limitup",
                 "🌱 潛力潛伏": "sleeper",
                 "⚖️ 攻守兼備": "balanced"}[strat_label]
@@ -1913,7 +1916,8 @@ def render_smart_screener_page():
     # Each strategy carries its own quality bar, so the old "只顯示買進建議" checkbox
     # is redundant — it was just the 綜合強勢 bar expressed as a filter.
     bar_note = {
-        "bestproven": "門檻：長線結構分 ≥ 買進線 且 量價未轉弱（回測最佳組合）",
+        "sectorhot": "門檻：屬於動能前5強族群，依長線結構分排序（回測最佳）",
+        "bestproven": "門檻：長線結構分 ≥ 買進線 且 量價未轉弱（回測次佳）",
         "lowpe": "門檻：本益比 3–12 倍（排除 <3 倍的一次性收益假低估），由低到高排序",
         "momentum": "門檻：綜合評分 ≥ 買進線（依大盤環境動態調整）",
         "limitup":  "門檻：近期有連日漲停紀錄，依綜合評分排序",
@@ -1966,7 +1970,8 @@ def render_smart_screener_page():
             return
 
         # Shortlist on the signals that actually vary in the bulk pass
-        prelim_key = {"bestproven": "prelim_bestproven", "lowpe": "prelim_lowpe",
+        prelim_key = {"sectorhot": "prelim_bestproven",
+                      "bestproven": "prelim_bestproven", "lowpe": "prelim_lowpe",
                       "momentum": "prelim_momentum", "limitup": "prelim_momentum",
                       "sleeper": "prelim_sleeper",
                       "balanced": "prelim_balanced"}.get(strategy, "prelim_momentum")
@@ -2076,7 +2081,18 @@ def render_smart_screener_page():
             return r["total_score"]
         return (r.get("horizon") or {}).get(horizon_key, {}).get("score", r["total_score"])
 
-    if strategy == "bestproven":
+    if strategy == "sectorhot":
+        # 回測最佳（+3.07%, t=5.32；兩次獨立執行完全一致）：
+        # 只在動能前5強的族群裡，挑長線結構分最高者。
+        _secs = analyse_sectors(results, min_members=3)
+        _hot = {s["name"] for s in _secs[:5]}
+        _ind = get_industry_map()
+        view = [r for r in results
+                if (_ind.get(r.get("stock_id")) or {}).get("name") in _hot
+                and (r.get("horizon") or {}).get("long", {}).get("score", 0) >= buy_bar]
+        view.sort(key=lambda r: (r.get("horizon") or {}).get("long", {}).get("score", 0),
+                  reverse=True)
+    elif strategy == "bestproven":
         # 回測最佳：長線結構分排序 + 量價未轉弱（超額 +3.36%, t=5.59, 贏基準 64%）
         view = [r for r in results
                 if (r.get("horizon") or {}).get("long", {}).get("score", 0) >= buy_bar
@@ -2149,6 +2165,7 @@ def render_smart_screener_page():
     display = view[:top_n]
 
     metric_of = {
+        "sectorhot": lambda r: (r.get("horizon") or {}).get("long", {}).get("score", 0),
         "bestproven": lambda r: (r.get("horizon") or {}).get("long", {}).get("score", 0),
         "lowpe": lambda r: r.get("pe_ratio") or 0,
         "momentum": _hscore,
@@ -2156,7 +2173,8 @@ def render_smart_screener_page():
         "sleeper": lambda r: (r.get("potential") or {}).get("total", 0),
         "balanced": lambda r: r["combined_score"],
     }.get(strategy, _hscore)
-    base_name = {"bestproven": "長線結構分", "lowpe": "本益比", "momentum": "綜合評分",
+    base_name = {"sectorhot": "長線結構分", "bestproven": "長線結構分",
+                 "lowpe": "本益比", "momentum": "綜合評分",
                  "limitup": "綜合評分", "sleeper": "潛力分",
                  "balanced": "攻守兼備分"}.get(strategy, "評分")
     metric_name = (f"{horizon_label} 評分"
@@ -2167,7 +2185,7 @@ def render_smart_screener_page():
 
     # Score distribution chart (of the strategy's primary metric)
     if len(display) > 0:
-        primary_color = {"bestproven": "#66bb6a", "lowpe": "#ffd54f",
+        primary_color = {"sectorhot": "#26a69a", "bestproven": "#66bb6a", "lowpe": "#ffd54f",
                          "momentum": None, "limitup": None,
                          "sleeper": "#7986cb", "balanced": "#4dd0e1"}.get(strategy)
         bar_colors = [r["color"] for r in display] if primary_color is None \
@@ -2181,7 +2199,7 @@ def render_smart_screener_page():
             textposition="outside",
             textfont=dict(color="#fafafa"),
         ))
-        if strategy in ("momentum", "limitup", "bestproven"):
+        if strategy in ("momentum", "limitup", "bestproven", "sectorhot"):
             fig_bar.add_hline(y=buy_bar + 10, line_dash="dot", line_color="#4caf50",
                               annotation_text=f"強力買進線 {buy_bar + 10}", annotation_position="right")
             fig_bar.add_hline(y=buy_bar, line_dash="dot", line_color="#a9e34b",
@@ -2213,12 +2231,97 @@ def render_smart_screener_page():
     else:
         st.caption("⚠️ 評分模型為量化指標的加權組合，不代表投資建議。請結合個人判斷與風險承受能力做決策。")
 
+    # ── 題材/族群輪動 ─────────────────────────────────────────────────────────
+    render_sector_view(results)
+
     # ── Stored backtest evidence (all models) ─────────────────────────────────
     render_evidence_table()
 
     # ── Strategy backtest ─────────────────────────────────────────────────────
     render_strategy_backtest(strategy, strat_label, horizon_key, horizon_label,
                              include_limit_up, top_n, buy_bar)
+
+
+# ─── 題材／族群輪動 ───────────────────────────────────────────────────────────
+
+def render_sector_view(results):
+    """哪些族群正在發動，以及族群內的個股分布。"""
+    if not results:
+        return
+    st.markdown("---")
+    with st.expander("🏭 題材族群輪動：哪個族群正在發動？", expanded=False):
+        sectors = analyse_sectors(results, min_members=3)
+        if not sectors:
+            st.info("掃描檔數不足以做族群分析（每個族群至少需 3 檔）。建議用全市場掃描。")
+            return
+
+        st.caption(
+            "族群動能＝該族群成員近 60 日報酬的**中位數**（用中位數避免被單一飆股拉高）；"
+            "廣度＝族群內上漲家數比率。依證交所／櫃買官方「產業別」分類。"
+        )
+        st.success(
+            "✅ **實證：買「強勢族群裡的強股」有效**——只在前 5 強族群裡挑長線分最高者，"
+            "1個月超額 **+3.07%**（t=5.32）、3個月 **+10.59%**（t=6.94），"
+            "**優於不分族群的預設策略**（+2.58% / +9.34%）。"
+        )
+        st.error(
+            "⛔ **但「補漲」是錯覺**——「強勢族群裡還沒跟上的落後股」1個月超額 **−0.25%**、"
+            "3個月 **−0.88%**，贏基準率僅 36–40%。**族群強不代表落後股會補漲**，"
+            "落後通常有它落後的理由。（對照組「弱勢族群的落後股」更差：−1.38%，t=−3.27）"
+        )
+
+        rows_html = []
+        for i, s in enumerate(sectors[:14], 1):
+            mc = "#f03e3e" if s["mom"] > 0 else "#2f9e44"
+            bc = "#4caf50" if s["breadth"] >= 60 else "#ff9800" if s["breadth"] >= 40 else "#f44336"
+            hot = "🔥" if i <= 5 else ""
+            ml = f"{s['median_long']:.0f}" if s["median_long"] is not None else "—"
+            rows_html.append(
+                f"<tr style='border-bottom:1px solid #2d3548;'>"
+                f"<td style='padding:6px 10px;'>{i} {hot}</td>"
+                f"<td style='padding:6px 10px;font-weight:700;'>{s['name']}</td>"
+                f"<td style='padding:6px 10px;'>{s['n']}</td>"
+                f"<td style='padding:6px 10px;color:{mc};font-weight:800;'>{s['mom']:+.1f}%</td>"
+                f"<td style='padding:6px 10px;color:{bc};'>{s['breadth']:.0f}%</td>"
+                f"<td style='padding:6px 10px;'>{ml}</td></tr>"
+            )
+        st.markdown(f"""
+<div style="overflow-x:auto;">
+<table style="width:100%;border-collapse:collapse;font-size:13px;background:#161b26;border-radius:8px;">
+  <thead><tr style="background:#1e2130;color:#b0bec5;font-size:12px;">
+    <th style="padding:8px 10px;text-align:left;">排名</th>
+    <th style="padding:8px 10px;text-align:left;">族群</th>
+    <th style="padding:8px 10px;text-align:left;">檔數</th>
+    <th style="padding:8px 10px;text-align:left;">60日動能(中位)</th>
+    <th style="padding:8px 10px;text-align:left;">上漲廣度</th>
+    <th style="padding:8px 10px;text-align:left;">長線分(中位)</th>
+  </tr></thead><tbody>{''.join(rows_html)}</tbody></table></div>""",
+                    unsafe_allow_html=True)
+
+        # 前 5 強族群裡，長線分最高的個股（這才是實證有效的做法）
+        st.markdown("#### 🔥 前 5 強族群中，長線分最高的個股")
+        st.caption("這是實證有效的做法：族群動能 + 個股也強，而**非**挑落後股。")
+        hot_ids = {s["name"] for s in sectors[:5]}
+        ind = get_industry_map()
+        picks = []
+        for r in results:
+            meta = ind.get(r.get("stock_id"))
+            if meta and meta["name"] in hot_ids:
+                lg = (r.get("horizon") or {}).get("long", {}).get("score", 0)
+                picks.append((lg, meta["name"], r))
+        picks.sort(key=lambda x: -x[0])
+        if picks:
+            for lg, sec, r in picks[:10]:
+                p = r.get("potential") or {}
+                pe = r.get("pe_ratio")
+                st.markdown(
+                    f"- **{r['stock_id']} {r['company_name']}**"
+                    f"　`{sec}`　長線分 **{lg}**"
+                    f"　52週位階 {p.get('position_pct', 0):.0f}%"
+                    + (f"　本益比 {pe:.1f}" if pe else "")
+                )
+        else:
+            st.info("目前掃描結果中沒有屬於前 5 強族群的個股。")
 
 
 # ─── Stored backtest evidence ─────────────────────────────────────────────────
@@ -2523,7 +2626,7 @@ def _render_smart_card(rank, r, strategy, horizon_key=None):
 
     # Three always-visible scores; primary highlighted per strategy
     cell_momentum = _score_cell("綜合", r["total_score"], color,
-                                strategy in ("momentum", "limitup", "bestproven"))
+                                strategy in ("momentum", "limitup", "bestproven", "sectorhot"))
     cell_sleeper  = _score_cell("潛力", pot_total, "#7986cb", strategy == "sleeper")
     cell_balanced = _score_cell("兼備", comb, "#4dd0e1", strategy == "balanced")
 

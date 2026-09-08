@@ -29,6 +29,7 @@ from services.technical import (
 )
 from services.potential import calculate_potential_score
 from services.universe import get_listed_snapshot, download_history_bulk
+from services.sector import get_industry_map
 
 FWD = (5, 20, 60)          # 交易日：約 1週 / 1個月 / 3個月
 MIN_HISTORY = 260          # 評分所需最少歷史長度
@@ -175,6 +176,23 @@ MODELS = [
     _m("長線+中線平均", lambda s: 0.5 * s["h_long"] + 0.5 * s["h_medium"], None,
        "長線與中線各半加權"),
 
+    # ── 題材/族群輪動：強勢族群裡的落後股（補漲）是否真的有效？────────────
+    # 注意：這與「個股低基期」是不同的假設——族群動能(順勢) + 個股落後(逆勢)。
+    _m("強勢族群龍頭", lambda s: s["sec_mom"] if s["sec_mom"] is not None else -999,
+       lambda s: s["sec_mom"] is not None and s["sec_rank"] <= 5 and s["pos"] >= 70,
+       "前5強族群中、自己也強勢的"),
+    _m("強勢族群落後股", lambda s: (s["sec_gap"] if s["sec_gap"] is not None else -999),
+       lambda s: (s["sec_gap"] is not None and s["sec_rank"] <= 5
+                  and s["pos"] <= 60 and s["h_long"] >= 55),
+       "前5強族群中、自己還沒跟上的（補漲）"),
+    _m("強勢族群+長線分", lambda s: s["h_long"],
+       lambda s: s["sec_rank"] is not None and s["sec_rank"] <= 5,
+       "只在前5強族群裡挑長線分最高"),
+    _m("弱勢族群落後股(對照)", lambda s: (s["sec_gap"] or -999),
+       lambda s: (s["sec_gap"] is not None and s["sec_rank"] is not None
+                  and s["sec_rank"] >= 20 and s["pos"] <= 60),
+       "對照組：弱勢族群裡的落後股"),
+
     # ── 多重確認：疊加過濾條件會不會因候選太少而反效果？──────────────────
     _m("長線+量能+融資", lambda s: s["h_long"],
        lambda s: s["vol_adj"] >= 0 and ((s["mgn_chg"] is None) or s["mgn_chg"] <= 0),
@@ -254,6 +272,8 @@ def build_signals(df_slice):
         "r250": r250,
         # 12-1 動能：跳過最近一個月，避開短期反轉效應
         "mom_12_1": (r250 - r20) if (r250 is not None and r20 is not None) else None,
+        # 族群欄位在掃描迴圈中回填（此處給預設值避免 KeyError）
+        "sec_rank": None, "sec_mom": None, "sec_gap": None,
     }
 
 
@@ -335,6 +355,9 @@ def main():
         print("   " + "、".join(f"{k} {v} 期" for k, v in cnt.most_common()))
     print()
 
+    industry = get_industry_map()
+    print(f"⑤ 產業別對照載入 {len(industry)} 檔\n")
+
     # 累積結果: model -> horizon -> list of (ret, bench)
     results = {m["name"]: {h: [] for h in FWD} for m in MODELS}
     bench_all = {h: [] for h in FWD}
@@ -396,6 +419,29 @@ def main():
                 day_sigs.append(s)
             except Exception:
                 continue
+
+        # 族群動能：以當日各族群成員的 60 日報酬中位數排名（只用當日以前資料）
+        if day_sigs:
+            byind = {}
+            for x in day_sigs:
+                meta = industry.get(x["code"])
+                if meta and meta["code"] not in ("", "80"):
+                    byind.setdefault(meta["name"], []).append(x)
+            sec_stats = []
+            for nm, mem in byind.items():
+                rs = [m["r60"] for m in mem if m["r60"] is not None]
+                if len(mem) >= 4 and rs:
+                    sec_stats.append((stat.median(rs), nm))
+            sec_stats.sort(reverse=True)
+            rank_of = {nm: i + 1 for i, (_, nm) in enumerate(sec_stats)}
+            mom_of = {nm: mv for mv, nm in sec_stats}
+            for x in day_sigs:
+                meta = industry.get(x["code"])
+                nm = meta["name"] if meta else None
+                x["sec_rank"] = rank_of.get(nm)
+                x["sec_mom"] = mom_of.get(nm)
+                x["sec_gap"] = ((mom_of[nm] - x["r60"])
+                                if (nm in mom_of and x["r60"] is not None) else None)
 
         if len(day_sigs) < 30:
             continue

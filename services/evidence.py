@@ -23,7 +23,9 @@ STRATEGY_TO_MODEL = {
     ("momentum", "short"): "短線",
     ("momentum", "medium"): "中線",
     ("momentum", "long"): "長線",
-    ("bestproven", None): "長線+量能確認",   # 回測最佳：長線分 + 量價未轉弱
+    ("sectorhot", None): "強勢族群+長線分",   # 回測第一：前5強族群 + 長線分
+    ("sectorhot", "long"): "強勢族群+長線分",
+    ("bestproven", None): "長線+量能確認",   # 回測次佳：長線分 + 量價未轉弱
     ("bestproven", "long"): "長線+量能確認",
     ("limitup", None): None,          # 漲停股未單獨回測
     ("sleeper", None): "潛力潛伏",
