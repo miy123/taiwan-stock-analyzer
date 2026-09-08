@@ -124,3 +124,16 @@ yfinance 後綴：上市 `.TW`、上櫃 `.TWO`，由 `stock_data._is_otc()` 依�
 - `long_threshold()` — 三頁共用的買進門檻（勿再硬寫 70）
 
 這些函式**只回傳 HTML 字串**、不呼叫 st.*，方便嵌進各頁不同容器。
+
+## 📋 新增選股策略：只改 `services/strategies.py` 一個地方
+策略原本散在 app.py 的 12 處（選項、說明、if-elif 篩選排序、初篩鍵、圖表指標、
+顏色、實證對照、是否吃週期選單…），漏一處就出事——已發生過兩次：
+`bestproven` 漏初篩鍵→KeyError 整頁掛；週期選單對 6/7 策略其實無作用卻看不出來。
+
+現在改為**宣告式單一表**：在 `STRATEGIES` 加一筆 dict 即可，必填欄位由
+`validate()` 在 import 時檢查（漏填/重複 key 會直接拋錯，而非等使用者點到）。
+必填：key/label/caption/bar_note/sort_desc/prelim_key/color/uses_horizon/
+evidence_model/metric/select。
+
+`select(results, ctx)` 負責篩選＋排序，ctx 提供 buy_bar 與 horizon_key。
+**不要再在 app.py 寫 `if strategy == ...` 的篩選邏輯。**

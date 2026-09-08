@@ -51,6 +51,27 @@ def model_for(strategy: str, horizon_key=None):
     return STRATEGY_TO_MODEL.get((strategy, None))
 
 
+def get_stats_for_model(model_name, hold_days: int = 20, run: str = "main_3y"):
+    """直接以回測模型名稱查詢（策略表已帶 evidence_model，不必再經 STRATEGY_TO_MODEL）。"""
+    ev = load_evidence()
+    if not ev or not model_name:
+        return {}
+    models = ev.get("runs", {}).get(run, {}).get("models", {})
+    return dict(models.get(model_name, {}).get(str(hold_days), {}) or
+                models.get(model_name, {}).get(hold_days, {}) or {})
+
+
+def regime_stats_for_model(model_name, app_regime: str = "neutral") -> dict:
+    """指定模型在目前大盤環境下的歷史超額報酬。"""
+    ev = load_evidence()
+    if not ev or not model_name:
+        return {}
+    table = ev.get("runs", {}).get("main_3y", {}).get("by_regime_1m", {})
+    bucket = _REGIME_MAP.get(app_regime, "震盪")
+    d = (table.get(model_name) or {}).get(bucket)
+    return dict(d, regime_label=bucket) if d else {}
+
+
 def get_stats(strategy: str, horizon_key=None, hold_days: int = 20, run: str = "main_3y"):
     """Backtest stats for one strategy/horizon at a holding period, or {}."""
     ev = load_evidence()

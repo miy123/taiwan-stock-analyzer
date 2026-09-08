@@ -30,11 +30,14 @@ from services.evidence import (
     get_stats as ev_stats, verdict as ev_verdict, all_model_rows as ev_rows,
     benchmark_return as ev_bench, meta as ev_meta,
     regime_stats as ev_regime_stats, best_strategies_for_regime as ev_best_for_regime,
+    get_stats_for_model as ev_stats_model, regime_stats_for_model as ev_regime_model,
     score_bucket_stats as ev_bucket, buy_threshold as ev_threshold,
     horizon_efficacy as ev_horizon_efficacy,
     MODEL_TO_STRATEGY,
 )
 from services.sector import analyse_sectors, get_industry_map, industry_name
+from services.strategies import STRATEGIES, LABELS as STRAT_LABELS, \
+    CAPTIONS as STRAT_CAPTIONS, get as get_strategy
 from services.ui import (
     pe_badge, pe_inline, horizon_cells, evidence_badge, rr_cell,
     threshold_note, long_threshold,
@@ -1765,25 +1768,11 @@ def render_smart_screener_page():
     )
 
     strat_label = st.radio(
-        "選股策略",
-        ["🏭 強勢族群+長線分", "🏆 長線+量能確認", "🚀 綜合強勢", "💎 超低本益比",
-         "🔥 漲停動能", "🌱 潛力潛伏", "⚖️ 攻守兼備"],
-        horizontal=True, key="smart_strategy",
-        captions=[
-            "熱門族群中的強股　✅回測第一",
-            "長線結構強且量價未轉弱　✅次佳",
-            "趨勢已成、順勢操作　✅回測有效",
-            "本益比最低的便宜股　❔未驗證",
-            "連日漲停高動能　❔未回測",
-            "題材浮現但還沒漲　⛔回測顯著為負",
-            "體質強又有餘裕　⛔回測顯著為負",
-        ],
+        "選股策略", STRAT_LABELS, horizontal=True, key="smart_strategy",
+        captions=STRAT_CAPTIONS,
     )
-    strategy = {"🏭 強勢族群+長線分": "sectorhot",
-                "🏆 長線+量能確認": "bestproven", "🚀 綜合強勢": "momentum",
-                "💎 超低本益比": "lowpe", "🔥 漲停動能": "limitup",
-                "🌱 潛力潛伏": "sleeper",
-                "⚖️ 攻守兼備": "balanced"}[strat_label]
+    sdef = get_strategy(strat_label)
+    strategy = sdef["key"]
 
     # The limit-up universe is only fetched for the 漲停動能 strategy — that toggle
     # is now part of the strategy itself rather than a separate checkbox.
@@ -1824,7 +1813,7 @@ def render_smart_screener_page():
         # ⚠️ 只有「綜合強勢」的排序真的會用到這個選擇；其他策略各自有固定的排序
         # 依據（族群/長線分/本益比/潛力分/漲停天數），選了也不會改變結果——
         # 實測換週期時卡片順序完全不動。故對那些策略直接停用，避免誤導。
-        _hz_applies = (strategy == "momentum")
+        _hz_applies = sdef["uses_horizon"]
         horizon_label = st.selectbox(
             "排序用的週期評分",
             ["長線 半年+ ✅最強", "中線 1個月+ ✅次強", "綜合（不分週期）",
@@ -1850,7 +1839,7 @@ def render_smart_screener_page():
     # ── Backtest evidence for the chosen strategy ─────────────────────────────
     # Ranking rules are cheap to invent and easy to believe; the 139-period
     # backtest is the only thing that says whether they actually worked.
-    ev = ev_stats(strategy, horizon_key, hold_days=20)
+    ev = ev_stats_model(sdef["evidence_model"], hold_days=20)
     ev_v = ev_verdict(ev)
     if ev:
         st.markdown(f"""
@@ -1867,7 +1856,7 @@ def render_smart_screener_page():
 </div>""", unsafe_allow_html=True)
         # ── 依「目前大盤環境」給建議（分環境回測推翻了一刀切的結論）──────────
         cur_reg = regime.get("regime", "neutral")
-        rs = ev_regime_stats(strategy, horizon_key, cur_reg)
+        rs = ev_regime_model(sdef["evidence_model"], cur_reg)
         if rs:
             good = rs["excess_return"] > 0
             rc = "#4caf50" if good else "#f44336"
@@ -1920,30 +1909,12 @@ def render_smart_screener_page():
               "故會有 1 分內的微小差異（實測 82→81），不影響排序結論。"),
     )
 
-    # Each strategy carries its own quality bar, so the old "只顯示買進建議" checkbox
-    # is redundant — it was just the 綜合強勢 bar expressed as a filter.
-    bar_note = {
-        "sectorhot": "門檻：屬於動能前5強族群，依長線結構分排序（回測最佳）",
-        "bestproven": "門檻：長線結構分 ≥ 買進線 且 量價未轉弱（回測次佳）",
-        "lowpe": "門檻：本益比 3–12 倍（排除 <3 倍的一次性收益假低估），由低到高排序",
-        "momentum": "門檻：綜合評分 ≥ 買進線（依大盤環境動態調整）",
-        "limitup":  "門檻：近期有連日漲停紀錄，依綜合評分排序",
-        "sleeper":  "門檻：通過『有題材且尚未起漲』檢核",
-        "balanced": "門檻：綜合評分不弱 + 尚未過熱 + 風報比 ≥ 1.5",
-    }.get(strategy, "")
-    # 明講「這個策略實際依什麼排序」，避免使用者以為週期選單對每個策略都有效
-    _sort_by = {
-        "sectorhot": "**長線結構分**（族群動能前5強之內）",
-        "bestproven": "**長線結構分**（量價未轉弱者）",
-        "momentum": f"**{horizon_label.split()[0]}分**（可用上方選單切換）",
-        "limitup": "**連續漲停天數 → 綜合評分**",
-        "lowpe": "**本益比由低到高**",
-        "sleeper": "**潛力分**",
-        "balanced": "**攻守兼備分**（綜合×潛力幾何平均）",
-    }.get(strategy, "—")
-    st.caption(f"📋 {bar_note}　｜　排序依據：{_sort_by}"
-               + ("" if strategy == "momentum"
-                  else "（此策略不使用上方的週期選單）"))
+    # 說明文字全部來自策略表（services/strategies.py），不再散落
+    _sort_desc = sdef["sort_desc"]
+    if sdef["uses_horizon"]:
+        _sort_desc = f"**{horizon_label.split()[0]}分**（可用上方選單切換）"
+    st.caption(f"📋 {sdef['bar_note']}　｜　排序依據：{_sort_desc}"
+               + ("" if sdef["uses_horizon"] else "（此策略不使用上方的週期選單）"))
 
     # ── 分數門檻實證：幾分以上才值得買 ────────────────────────────────────────
     thr = long_threshold()
@@ -1989,11 +1960,7 @@ def render_smart_screener_page():
             return
 
         # Shortlist on the signals that actually vary in the bulk pass
-        prelim_key = {"sectorhot": "prelim_bestproven",
-                      "bestproven": "prelim_bestproven", "lowpe": "prelim_lowpe",
-                      "momentum": "prelim_momentum", "limitup": "prelim_momentum",
-                      "sleeper": "prelim_sleeper",
-                      "balanced": "prelim_balanced"}.get(strategy, "prelim_momentum")
+        prelim_key = sdef["prelim_key"]
         n_enrich = min(int(top_n) * 2 + 6, 40)   # ~5s per deep analysis
         shortlist = sorted(rows, key=lambda r: r.get(prelim_key, 0), reverse=True)[:n_enrich]
 
@@ -2094,54 +2061,9 @@ def render_smart_screener_page():
     # Each strategy's bar is intrinsic to the strategy (no separate checkboxes).
     buy_bar = 58 + (get_market_regime().get("threshold_adj", 0) or 0)
 
-    def _hscore(r):
-        """Score for the selected holding horizon (falls back to the blended score)."""
-        if not horizon_key:
-            return r["total_score"]
-        return (r.get("horizon") or {}).get(horizon_key, {}).get("score", r["total_score"])
-
-    if strategy == "sectorhot":
-        # 回測最佳（+3.07%, t=5.32；兩次獨立執行完全一致）：
-        # 只在動能前5強的族群裡，挑長線結構分最高者。
-        _secs = analyse_sectors(results, min_members=3)
-        _hot = {s["name"] for s in _secs[:5]}
-        _ind = get_industry_map()
-        view = [r for r in results
-                if (_ind.get(r.get("stock_id")) or {}).get("name") in _hot
-                and (r.get("horizon") or {}).get("long", {}).get("score", 0) >= buy_bar]
-        view.sort(key=lambda r: (r.get("horizon") or {}).get("long", {}).get("score", 0),
-                  reverse=True)
-    elif strategy == "bestproven":
-        # 回測最佳：長線結構分排序 + 量價未轉弱（超額 +3.36%, t=5.59, 贏基準 64%）
-        view = [r for r in results
-                if (r.get("horizon") or {}).get("long", {}).get("score", 0) >= buy_bar
-                and (r.get("volume_adj", 0) or 0) >= 0]
-        if not view:  # volume_adj 可能未存於舊快取，退回只用長線分
-            view = [r for r in results
-                    if (r.get("horizon") or {}).get("long", {}).get("score", 0) >= buy_bar]
-        view.sort(key=lambda r: (r.get("horizon") or {}).get("long", {}).get("score", 0),
-                  reverse=True)
-    elif strategy == "lowpe":
-        # 本益比 3–12 倍：<3 倍多為業外一次性收益灌大 EPS 的假低估（價值陷阱）
-        view = [r for r in results
-                if r.get("pe_ratio") is not None and 3 <= r["pe_ratio"] <= 12]
-        view.sort(key=lambda r: r["pe_ratio"])          # 由低到高
-    elif strategy == "momentum":
-        view = [r for r in results if _hscore(r) >= buy_bar]
-        view.sort(key=_hscore, reverse=True)
-    elif strategy == "limitup":
-        view = [r for r in results if r.get("is_limit_up")]
-        view.sort(key=lambda r: (r.get("max_streak", 0), r["total_score"]), reverse=True)
-    elif strategy == "sleeper":
-        view = [r for r in results if (r.get("potential") or {}).get("qualifies")]
-        view.sort(key=lambda r: (r.get("potential") or {}).get("total", 0), reverse=True)
-    else:  # balanced — needs decent quality, room to run, AND sane risk/reward
-        view = [r for r in results
-                if r["total_score"] >= 48
-                and (r.get("potential") or {}).get("low_base", 0) >= 45
-                and (r.get("potential") or {}).get("total", 0) >= 45
-                and (r.get("rr") is None or r["rr"] >= 1.5)]
-        view.sort(key=lambda r: r["combined_score"], reverse=True)
+    # 篩選＋排序完全由策略表決定（services/strategies.py），
+    # 不再有一長串 if-elif —— 新增策略只要在表裡加一筆。
+    view = sdef["select"](results, {"buy_bar": buy_bar, "horizon_key": horizon_key})
 
     # ── Summary strip (always shows both lenses) ──────────────────────────────
     buy_ct     = sum(1 for r in results if r["total_score"] >= 58)
@@ -2183,31 +2105,18 @@ def render_smart_screener_page():
 
     display = view[:top_n]
 
-    metric_of = {
-        "sectorhot": lambda r: (r.get("horizon") or {}).get("long", {}).get("score", 0),
-        "bestproven": lambda r: (r.get("horizon") or {}).get("long", {}).get("score", 0),
-        "lowpe": lambda r: r.get("pe_ratio") or 0,
-        "momentum": _hscore,
-        # 排序實際用「連續漲停天數 + 綜合評分」，故圖表也顯示綜合評分才一致
-        "limitup": lambda r: r["total_score"],
-        "sleeper": lambda r: (r.get("potential") or {}).get("total", 0),
-        "balanced": lambda r: r["combined_score"],
-    }.get(strategy, _hscore)
-    base_name = {"sectorhot": "長線結構分", "bestproven": "長線結構分",
-                 "lowpe": "本益比", "momentum": "綜合評分",
-                 "limitup": "綜合評分", "sleeper": "潛力分",
-                 "balanced": "攻守兼備分"}.get(strategy, "評分")
-    metric_name = (f"{horizon_label} 評分"
-                   if horizon_key and strategy in ("momentum", "limitup") else base_name)
+    metric_of = sdef["metric"]
+    # 圖表標題＝排序依據的白話名稱（去掉 markdown 粗體與括號說明）
+    metric_name = sdef["sort_desc"].replace("**", "").split("（")[0]
+    if sdef["uses_horizon"]:
+        metric_name = f"{horizon_label.split()[0]} 評分"
 
     st.markdown("---")
     st.markdown(f"### 依「{strat_label}」排序 — 前 {len(display)} 名")
 
     # Score distribution chart (of the strategy's primary metric)
     if len(display) > 0:
-        primary_color = {"sectorhot": "#26a69a", "bestproven": "#66bb6a", "lowpe": "#ffd54f",
-                         "momentum": None, "limitup": None,
-                         "sleeper": "#7986cb", "balanced": "#4dd0e1"}.get(strategy)
+        primary_color = sdef["color"]
         bar_colors = [r["color"] for r in display] if primary_color is None \
             else [primary_color] * len(display)
         fig_bar = go.Figure()
