@@ -36,6 +36,10 @@ _TPEX_DAY = "https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quote
 _TPEX_PER = "https://www.tpex.org.tw/openapi/v1/tpex_mainboard_peratio_analysis"
 _HEADERS = {"User-Agent": "Mozilla/5.0"}
 
+# 掃描時一律下載到這個流動性下限（＝UI 滑桿的最低檔），
+# 更高的門檻只在記憶體過濾，不重抓。
+SCAN_FLOOR_TURNOVER = 1e7
+
 
 def _f(v):
     try:
@@ -141,15 +145,41 @@ def get_full_market_snapshot(include_otc: bool = True) -> dict:
     return snap
 
 
+@st.cache_data(ttl=3600, show_spinner=False, persist="disk", max_entries=4)
+def _download_history_cached(codes_key: tuple, period: str, chunk: int,
+                             otc_codes: frozenset):
+    """
+    真正下載的內層函式（有快取）。
+
+    ⚠️ 這是整個掃描最貴的一步（全市場約 1,974 檔）。原本完全沒有快取，
+    導致每次重新掃描都把幾百 MB 的歷史資料重抓一遍。加上 persist="disk" 後，
+    連 Streamlit 重啟都還留著，換策略／調流動性門檻都不必重抓。
+
+    參數必須是可雜湊的（tuple / frozenset），否則 st.cache_data 無法當快取鍵。
+    """
+    return _do_download(list(codes_key), period, chunk, None,
+                        lambda c: ".TWO" if c in otc_codes else ".TW")
+
+
 def download_history_bulk(codes, period="2y", chunk=120, progress_cb=None,
-                          suffix_of=None):
+                          suffix_of=None, use_cache=True):
     """
     Batch-download daily history for many codes. Returns {code: DataFrame}.
     yfinance batches each request, so this is ~100x faster than looping.
 
     suffix_of: code → yfinance suffix. 上市為 '.TW'、上櫃為 '.TWO'；
                沒給就一律當上市（維持舊行為）。
+    use_cache: 走 st.cache_data（含硬碟持久化）。有進度回呼時自動略過快取，
+               因為進度回呼無法被雜湊，且第二次命中快取時也不需要進度條。
     """
+    if use_cache and progress_cb is None:
+        otc = frozenset(c for c in codes
+                        if suffix_of and suffix_of(c) == ".TWO")
+        return _download_history_cached(tuple(sorted(codes)), period, chunk, otc)
+    return _do_download(codes, period, chunk, progress_cb, suffix_of)
+
+
+def _do_download(codes, period, chunk, progress_cb, suffix_of):
     frames = {}
     total = len(codes)
     for i in range(0, total, chunk):
@@ -200,8 +230,12 @@ def scan_universe(min_turnover=1e7, period="2y", progress_cb=None, include_otc=T
     from services.margin import get_latest_margin_table, calculate_margin_signal
     from services.market import get_market_regime
 
+    # ⚠️ 一律以「最寬的門檻」下載，之後在記憶體裡過濾。
+    # 若把 min_turnover 併進下載範圍，使用者每動一次流動性滑桿就得重抓全市場——
+    # 但實際上高門檻的股票是低門檻的子集合，重抓毫無必要。
     snap = get_full_market_snapshot(include_otc=include_otc)
-    codes = sorted(c for c, v in snap.items() if (v.get("turnover") or 0) >= min_turnover)
+    scan_floor = min(min_turnover, SCAN_FLOOR_TURNOVER)
+    codes = sorted(c for c, v in snap.items() if (v.get("turnover") or 0) >= scan_floor)
     frames = download_history_bulk(
         codes, period=period, progress_cb=progress_cb,
         suffix_of=lambda c: ".TWO" if snap.get(c, {}).get("market") == "TPEX" else ".TW",
@@ -213,10 +247,13 @@ def scan_universe(min_turnover=1e7, period="2y", progress_cb=None, include_otc=T
 
     for code, raw in frames.items():
         try:
+            meta = snap.get(code, {})
+            # 實際門檻在此套用（下載用的是更寬的 scan_floor）
+            if (meta.get("turnover") or 0) < min_turnover:
+                continue
             df = calculate_indicators(raw)
             if len(df) < 150:
                 continue
-            meta = snap.get(code, {})
 
             tech_score, _ = calculate_technical_score(df)
             # Partial fundamentals from the bulk valuation feed

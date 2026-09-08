@@ -137,3 +137,18 @@ evidence_model/metric/select。
 
 `select(results, ctx)` 負責篩選＋排序，ctx 提供 buy_bar 與 horizon_key。
 **不要再在 app.py 寫 `if strategy == ...` 的篩選邏輯。**
+
+## 💾 快取策略：換策略絕不重抓（2026-09-08）
+1. **`download_history_bulk` 有 `@st.cache_data(persist="disk")`** —— 全市場歷史下載是
+   最貴的一步，原本完全沒快取。實測 291 檔：冷啟 4.58s → 命中 0.01s（530x）。
+   `persist="disk"` 讓 Streamlit 重啟後仍在。內層 `_download_history_cached` 的參數
+   必須可雜湊（tuple/frozenset）；有 progress_cb 時會略過快取（回呼無法雜湊）。
+2. **掃描一律用 `SCAN_FLOOR_TURNOVER`（最寬門檻）下載，實際門檻在記憶體過濾** ——
+   否則每動一次流動性滑桿就重抓全市場，但高門檻本來就是低門檻的子集合。
+3. **session 快取鍵只含「掃描範圍」**（`smart_full` / `smart_pop` / `smart_poplu`），
+   **不含策略、週期、流動性門檻**。換策略＝對同一批結果重新排序而已。
+4. **全市場模式下漲停股不另掃**——那些股票本來就在掃描範圍內，只需事後標記
+   `is_limit_up`，不必因為切到「漲停動能」就換快取鍵重掃。
+
+⚠️ 加新的 UI 控制項時，先想清楚它該不該進 cache_key：只有**改變「掃描哪些股票」**
+的才該進去；只影響**排序或呈現**的一律不要，否則使用者每點一下就重抓幾百 MB。

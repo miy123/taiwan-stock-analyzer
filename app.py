@@ -1931,9 +1931,14 @@ def render_smart_screener_page():
     # with no rescan). Only 漲停動能 uses a different universe, so it caches apart.
     # Scoring always uses the standard 2-year basis (services/analysis.SCORING_PERIOD),
     # so the cache key no longer depends on a display period — only on the universe.
-    uni_tag = f"full{min_turnover_yi}" if full_market else "pop"
-    cache_key    = f"smart_{uni_tag}_lu{int(include_limit_up)}"
-    last_run_key = f"smart_time_{uni_tag}_lu{int(include_limit_up)}"
+    # 快取鍵刻意**只看掃描範圍**，不含策略、週期或流動性門檻：
+    #   · 換策略 = 對同一批結果重新排序，不需重抓
+    #   · 調流動性滑桿 = 記憶體過濾（掃描一律以最寬門檻下載）
+    #   · 漲停動能 = 全市場模式下這些股本來就掃過了，只需標記，不必另掃
+    # 先前把 min_turnover 與 include_limit_up 併進鍵裡，導致這三種操作都會整批重抓。
+    uni_tag = "full" if full_market else ("poplu" if include_limit_up else "pop")
+    cache_key    = f"smart_{uni_tag}"
+    last_run_key = f"smart_time_{uni_tag}"
 
     col_btn, col_time = st.columns([1, 3])
     with col_btn:
@@ -1941,7 +1946,16 @@ def render_smart_screener_page():
     with col_time:
         if last_run_key in st.session_state:
             last_t = st.session_state[last_run_key]
-            st.caption(f"上次掃描: {last_t.strftime('%H:%M:%S')}  (四種策略共用同一份掃描，切換策略免重掃)")
+            n = st.session_state.get(cache_key + "_scanned") or \
+                len(st.session_state.get(cache_key, []))
+            mins = (datetime.datetime.now() - last_t).total_seconds() / 60
+            st.caption(
+                f"✅ 已快取 {n} 檔（{last_t.strftime('%H:%M:%S')}，{mins:.0f} 分鐘前）　"
+                "**切換策略／持有週期／流動性門檻都不會重抓**，只重新排序。"
+                "歷史資料另有硬碟快取，重啟後仍在。"
+            )
+        else:
+            st.caption("尚未掃描。掃過一次後，切換策略與調整門檻都不需要重抓資料。")
 
     # ── Full-market scan: analyse EVERY liquid listed stock, then deep-enrich ──
     if full_market and run_btn:
@@ -1976,6 +1990,20 @@ def render_smart_screener_page():
             enriched.append(full if full else r)
             seen.add(sid)
             prog.progress(0.45 + 0.55 * (i + 1) / len(shortlist))
+
+        # 全市場已涵蓋所有上市櫃股，漲停股只需「標記」而非另外掃一輪
+        try:
+            lu_map = {x["stock_id"]: x for x in get_limit_up_stocks(top_n=30)}
+            for row in enriched:
+                lu = lu_map.get(row.get("stock_id"))
+                if lu:
+                    row.update({"is_limit_up": True,
+                                "limit_up_pct": lu.get("change_pct"),
+                                "max_streak": lu.get("max_streak", 0),
+                                "last_days_ago": lu.get("last_days_ago", 0),
+                                "exchange": lu.get("exchange", row.get("exchange"))})
+        except Exception:
+            pass
 
         prog.empty(); status.empty()
         st.session_state[cache_key] = enriched
