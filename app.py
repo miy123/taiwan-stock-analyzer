@@ -1821,15 +1821,18 @@ def render_smart_screener_page():
         top_n = st.selectbox("顯示前 N 名", [5, 10, 15, 20, 30], index=1)
     with col_cfg2:
         # Borrowed from 個股分析: rank by holding horizon instead of one blended score
-        # 回測顯示：長線 > 中線 > 短線 > 極短線，故把最有效的排在前面並標示
+        # ⚠️ 只有「綜合強勢」的排序真的會用到這個選擇；其他策略各自有固定的排序
+        # 依據（族群/長線分/本益比/潛力分/漲停天數），選了也不會改變結果——
+        # 實測換週期時卡片順序完全不動。故對那些策略直接停用，避免誤導。
+        _hz_applies = (strategy == "momentum")
         horizon_label = st.selectbox(
-            "持有週期",
+            "排序用的週期評分",
             ["長線 半年+ ✅最強", "中線 1個月+ ✅次強", "綜合（不分週期）",
              "短線 1週內", "極短線 1–3天"],
-            index=0, key="smart_horizon",
-            help=("回測（近3年139期、持有1個月超額報酬）：長線 +3.10%✅、中線 +2.73%✅、"
-                  "短線 +1.18%✅、綜合 +0.81%✅、極短線 +0.72%（不顯著）。"
-                  "越長週期的趨勢結構分越有效。"),
+            index=0, key="smart_horizon", disabled=not _hz_applies,
+            help=("**只有「🚀 綜合強勢」策略會用到這個選項**——其他策略各有固定排序依據。\n\n"
+                  "回測（179期、持有1個月超額報酬）：長線 +2.62%✅、中線 +1.90%✅、"
+                  "短線 +1.29%✅、極短線 +0.23%（不顯著）。越長週期的結構分越有效。"),
         )
         horizon_key = {"長線 半年+ ✅最強": "long", "中線 1個月+ ✅次強": "medium",
                        "綜合（不分週期）": None, "短線 1週內": "short",
@@ -1928,7 +1931,19 @@ def render_smart_screener_page():
         "sleeper":  "門檻：通過『有題材且尚未起漲』檢核",
         "balanced": "門檻：綜合評分不弱 + 尚未過熱 + 風報比 ≥ 1.5",
     }.get(strategy, "")
-    st.caption(f"📋 {bar_note}")
+    # 明講「這個策略實際依什麼排序」，避免使用者以為週期選單對每個策略都有效
+    _sort_by = {
+        "sectorhot": "**長線結構分**（族群動能前5強之內）",
+        "bestproven": "**長線結構分**（量價未轉弱者）",
+        "momentum": f"**{horizon_label.split()[0]}分**（可用上方選單切換）",
+        "limitup": "**連續漲停天數 → 綜合評分**",
+        "lowpe": "**本益比由低到高**",
+        "sleeper": "**潛力分**",
+        "balanced": "**攻守兼備分**（綜合×潛力幾何平均）",
+    }.get(strategy, "—")
+    st.caption(f"📋 {bar_note}　｜　排序依據：{_sort_by}"
+               + ("" if strategy == "momentum"
+                  else "（此策略不使用上方的週期選單）"))
 
     # ── 分數門檻實證：幾分以上才值得買 ────────────────────────────────────────
     thr = long_threshold()
@@ -2173,7 +2188,8 @@ def render_smart_screener_page():
         "bestproven": lambda r: (r.get("horizon") or {}).get("long", {}).get("score", 0),
         "lowpe": lambda r: r.get("pe_ratio") or 0,
         "momentum": _hscore,
-        "limitup": _hscore,
+        # 排序實際用「連續漲停天數 + 綜合評分」，故圖表也顯示綜合評分才一致
+        "limitup": lambda r: r["total_score"],
         "sleeper": lambda r: (r.get("potential") or {}).get("total", 0),
         "balanced": lambda r: r["combined_score"],
     }.get(strategy, _hscore)
