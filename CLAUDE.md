@@ -110,3 +110,17 @@ yfinance 後綴：上市 `.TW`、上櫃 `.TWO`，由 `stock_data._is_otc()` 依�
   已設為 App 預設策略 `sectorhot`（優於 `bestproven` 的 +2.58%）
 - **「強勢族群裡的落後股（補漲）」超額 −0.25%、贏基準率僅 39.7% —— 不要做補漲**
 - 動能在族群與個股兩個層級都有效；均值回歸兩個層級都無效
+
+## 🧩 共用元件：改一次，三頁同步（2026-09-08）
+計分早已統一在 `services/analysis.py`；**顯示**也已統一在 `services/ui.py`。
+以前同樣的東西寫了 3 遍（週期分數格、本益比徽章、實證區間徽章），
+每次調整要三邊各改一次，很容易漏掉造成同數字在不同頁長相不一。
+
+**新增／修改卡片元素時，一律改 `services/ui.py`，不要在 app.py 內嵌 HTML：**
+- `horizon_cells(horizon, selected_key=...)` — 四格週期分數 + 效力標記
+- `pe_badge(pe, dy, highlight=)` / `pe_inline(...)` — 本益比徽章
+- `evidence_badge(long_score)` — 長線分實證區間（勝率／超額）
+- `rr_cell(rr, stop_pct, atr_pct)` — 風報比
+- `long_threshold()` — 三頁共用的買進門檻（勿再硬寫 70）
+
+這些函式**只回傳 HTML 字串**、不呼叫 st.*，方便嵌進各頁不同容器。

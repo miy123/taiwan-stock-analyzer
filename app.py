@@ -35,6 +35,10 @@ from services.evidence import (
     MODEL_TO_STRATEGY,
 )
 from services.sector import analyse_sectors, get_industry_map, industry_name
+from services.ui import (
+    pe_badge, pe_inline, horizon_cells, evidence_badge, rr_cell,
+    threshold_note, long_threshold,
+)
 from services.portfolio import (
     load_holdings, upsert_holding, remove_holding, update_holding_name,
     get_holding, compute_position, portfolio_totals,
@@ -1127,7 +1131,7 @@ def render_recommendation_tab(
     _long_sc = next((h["score"] for h in timeframe_recs if h["key"] == "long"),
                     rec["total_score"])
     _long_act = _action_for_score(_long_sc)
-    _pf_thr = ev_threshold("長線+量能確認", 20) or 70
+    _pf_thr = long_threshold()
 
     col_gauge, col_details = st.columns([1, 2])
 
@@ -1421,7 +1425,7 @@ def render_recommendation_tab(
     long_sc = next((h["score"] for h in timeframe_recs if h["key"] == "long"), None)
     if long_sc is not None:
         b = ev_bucket("長線+量能確認", long_sc, 20) or ev_bucket("長線結構分", long_sc, 20)
-        thr = ev_threshold("長線+量能確認", 20)
+        thr = long_threshold()
         if b:
             ok = b.get("excess", 0) > 0
             bc = "#4caf50" if ok else "#f44336"
@@ -1927,7 +1931,7 @@ def render_smart_screener_page():
     st.caption(f"📋 {bar_note}")
 
     # ── 分數門檻實證：幾分以上才值得買 ────────────────────────────────────────
-    thr = ev_threshold("長線+量能確認", 20)
+    thr = long_threshold()
     if thr:
         st.info(
             f"🎯 **分數門檻實證**（依 179 期、依分數分桶而非排名）：長線結構分 "
@@ -2643,50 +2647,13 @@ def _render_smart_card(rank, r, strategy, horizon_key=None):
     else:
         rr_html = "<div style='min-width:96px;'></div>"
 
-    # 本益比（估值面一眼可見；超低本益比策略會加框強調）
-    pe = r.get("pe_ratio")
-    if pe is not None and pe > 0:
-        pe_color = "#4caf50" if pe < 12 else "#a9e34b" if pe < 20 else "#ff9800" if pe < 35 else "#f44336"
-        pe_box = ("border:1px solid #ffd54f;border-radius:4px;padding:1px 4px;"
-                  if strategy == "lowpe" else "")
-        dy = r.get("dividend_yield")
-        dy_txt = f"殖利率 {dy * 100:.1f}%" if dy else "殖利率 —"
-        pe_html = (
-            f"<div style='min-width:88px;font-size:11px;color:#aaa;{pe_box}'>"
-            f"<div>本益比 <span style='color:{pe_color};font-weight:800;font-size:14px;'>"
-            f"{pe:.1f}</span></div><div>{dy_txt}</div></div>"
-        )
-    else:
-        pe_html = ("<div style='min-width:88px;font-size:11px;color:#666;'>"
-                   "本益比 —<div>（虧損或無資料）</div></div>")
+    # 本益比（共用元件，三頁一致）
+    pe_html = pe_badge(r.get("pe_ratio"), r.get("dividend_yield"),
+                       highlight=(strategy == "lowpe"))
 
-    # Four horizon scores (borrowed from 個股分析) — the selected one is boxed
-    hz = r.get("horizon") or {}
-    if hz:
-        cells = []
-        for key, short in [("ultra_short", "極短"), ("short", "短"),
-                           ("medium", "中"), ("long", "長")]:
-            h = hz.get(key) or {}
-            sc = h.get("score", 0)
-            hc = h.get("color", "#78909c")
-            sel = (key == horizon_key)
-            box = (f"border:1px solid {hc};border-radius:4px;" if sel else "")
-            e = ev_horizon_efficacy(key)
-            cells.append(
-                f"<div style='text-align:center;padding:1px 4px;{box}'>"
-                f"<div style='font-size:13px;font-weight:800;color:{hc};'>{sc}</div>"
-                f"<div style='font-size:9px;color:#90a4ae;'>{short}"
-                f"<span style='font-size:8px;'>{e.get('tag','')}</span></div></div>"
-            )
-        horizon_html = (
-            "<div style='min-width:126px;'>"
-            "<div style='font-size:10px;color:#78909c;margin-bottom:2px;' "
-            "title='✅有效 🟡偏弱 🔴雜訊'>週期評分 <span style='font-size:8px;'>"
-            "✅有效 🔴雜訊</span></div>"
-            "<div style='display:flex;gap:3px;'>" + "".join(cells) + "</div></div>"
-        )
-    else:
-        horizon_html = ""
+    # 四格週期分數（共用元件）
+    horizon_html = horizon_cells(r.get("horizon"), selected_key=horizon_key)
+    rr_html = rr_cell(r.get("rr"), r.get("stop_pct"), r.get("atr_pct"))
 
     card_border = "border:2px solid #7f1d1d;" if r.get("is_limit_up") else "border:1px solid #2d3548;"
 
@@ -2968,7 +2935,7 @@ def render_portfolio_page():
                   f"市值加權 {w_score:.0f}")
 
     # ── 用與選股頁相同的實證門檻判讀（避免兩頁標準不一致造成混亂）──────────────
-    pf_thr = ev_threshold("長線+量能確認", 20) or 70
+    pf_thr = long_threshold()
     if rank_by_long:
         below = [x for x in scored if _key_score(x["r"]) < pf_thr]
         above = [x for x in scored if _key_score(x["r"]) >= pf_thr]
@@ -3051,44 +3018,14 @@ def render_portfolio_page():
             price = r["current_price"]
             t_w, f_w, n_w = r["tech_score"], r["fund_score"], r["news_score"]
             hz = r.get("horizon") or {}
-            # 長線格加框（回測最強訊號），讓使用者知道該看哪一個
-            hz_html = "".join(
-                f"<div style='text-align:center;padding:1px 4px;"
-                f"{'border:1px solid ' + (hz.get(k) or {}).get('color', '#78909c') + ';border-radius:4px;' if (k == 'long' and rank_by_long) else ''}'>"
-                f"<div style='font-size:12px;font-weight:800;color:{(hz.get(k) or {}).get('color', '#78909c')};'>"
-                f"{(hz.get(k) or {}).get('score', '-')}</div>"
-                f"<div style='font-size:9px;color:#90a4ae;'>{s}"
-                f"<span style='font-size:8px;'>{ev_horizon_efficacy(k).get('tag','')}</span>"
-                f"</div></div>"
-                for k, s in [("ultra_short", "極短"), ("short", "短"),
-                             ("medium", "中"), ("long", "長")]
-            )
+            # 共用元件（與選股頁同一份實作）：長線格在依長線分排名時加框
+            hz_html = horizon_cells(hz, selected_key="long" if rank_by_long else None,
+                                    show_legend=False, min_width=118)
             rr_txt = (f"風報比 <b style='color:#fafafa;'>{rr:.2f}</b>　停損 {abs(stop_pct):.1f}%"
                       if rr is not None and stop_pct is not None else "")
-            _pe = r.get("pe_ratio")
-            if _pe is not None and _pe > 0:
-                _pc = ("#4caf50" if _pe < 12 else "#a9e34b" if _pe < 20
-                       else "#ff9800" if _pe < 35 else "#f44336")
-                _dy = r.get("dividend_yield")
-                pe_txt = (f"本益比 <b style='color:{_pc};'>{_pe:.1f}</b>"
-                          + (f"　殖利率 {_dy * 100:.1f}%" if _dy else ""))
-            else:
-                pe_txt = "<span style='color:#666;'>本益比 —（虧損或無資料）</span>"
-            # 該檔長線分落在哪個實證區間 → 歷史勝率（與選股頁同一套標準）
-            _lg = (hz.get("long") or {}).get("score")
-            _bk = ev_bucket("長線+量能確認", _lg, 20) if _lg is not None else {}
-            if _bk:
-                _ok = _bk.get("excess", 0) > 0
-                _bc = "#4caf50" if _ok else "#f44336"
-                evid_html = (
-                    f"<div style='min-width:150px;font-size:11px;'>"
-                    f"<div style='color:#78909c;'>長線分 {_lg} 實證區間 {_bk['range']}</div>"
-                    f"<div style='color:{_bc};font-weight:700;'>"
-                    f"{'✅' if _ok else '⚠️'} 勝率 {_bk.get('win_rate', 0):.0f}%　"
-                    f"超額 {_bk.get('excess', 0):+.2f}%</div></div>"
-                )
-            else:
-                evid_html = "<div style='min-width:150px;'></div>"
+            pe_txt = pe_inline(r.get("pe_ratio"), r.get("dividend_yield"))
+            # 實證區間徽章（共用元件）
+            evid_html = evidence_badge((hz.get("long") or {}).get("score"))
         else:
             color, icon, action, total, pot = "#78909c", "❔", "無資料", 0, 0
             price, t_w, f_w, n_w = 0, 0, 0, 0
@@ -3131,10 +3068,7 @@ def render_portfolio_page():
       <div style="font-size:20px;font-weight:900;color:#7986cb;">{pot}</div>
       <div style="font-size:10px;color:#aaa;">潛力</div>
     </div>
-    <div style="min-width:118px;">
-      <div style="font-size:10px;color:#78909c;margin-bottom:2px;">週期評分</div>
-      <div style="display:flex;gap:2px;">{hz_html}</div>
-    </div>
+    {hz_html}
     <div style="min-width:120px;font-size:11px;color:#aaa;">
       <div>技 <span style="color:#74c0fc;font-weight:700;">{t_w}</span>
            基 <span style="color:#a9e34b;font-weight:700;">{f_w}</span>
