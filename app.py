@@ -20,6 +20,7 @@ from services.fundamental import analyze_fundamentals, calculate_fundamental_sco
 from services.news import get_all_news, calculate_news_sentiment_score, get_catalysts
 from services.recommendation import (
     generate_recommendation, generate_timeframe_recommendations, build_rationale,
+    _action_for as _action_for_score,
 )
 from services.margin import get_margin_data, get_margin_trend, calculate_margin_signal
 from services.stock_lookup import resolve_query, display_name, resolve_company_name
@@ -1108,7 +1109,8 @@ def render_recommendation_tab(
     st.subheader(f"投資建議 — {company_name} ({stock_id}){title_suffix}")
 
     with st.spinner("計算投資評分..."):
-        # Shared core — identical to what 智能選股 runs (services/analysis.py)
+        # Shared core — identical to what 智能選股 runs (services/analysis.py)。
+        # 個股頁一律抓新聞：只看一檔時多花幾秒無妨，而消息面正是這裡的重點之一。
         a = compute_scores(df, info, financials, stock_id, company_name,
                            as_of_date=as_of_date)
         tech_score = a["tech_score"]; fund_score = a["fund_score"]; news_score = a["news_score"]
@@ -1119,27 +1121,32 @@ def render_recommendation_tab(
         rec = a["rec"]; rationale = a["rationale"]; risk_plan = a["risk_plan"]
         timeframe_recs = a["timeframe_recs"]; potential = a["potential"]
 
+    # 主視覺改用「長線結構分」——實證 t=4.71，是綜合評分(t=2.04)的兩倍強度。
+    # 原本最大的儀表板顯示最弱的訊號，等於把使用者的注意力導向最不可靠的數字。
+    _long_sc = next((h["score"] for h in timeframe_recs if h["key"] == "long"),
+                    rec["total_score"])
+    _long_act = _action_for_score(_long_sc)
+    _pf_thr = ev_threshold("長線+量能確認", 20) or 70
+
     col_gauge, col_details = st.columns([1, 2])
 
     with col_gauge:
         fig_gauge = go.Figure(go.Indicator(
             mode="gauge+number",
-            value=rec["total_score"],
-            title={"text": "綜合評分", "font": {"size": 18, "color": "#fafafa"}},
-            number={"font": {"size": 52, "color": rec["color"]}},
+            value=_long_sc,
+            title={"text": "長線結構分 ✅實證最強",
+                   "font": {"size": 16, "color": "#fafafa"}},
+            number={"font": {"size": 52, "color": _long_act["color"]}},
             gauge={
                 "axis": {"range": [0, 100], "tickfont": {"color": "#fafafa"}},
-                "bar": {"color": rec["color"], "thickness": 0.3},
+                "bar": {"color": _long_act["color"], "thickness": 0.3},
                 "steps": [
-                    {"range": [0, 38], "color": "rgba(240,62,62,0.2)"},
-                    {"range": [38, 48], "color": "rgba(255,193,7,0.2)"},
-                    {"range": [48, 58], "color": "rgba(120,144,156,0.2)"},
-                    {"range": [58, 68], "color": "rgba(76,175,80,0.2)"},
-                    {"range": [68, 100], "color": "rgba(0,200,83,0.2)"},
+                    {"range": [0, _pf_thr], "color": "rgba(240,62,62,0.18)"},
+                    {"range": [_pf_thr, 100], "color": "rgba(76,175,80,0.22)"},
                 ],
                 "threshold": {
-                    "line": {"color": rec["color"], "width": 4},
-                    "thickness": 0.8, "value": rec["total_score"],
+                    "line": {"color": "#ffd54f", "width": 4},
+                    "thickness": 0.9, "value": _pf_thr,
                 },
                 "bgcolor": "rgba(0,0,0,0)",
             },
@@ -1151,12 +1158,30 @@ def render_recommendation_tab(
         )
         st.plotly_chart(fig_gauge, use_container_width=True)
 
+        _pass = _long_sc >= _pf_thr
         st.markdown(f"""
-<div style="background:{rec['bg_color']};border:2px solid {rec['color']};
-            border-radius:12px;padding:20px;text-align:center;">
-  <div style="font-size:36px">{rec['icon']}</div>
-  <div style="font-size:28px;font-weight:900;color:{rec['color']}">{rec['action']}</div>
-  <div style="font-size:13px;color:#aaa;margin-top:4px">{rec['action_en']}</div>
+<div style="background:{'#0a3d1c' if _pass else '#3d2a0a'};
+            border:2px solid {_long_act['color']};
+            border-radius:12px;padding:16px;text-align:center;">
+  <div style="font-size:30px">{_long_act['icon']}</div>
+  <div style="font-size:24px;font-weight:900;color:{_long_act['color']}">
+    {_long_act['action']}</div>
+  <div style="font-size:12px;color:#cfd8dc;margin-top:6px;">
+    {'✅ 已達實證門檻' if _pass else '⚠️ 未達實證門檻'} {_pf_thr:.0f} 分
+  </div>
+</div>""", unsafe_allow_html=True)
+        st.caption(
+            f"依 179 期回測，長線結構分 **≥{_pf_thr:.0f} 分**的區間 1個月超額報酬才轉正；"
+            "此分數的預測力（t=4.71）約為下方綜合評分（t=2.04）的兩倍。"
+        )
+
+        # 綜合評分退居輔助
+        st.markdown(f"""
+<div style="background:#1a2035;border:1px solid {rec['color']};border-radius:10px;
+            padding:10px 14px;text-align:center;margin-top:10px;">
+  <div style="font-size:11px;color:#90a4ae;">綜合評分（技術+基本面+消息+目標價）</div>
+  <div style="font-size:26px;font-weight:900;color:{rec['color']}">{rec['total_score']}</div>
+  <div style="font-size:13px;color:{rec['color']}">{rec['icon']} {rec['action']}</div>
 </div>""", unsafe_allow_html=True)
 
     with col_details:
@@ -1644,7 +1669,7 @@ def _forward_returns(df_full, as_of_last):
 
 
 def _analyze_one_stock(stock_id: str, period: str = None, limit_up_info=None,
-                       as_of_date=None):
+                       as_of_date=None, skip_news=False):
     """
     limit_up_info: dict from get_limit_up_stocks(), or None for regular pool stocks.
     as_of_date: when set, everything is computed as of that past date (backtest)
@@ -1664,7 +1689,7 @@ def _analyze_one_stock(stock_id: str, period: str = None, limit_up_info=None,
         company_name = resolve_company_name(stock_id, info, limit_up_info)
 
         a = compute_scores(df, info, financials, stock_id, company_name,
-                           as_of_date=as_of_date)
+                           as_of_date=as_of_date, skip_news=skip_news)
         tech_score = a["tech_score"]; fund_score = a["fund_score"]; news_score = a["news_score"]
         tp = a["tp"]; rec = a["rec"]; potential = a["potential"]
         margin_signal = a["margin_signal"]; risk_plan = a["risk_plan"]
@@ -1761,7 +1786,7 @@ def render_smart_screener_page():
     uc1, uc2 = st.columns([1.6, 2.4])
     with uc1:
         universe_label = st.radio(
-            "掃描範圍", ["🌏 全上市股票（完整）", "⭐ 熱門股池（快速）"],
+            "掃描範圍", ["🌏 全市場：上市+上櫃（完整）", "⭐ 熱門股池（快速）"],
             index=0, key="smart_universe", horizontal=False,
         )
     full_market = universe_label.startswith("🌏")
@@ -1775,8 +1800,10 @@ def render_smart_screener_page():
                 help="成交金額太低的股票買賣不易、滑價大。調低可掃更多冷門股（較慢），調高只看流動性好的。",
             )
             st.caption(
-                "🌏 全市場模式：**每一檔**都會實際計算技術面、量價、低基期位階、融資籌碼、"
-                "估值與風報比（非抽樣粗篩）。新聞與詳細財報無法批次取得，會在入圍後再補齊。"
+                "🌏 全市場模式：涵蓋**上市＋上櫃約 1,974 檔**，**每一檔**都會實際計算"
+                "技術面、量價、低基期位階、估值與風報比（非抽樣粗篩）。"
+                "新聞與詳細財報無法批次取得，會在入圍後再補齊。"
+                "（融資資料目前僅上市有，上櫃股不計融資扣分。）"
             )
         else:
             min_turnover_yi = 0.0
@@ -1875,6 +1902,14 @@ def render_smart_screener_page():
     else:
         st.caption(f"❔ 此策略尚未納入回測驗證（{ev_v['note']}）")
 
+    skip_news = st.checkbox(
+        "⚡ 略過新聞分析（掃描快 2–3 倍）", value=False, key="smart_skipnews",
+        help=("新聞抓取是掃描最慢的一環（每檔約 6 秒）。新聞面佔綜合評分 15%，"
+              "但因為沒有歷史新聞快照，它的貢獻**從未被回測驗證**。"
+              "略過後消息面以中性 50 計；長線結構分含 5% 新聞權重，"
+              "故會有 1 分內的微小差異（實測 82→81），不影響排序結論。"),
+    )
+
     # Each strategy carries its own quality bar, so the old "只顯示買進建議" checkbox
     # is redundant — it was just the 綜合強勢 bar expressed as a filter.
     bar_note = {
@@ -1946,7 +1981,7 @@ def render_smart_screener_page():
         for i, r in enumerate(shortlist):
             sid = r["stock_id"]
             status.markdown(f"🔬 深度分析 **{sid} {r['company_name']}** ({i+1}/{len(shortlist)})")
-            full = _analyze_one_stock(sid)
+            full = _analyze_one_stock(sid, skip_news=skip_news)
             enriched.append(full if full else r)
             seen.add(sid)
             prog.progress(0.45 + 0.55 * (i + 1) / len(shortlist))
@@ -2003,7 +2038,7 @@ def render_smart_screener_page():
             status.markdown(
                 f"⏳ 分析中 **{sid} {name}** {'🔥' if lu_info else ''} ({i+1}/{total})"
             )
-            r = _analyze_one_stock(sid, limit_up_info=lu_info)
+            r = _analyze_one_stock(sid, limit_up_info=lu_info, skip_news=skip_news)
             if r:
                 results.append(r)
             progress.progress((i + 1) / total, text=f"{sid} {name} 完成")
@@ -2717,6 +2752,29 @@ def render_portfolio_page():
                 st.success(f"已儲存 {sid} {display_name(sid)}：{in_shares:,.0f} 股 @ {in_cost:,.2f}")
                 st.rerun()
 
+    # ── 自選股整合：把「觀察中」和「持有中」放在同一頁 ────────────────────────
+    watch = [w for w in load_watchlist()
+             if w["stock_id"] not in {h["stock_id"] for h in holdings}]
+    if watch:
+        with st.expander(f"⭐ 觀察中的自選股（{len(watch)} 檔，尚未持有）", expanded=False):
+            st.caption("自選股只是追蹤清單；要納入損益與部位分析，請用下方「轉為持股」。")
+            for w in watch:
+                wc1, wc2, wc3 = st.columns([3, 1.2, 1])
+                with wc1:
+                    st.markdown(f"**{w['stock_id']} {w.get('name', '')}**")
+                with wc2:
+                    if st.button("📊 詳細分析", key=f"wl2_go_{w['stock_id']}"):
+                        st.session_state["stock_id"] = w["stock_id"]
+                        st.session_state["_nav_to"] = "📊 個股分析"
+                        st.rerun()
+                with wc3:
+                    if st.button("➕ 轉為持股", key=f"wl2_add_{w['stock_id']}"):
+                        st.session_state["pf_prefill"] = w["stock_id"]
+                        st.rerun()
+            pre = st.session_state.get("pf_prefill")
+            if pre:
+                st.info(f"請在上方「➕ 新增／修改持股」表單輸入 **{pre}** 的股數與成本價。")
+
     if not holdings:
         st.info("目前沒有持股紀錄。用上方表單新增第一筆吧！")
         return
@@ -2823,6 +2881,44 @@ def render_portfolio_page():
     回測顯示低於 {pf_thr:.0f} 分的區間，持有1個月的超額報酬全為負。
   </span>
 </div>""", unsafe_allow_html=True)
+
+        # ── 橋接：未達標的部位 → 目前選股頁有哪些達標標的可替換 ──────────────
+        if below:
+            cands = []
+            for k in list(st.session_state.keys()):
+                if k.startswith("smart_") and not k.endswith(("_scanned", "_time")) \
+                        and isinstance(st.session_state[k], list):
+                    cands = st.session_state[k]
+                    break
+            held = {x["h"]["stock_id"] for x in rows}
+            alts = [c for c in cands
+                    if c.get("stock_id") not in held
+                    and (c.get("horizon") or {}).get("long", {}).get("score", 0) >= pf_thr
+                    and (c.get("volume_adj", 0) or 0) >= 0]
+            alts.sort(key=lambda c: (c.get("horizon") or {}).get("long", {}).get("score", 0),
+                      reverse=True)
+            with st.expander(
+                    f"🔄 有 {len(below)} 檔未達標——看看選股頁目前有哪些達標標的？",
+                    expanded=False):
+                if alts:
+                    st.markdown(
+                        f"以下是**智能選股掃描結果中、你尚未持有、且長線分 ≥{pf_thr:.0f}** 的標的："
+                    )
+                    for c in alts[:8]:
+                        lg = (c.get("horizon") or {}).get("long", {}).get("score", 0)
+                        pe = c.get("pe_ratio")
+                        st.markdown(
+                            f"- **{c['stock_id']} {c['company_name']}**　長線分 **{lg}**"
+                            f"　綜合 {c.get('total_score', '—')}"
+                            + (f"　本益比 {pe:.1f}" if pe else "")
+                        )
+                    st.caption("⚠️ 這只是「分數比較」，不是換股建議。換股要考慮稅費、"
+                               "你的持有成本與稅務狀況，且回測顯示頻繁交易會侵蝕報酬。")
+                elif cands:
+                    st.info("目前掃描結果中沒有『你未持有且達標』的標的。")
+                else:
+                    st.info("尚未執行選股掃描。請先到「🎯 智能選股」頁按『重新掃描』，"
+                            "再回來這裡就會列出可比較的達標標的。")
 
     if weak:
         st.warning(

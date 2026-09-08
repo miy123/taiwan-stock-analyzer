@@ -30,6 +30,10 @@ import yfinance as yf
 
 _BWIBBU = "https://openapi.twse.com.tw/v1/exchangeReport/BWIBBU_ALL"
 _DAY_ALL = "https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL"
+# 櫃買中心（上櫃）——原本完全沒納入，導致「全市場」其實只有一半
+# （大立光、緯創、環球晶、緯穎等上櫃權值股都掃不到）
+_TPEX_DAY = "https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes"
+_TPEX_PER = "https://www.tpex.org.tw/openapi/v1/tpex_mainboard_peratio_analysis"
 _HEADERS = {"User-Agent": "Mozilla/5.0"}
 
 
@@ -77,19 +81,80 @@ def get_listed_snapshot() -> dict:
     except Exception:
         pass
 
+    for code in out:
+        out[code]["market"] = "TWSE"
     return out
 
 
-def download_history_bulk(codes, period="2y", chunk=120, progress_cb=None):
+@st.cache_data(ttl=10800, show_spinner=False)
+def get_otc_snapshot() -> dict:
+    """
+    上櫃普通股快照，欄位與 get_listed_snapshot 相同（多一個 market='TPEX'）。
+
+    注意：櫃買的日收盤 API 一次回傳多個日期（約 11000 筆 / 900 檔），
+    必須只取最新一天，否則同一檔會出現多筆而互相覆蓋成舊價。
+    """
+    out = {}
+    try:
+        rows = requests.get(_TPEX_DAY, timeout=40, headers=_HEADERS).json()
+    except Exception:
+        return {}
+    if not rows:
+        return {}
+
+    latest = max(str(r.get("Date", "")) for r in rows)
+    for d in rows:
+        if str(d.get("Date", "")) != latest:
+            continue
+        code = str(d.get("SecuritiesCompanyCode", "")).strip()
+        if len(code) != 4 or not code.isdigit() or code.startswith("0"):
+            continue
+        shares = _f(d.get("TradingShares")) or 0
+        out[code] = {
+            "name": str(d.get("CompanyName", "")).strip(),
+            "close": _f(d.get("Close")),
+            "volume": shares,
+            "turnover": _f(d.get("TransactionAmount")) or 0,
+            "pe": None, "pb": None, "dy": None, "market": "TPEX",
+        }
+
+    try:
+        for d in requests.get(_TPEX_PER, timeout=40, headers=_HEADERS).json():
+            code = str(d.get("SecuritiesCompanyCode", "")).strip()
+            if code in out:
+                out[code]["pe"] = _f(d.get("PriceEarningRatio"))
+                out[code]["pb"] = _f(d.get("PriceBookRatio"))
+                yr = _f(d.get("YieldRatio"))
+                out[code]["dy"] = yr / 100 if yr else None
+    except Exception:
+        pass
+
+    return out
+
+
+@st.cache_data(ttl=10800, show_spinner=False)
+def get_full_market_snapshot(include_otc: bool = True) -> dict:
+    """上市 + 上櫃合併快照。代碼不重疊，故可直接合併。"""
+    snap = dict(get_listed_snapshot())
+    if include_otc:
+        snap.update(get_otc_snapshot())
+    return snap
+
+
+def download_history_bulk(codes, period="2y", chunk=120, progress_cb=None,
+                          suffix_of=None):
     """
     Batch-download daily history for many codes. Returns {code: DataFrame}.
     yfinance batches each request, so this is ~100x faster than looping.
+
+    suffix_of: code → yfinance suffix. 上市為 '.TW'、上櫃為 '.TWO'；
+               沒給就一律當上市（維持舊行為）。
     """
     frames = {}
     total = len(codes)
     for i in range(0, total, chunk):
         part = codes[i:i + chunk]
-        tickers = [c + ".TW" for c in part]
+        tickers = [c + (suffix_of(c) if suffix_of else ".TW") for c in part]
         try:
             data = yf.download(
                 tickers, period=period, auto_adjust=True, progress=False,
@@ -112,7 +177,7 @@ def download_history_bulk(codes, period="2y", chunk=120, progress_cb=None):
     return frames
 
 
-def scan_universe(min_turnover=1e7, period="2y", progress_cb=None):
+def scan_universe(min_turnover=1e7, period="2y", progress_cb=None, include_otc=True):
     """
     Score EVERY liquid listed stock on the bulk-available dimensions.
 
@@ -135,9 +200,12 @@ def scan_universe(min_turnover=1e7, period="2y", progress_cb=None):
     from services.margin import get_latest_margin_table, calculate_margin_signal
     from services.market import get_market_regime
 
-    snap = get_listed_snapshot()
+    snap = get_full_market_snapshot(include_otc=include_otc)
     codes = sorted(c for c, v in snap.items() if (v.get("turnover") or 0) >= min_turnover)
-    frames = download_history_bulk(codes, period=period, progress_cb=progress_cb)
+    frames = download_history_bulk(
+        codes, period=period, progress_cb=progress_cb,
+        suffix_of=lambda c: ".TWO" if snap.get(c, {}).get("market") == "TPEX" else ".TW",
+    )
 
     _, margin_table = get_latest_margin_table()
     regime = get_market_regime()
@@ -229,7 +297,7 @@ def scan_universe(min_turnover=1e7, period="2y", progress_cb=None):
                             for h in tfr},
                 "turnover": meta.get("turnover"),
                 "is_limit_up": False, "max_streak": 0, "last_days_ago": 0,
-                "exchange": "TWSE", "limit_up_pct": None,
+                "exchange": meta.get("market", "TWSE"), "limit_up_pct": None,
                 "preliminary": True,   # news / target price not yet fetched
             })
         except Exception:

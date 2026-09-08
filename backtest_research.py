@@ -175,6 +175,18 @@ MODELS = [
     _m("長線+中線平均", lambda s: 0.5 * s["h_long"] + 0.5 * s["h_medium"], None,
        "長線與中線各半加權"),
 
+    # ── 多重確認：疊加過濾條件會不會因候選太少而反效果？──────────────────
+    _m("長線+量能+融資", lambda s: s["h_long"],
+       lambda s: s["vol_adj"] >= 0 and ((s["mgn_chg"] is None) or s["mgn_chg"] <= 0),
+       "長線分 + 量價未轉弱 + 融資未增"),
+    _m("長線+量能+中線", lambda s: s["h_long"],
+       lambda s: s["vol_adj"] >= 0 and s["h_medium"] >= 60,
+       "長線分 + 量價未轉弱 + 中線≥60"),
+    _m("長線+四重確認", lambda s: s["h_long"],
+       lambda s: (s["vol_adj"] >= 0 and s["h_medium"] >= 60
+                  and ((s["mgn_chg"] is None) or s["mgn_chg"] <= 0)),
+       "長線分 + 量價 + 中線 + 融資 全部要過"),
+
     # ── 估值面（歷史可還原：證交所 BWIBBU_d）──────────────────────────────
     _m("低本益比(價值)", lambda s: -(s["pe"] or 9999),
        lambda s: s["pe"] is not None and 0 < s["pe"] < 100, "純價值：本益比越低越前面"),

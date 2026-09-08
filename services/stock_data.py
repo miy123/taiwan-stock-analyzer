@@ -36,18 +36,32 @@ POPULAR_STOCKS = {
     "8039": "台虹",
 }
 
+# 手動維護的上櫃清單，僅作為離線 fallback。
+# ⚠️ 舊版這裡把大立光(3008)、緯穎(6669)、緯創(3231) 誤列為上櫃——它們其實都是
+# **上市**，導致程式去要 .TWO 代號而拿不到（或拿到錯的）資料。現已改為以櫃買中心
+# 官方清單為準（見 _is_otc），此表只在 API 不可用時墊底。
 OTC_STOCKS = {
     "6488": "環球晶",
-    "3008": "大立光",
-    "6669": "緯穎",
-    "3231": "緯創",
+    "5347": "世界",
+    "8069": "元太",
+    "6510": "精測",
 }
 
 
+def _is_otc(stock_id: str) -> bool:
+    """以櫃買中心官方清單判斷是否為上櫃；取不到時退回內建表。"""
+    try:
+        from services.universe import get_otc_snapshot
+        otc = get_otc_snapshot()
+        if otc:
+            return stock_id in otc
+    except Exception:
+        pass
+    return stock_id in OTC_STOCKS
+
+
 def _get_ticker_symbol(stock_id: str) -> str:
-    if stock_id in OTC_STOCKS:
-        return f"{stock_id}.TWO"
-    return f"{stock_id}.TW"
+    return f"{stock_id}.TWO" if _is_otc(stock_id) else f"{stock_id}.TW"
 
 
 @st.cache_data(ttl=1800, show_spinner=False)

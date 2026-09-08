@@ -78,10 +78,15 @@ def prepare_frame(stock_id: str, as_of_date=None, use_intraday: bool = True):
     return df, df_full, intraday, has_intraday
 
 
-def compute_scores(df, info, financials, stock_id, company_name, as_of_date=None):
+def compute_scores(df, info, financials, stock_id, company_name, as_of_date=None,
+                   skip_news=False):
     """
     The single source of truth for every score both pages display.
     `df` must already be indicator-enriched (see prepare_frame).
+
+    skip_news: 跳過新聞抓取（每檔約 6 秒，是掃描最慢的一環）。新聞面佔綜合評分 15%，
+               但因為沒有歷史新聞快照，它的貢獻**從未被回測驗證**——既不能說有效，
+               也不能說無效。關掉可讓掃描快 2–3 倍，代價是消息面以中性 50 計。
     """
     as_of_str = as_of_date.strftime("%Y%m%d") if as_of_date else ""
 
@@ -89,9 +94,13 @@ def compute_scores(df, info, financials, stock_id, company_name, as_of_date=None
     fundamentals = analyze_fundamentals(info, financials)
     fund_score, fund_reasons = calculate_fundamental_score(info, fundamentals)
 
-    all_news = get_all_news(stock_id, company_name, get_news(stock_id))
-    news_score, news_reasons = calculate_news_sentiment_score(all_news)
-    catalysts = get_catalysts(all_news)
+    if skip_news:
+        all_news, catalysts = [], {"positive": [], "negative": []}
+        news_score, news_reasons = 50, ["（已略過新聞分析以加速掃描，消息面以中性 50 計）"]
+    else:
+        all_news = get_all_news(stock_id, company_name, get_news(stock_id))
+        news_score, news_reasons = calculate_news_sentiment_score(all_news)
+        catalysts = get_catalysts(all_news)
 
     tp = calculate_target_price(df, info, fundamentals)
     target_upside = tp.get("upside_pct")
