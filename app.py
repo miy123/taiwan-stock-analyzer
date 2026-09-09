@@ -40,7 +40,7 @@ from services.strategies import STRATEGIES, LABELS as STRAT_LABELS, \
     CAPTIONS as STRAT_CAPTIONS, get as get_strategy, \
     select as strat_select, explain as strat_explain
 from services.ui import (
-    overheat_badge,
+    overheat_badge, trend_cell, score_legend,
     pe_badge, pe_inline, horizon_cells, evidence_badge, rr_cell,
     threshold_note, long_threshold,
 )
@@ -52,9 +52,12 @@ from services.market import get_market_regime, get_index_forward_return
 from services.technical import calculate_risk_plan
 from services.analysis import prepare_frame, compute_scores, PERIOD_ROWS
 
-# 趨勢結構分是「橫斷面百分位」，所以買進線可以直接用百分位解讀：
-# 70 = 只看贏過全市場七成的股票。回測分桶顯示 70 以下的區間超額報酬為負。
-TREND_BUY_BAR = 70.0
+# 趨勢結構分是「橫斷面百分位」，所以門檻可以直接用百分位解讀。
+# 實測分桶（trend_score_buckets.py，139期）：40分以下超額穩定為負
+# （−2% ~ −4%），40–50 約為 0，50 分以上才轉正。所以買進線 = 50。
+# ⚠️ 別把舊離散長線分的「70 分門檻」搬過來——那是完全不同的量表，
+#    只是數字長得像。真正的優勢集中在 90 分以上（3個月超額 +5.25%, t=5.49）。
+TREND_BUY_BAR = 50.0
 from services.target_price import calculate_target_price
 from services.analyst_targets import get_analyst_targets
 from services.catalyst_impact import get_catalyst_impact
@@ -2229,6 +2232,9 @@ def render_smart_screener_page():
     else:
         st.caption("⚠️ 評分模型為量化指標的加權組合，不代表投資建議。請結合個人判斷與風險承受能力做決策。")
 
+    with st.expander("📖 卡片上這些分數各自代表什麼？哪個能當選股指標？", expanded=False):
+        st.markdown(score_legend())
+
     # ── 題材/族群輪動 ─────────────────────────────────────────────────────────
     render_sector_view(results)
 
@@ -2630,10 +2636,8 @@ def _render_smart_card(rank, r, strategy, horizon_key=None):
                      "padding:1px 6px;margin-left:6px;white-space:nowrap;'>🌱 潛伏</span>") if qualifies else ""
 
     # Three always-visible scores; primary highlighted per strategy
-    _ts = r.get("trend_score")
-    cell_momentum = _score_cell("趨勢分" if _ts is not None else "綜合",
-                                f"{_ts:.0f}" if _ts is not None else r["total_score"],
-                                color, strategy in ("trend", "sectorhot", "limitup"))
+    cell_momentum = trend_cell(r.get("trend_score"),
+                               primary=strategy in ("trend", "sectorhot", "limitup"))
     cell_sleeper  = _score_cell("潛力", pot_total, "#7986cb", strategy == "contrarian")
     cell_balanced = _score_cell("綜合", r["total_score"], "#4dd0e1", False)
 
@@ -2745,54 +2749,64 @@ def render_portfolio_page():
 
     # 依回測結論排序：長線分是唯一穩健有效的訊號（超額+3.10%, t=4.75），
     # 綜合評分只是弱有效（+0.81%, t=2.04），故預設用長線分排名。
-    ev_long = ev_stats("momentum", "long", 20)
-    ev_total = ev_stats("momentum", None, 20)
+    # 實證數字一律從新的因子回測取，別再指向已移除的舊策略鍵
+    ev_trend = ev_stats_model("T1 趨勢(連續)", hold_days=20, run="factor_3y")
+    ev_total = ev_stats_model("綜合強勢(技術)", hold_days=20, run="main_3y")
     rank_label = st.radio(
         "排名依據",
         ["🏆 趨勢結構分（回測最強）", "綜合評分"],
         horizontal=True, key="pf_rank_by",
         captions=[
-            (f"回測超額 {ev_long['excess_return']:+.2f}%、t={ev_long['t_stat']:+.2f}、"
-             f"贏大盤率 {ev_long['beat_benchmark_rate']:.0f}%" if ev_long else "回測最強訊號"),
-            (f"回測超額 {ev_total['excess_return']:+.2f}%、t={ev_total['t_stat']:+.2f}"
-             if ev_total else "四面向加權"),
+            (f"139期回測・持有1個月超額 {ev_trend['excess_return']:+.2f}%、"
+             f"t={ev_trend['t_stat']:+.2f}；持有3個月 +7.18%、t=5.52"
+             if ev_trend else "回測最強訊號"),
+            (f"179期回測・超額 {ev_total['excess_return']:+.2f}%、"
+             f"t={ev_total['t_stat']:+.2f}（不顯著）"
+             if ev_total else "四面向加權，預測力弱"),
         ],
     )
     rank_by_long = rank_label.startswith("🏆")
     with st.expander("📖 這些分數與門檻是什麼意思？（實證說明）", expanded=False):
+        st.markdown(score_legend())
         st.markdown("""
-**為什麼預設用「長線結構分」而非「綜合評分」？**
-179 期滾動回測顯示，長線結構分的選股能力遠強於綜合評分
-（超額報酬 **+3.10% vs +0.81%**），且在多頭／震盪／空頭三種環境都是正的。
+---
+**「趨勢結構分」怎麼算的？**
+距季線幅度、MA60vsMA120、季線斜率三項，各自換算成**當日全市場的百分位**再平均。
+所以分數本身就是「贏過幾 % 的股票」，80 分＝趨勢強度排在全市場前 20%。
+
+**分數越高真的越好嗎？——這次是真的（139期實測）**
+
+| 分數區間 | 持有1個月超額 | 持有3個月超額 | t值(3個月) |
+|---|---|---|---|
+| 0–20 | −1.20% ~ −1.60% | −3.32% ~ −4.22% | −4.3 / −8.0 |
+| 20–40 | −0.88% ~ −0.77% | −2.37% ~ −1.97% | −4.7 / −4.0 |
+| 40–50 | −0.00% | +0.40% | 1.27 |
+| **50–70** | +0.41% ~ +0.76% | +1.77% ~ +1.56% | 3.7 / 3.2 |
+| **70–90** | +1.09% ~ +0.63% | +1.63% ~ +2.16% | 3.2 / 3.1 |
+| **90–100** | **+1.78%** | **+5.25%** | **5.49** |
+
+**單調性 Spearman ρ = +0.95** —— 分數與後續超額報酬幾乎完全同向。
+（舊的離散長線分只有 ρ=0.69，而且 49% 的股票並列滿分。）
+
+**買進線為什麼是 50？**
+40 分以下超額報酬穩定為負，50 分以上才轉正。
+但**真正的優勢集中在 90 分以上**——這也是為什麼選股頁只取前 10 名，
+而不是把所有 50 分以上的都列出來。
 
 **「超額報酬」是什麼？為什麼看它而不是報酬率？**
 超額報酬 =（這批股票的報酬）−（當天全市場等權平均報酬）。
 多頭時什麼都在漲，看絕對報酬會誤以為模型很神；**只有贏過「隨便買」才證明選股有價值**。
-
-**70 分門檻怎麼來的？**
-把所有個股**依分數分桶**（不是排名），統計每個區間後續的實際表現：
-
-| 長線分區間 | 1個月超額報酬 |
-|---|---|
-| 低於 70 分 | **全部為負**（−0.06% ~ −0.95%）|
-| 70–75 分 | **+1.30%** ✅ |
-| 80 分以上 | **+0.92%** ✅ |
-
-所以 70 分是分水嶺——**低於 70 分的股票，歷史上買了平均跑輸大盤**。
+上表 90–100 區間持有3個月的絕對報酬是 +14.24%，但同期間「隨便買」也有 +8.99%，
+真正靠選股賺到的是那 +5.25%。
 
 **為什麼建議抱 3 個月？**
-同樣一批 70 分以上的股票，持有越久表現越好：
+同一批高分股，持有越久超額越大（+1.78% → +3.29% → +5.25%），
+而且每次換股都要付 0.585% 的手續費與證交稅，短進短出會被成本吃掉。
 
-| 持有 | 勝率 | 扣成本後報酬 | 超額報酬 |
-|---|---|---|---|
-| 1 週 | 50.2% | +0.38% | +0.30% |
-| 1 個月 | 53.6% | +3.23% | +0.94% |
-| **3 個月** | **58.7%** | **+10.79%** | **+2.61%** |
-
-1 週幾乎等於丟銅板（50.2%），而且頻繁進出還要一直付 0.585% 的手續費與證交稅。
-
-⚠️ **限制**：測試期含多頭124/震盪28/空頭27期，空頭樣本較少；且有存活者偏誤
-（已下市公司不在樣本內）。詳見 `BACKTEST_FINDINGS.md`。
+⚠️ **限制**：139 期、近 3 年，期間以多頭為主；且有存活者偏誤
+（已下市公司不在樣本內）。這是**一籃子 10 檔重複 139 次**的統計優勢，
+不是對單一檔股票的預測——贏大盤的期數比率 66%，代表每 3 次仍有 1 次落後。
+詳見 `BACKTEST_FINDINGS.md`。
 """)
 
     holdings = load_holdings()
@@ -3026,8 +3040,8 @@ def render_portfolio_page():
             t_w, f_w, n_w = r["tech_score"], r["fund_score"], r["news_score"]
             hz = r.get("horizon") or {}
             # 共用元件（與選股頁同一份實作）：長線格在依長線分排名時加框
-            hz_html = horizon_cells(hz, selected_key="long" if rank_by_long else None,
-                                    show_legend=False, min_width=118)
+            hz_html = horizon_cells(hz, show_legend=False, min_width=96)
+            trend_html = trend_cell(r.get("trend_score"), primary=rank_by_long)
             rr_txt = (f"風報比 <b style='color:#fafafa;'>{rr:.2f}</b>　停損 {abs(stop_pct):.1f}%"
                       if rr is not None and stop_pct is not None else "")
             pe_txt = pe_inline(r.get("pe_ratio"), r.get("dividend_yield"))
@@ -3038,7 +3052,7 @@ def render_portfolio_page():
         else:
             color, icon, action, total, pot = "#78909c", "❔", "無資料", 0, 0
             price, t_w, f_w, n_w = 0, 0, 0, 0
-            hz_html, rr_txt, evid_html, pe_txt, oh_html = "", "", "", "", ""
+            hz_html, rr_txt, evid_html, pe_txt, oh_html, trend_html = "", "", "", "", "", ""
 
         pl_color = "#f03e3e" if pos["pnl"] >= 0 else "#2f9e44"
         pnl_pct_txt = f"{pos['pnl_pct']:+.2f}%" if pos["pnl_pct"] is not None else "N/A"
@@ -3064,19 +3078,20 @@ def render_portfolio_page():
       <div style="font-size:16px;font-weight:800;color:{pl_color};">{pos['pnl']:+,.0f}</div>
       <div style="font-size:12px;color:{pl_color};">{pnl_pct_txt}</div>
     </div>
-    <div style="min-width:92px;text-align:center;padding:4px 8px;
-                box-shadow:0 0 0 2px {color};border-radius:10px;
-                background:rgba(255,255,255,0.03);">
-      <div style="font-size:26px;font-weight:900;color:{color};line-height:1;">{total}</div>
+    {trend_html}
+    <div style="min-width:88px;text-align:center;padding:4px 8px;">
+      <div style="font-size:22px;font-weight:800;color:{color};line-height:1;">{total}</div>
       <div style="font-size:10px;color:#aaa;margin-top:2px;">綜合評分</div>
+      <div style="font-size:9px;color:#78909c;">體質總覽・非選股用</div>
     </div>
     <div style="min-width:74px;text-align:center;">
       <div style="font-size:14px;color:{color};font-weight:700;">{icon}</div>
       <div style="font-size:12px;color:{color};">{action}</div>
     </div>
     <div style="min-width:64px;text-align:center;">
-      <div style="font-size:20px;font-weight:900;color:#7986cb;">{pot}</div>
+      <div style="font-size:18px;font-weight:800;color:#7986cb;">{pot}</div>
       <div style="font-size:10px;color:#aaa;">潛力</div>
+      <div style="font-size:9px;color:#78909c;">多頭失效</div>
     </div>
     {hz_html}
     <div style="min-width:120px;font-size:11px;color:#aaa;">

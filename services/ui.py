@@ -17,8 +17,10 @@ from services.evidence import (
     horizon_efficacy, score_bucket_stats, buy_threshold,
 )
 
-HORIZON_ORDER = [("ultra_short", "極短"), ("short", "短"),
-                 ("medium", "中"), ("long", "長")]
+# 「長」已從這裡移除：它就是**連續趨勢結構分**要回答的問題，而且舊的離散長線分
+# 有 49% 的股票並列 94 分、鑑別力極差。同一張卡片放兩個都在講「長期」的數字
+# （趨勢分 98 vs 長線分 94）只會讓人不知道該信哪個——這個坑本專案踩過兩次。
+HORIZON_ORDER = [("ultra_short", "極短"), ("short", "短"), ("medium", "中")]
 
 
 def pe_badge(pe, dividend_yield=None, highlight=False, min_width=88) -> str:
@@ -159,3 +161,50 @@ def overheat_badge(overheat: dict, compact: bool = True) -> str:
                 f"{icon}{txt}</span>")
     return (f"<div style='font-size:11px;color:{color};'>{icon} <b>{txt}</b>　"
             f"{'　'.join(overheat.get('bits', []))}</div>")
+
+
+def trend_cell(trend_score, min_width=104, primary=True) -> str:
+    """
+    趨勢結構分 —— **全站的選股訊號**，卡片上要最顯眼。
+
+    分數本身就是百分位，所以副標直接寫「贏過全市場 X%」，
+    使用者不必去記「幾分算高」。
+    """
+    if trend_score is None:
+        return (f"<div style='min-width:{min_width}px;text-align:center;"
+                f"font-size:11px;color:#666;'>趨勢分 —<div>（尚未全市場掃描）</div></div>")
+    color = ("#4caf50" if trend_score >= 80 else "#a9e34b" if trend_score >= 70
+             else "#ff9800" if trend_score >= 50 else "#f44336")
+    ring = (f"box-shadow:0 0 0 2px {color};border-radius:10px;"
+            f"background:rgba(255,255,255,0.03);" if primary else "")
+    return (
+        f"<div style='min-width:{min_width}px;text-align:center;padding:5px 8px;{ring}'>"
+        f"<div style='font-size:26px;font-weight:900;color:{color};line-height:1;'>"
+        f"{trend_score:.0f}</div>"
+        f"<div style='font-size:10px;color:#aaa;margin-top:2px;'>趨勢結構分 ★</div>"
+        f"<div style='font-size:9px;color:#78909c;'>贏過全市場 {trend_score:.0f}%</div>"
+        f"</div>"
+    )
+
+
+def score_legend() -> str:
+    """
+    卡片上每個數字是什麼、哪個能拿來選股 —— 三頁共用同一份說明。
+
+    使用者實際問過「這些分數各自代表啥、哪個比較能當選股指標」，
+    表示光靠標籤不夠。這裡直接把答案寫在頁面上。
+    """
+    return """
+| 卡片上的數字 | 代表什麼 | 能當選股指標嗎 |
+|---|---|---|
+| **趨勢結構分** ★ | 距季線／均線排列／季線斜率在**當日全市場的百分位**。80 分＝趨勢強度贏過八成股票 | ✅ **就是用它**。139期回測持有3個月超額 **+7.18%**、t=5.52、贏大盤 66% |
+| 綜合評分 | 技術40%＋基本面30%＋消息15%＋目標價15% 的體質總覽 | 🟡 弱。超額僅 +0.40%、t=1.06（**不顯著**）。當健檢用，不要拿來排序 |
+| 潛力分 | 低基期×題材，找「還沒漲的」 | ⛔ 多頭失效（−0.98%），只有空頭轉正（+2.23%） |
+| 極短／短／中 週期評分 | 各持有期的技術強弱（1–3天／1週／1個月） | 🟡 越短越弱：中線 +1.90%、短線 +1.29%、極短 +0.23%（不顯著） |
+| 本益比 | 估值 | ⛔ **單獨用會虧錢**：買最低本益比持有3個月超額 −4.48%、t=−3.82 |
+| 融資使用率 | 籌碼風險 | ⛔ 無選股訊號（t=−0.14），只當**風險警示**用 |
+
+**結論：選股看「趨勢結構分」，其他都是背景資訊。**
+但它是純技術的**相對排名**，不看貴不貴——高分常常正是因為已經漲很多，
+請搭配 🔥 過熱警示與本益比一起看。
+"""
