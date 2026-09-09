@@ -36,6 +36,7 @@ from services.scoring import raw_factors, pct_rank_column, FACTOR_WEIGHTS, BUY_B
 from services.potential import calculate_potential_score
 from services.histdata import build_eps_timeline, pe_from_timeline, CACHE_DIR
 from services.strategies import STRATEGIES, select
+from itertools import combinations
 
 MIN_HISTORY = 260
 FWD = [20, 40, 60]
@@ -120,7 +121,14 @@ def main():
     print(f"換股日 {len(rebal)} 個（{common[start_i].date()} ~ {common[end_i].date()}）\n")
 
     keys = [s["key"] for s in STRATEGIES]
+    # 交叉篩選：同時擠進兩個策略前 N 名的股票。使用者會用這個選股，
+    # 那就必須知道它到底有沒有比單一策略好——本專案已三次驗證「多加一層過濾更差」，
+    # 交集本質上就是再加一層過濾，不能只憑「兩個都選中應該更可靠」的直覺。
+    CROSS_N = 20
+    pairs = list(combinations(keys, 2))
     res = {k: {h: [] for h in FWD} for k in keys}
+    cross = {f"{a}+{b}": {h: [] for h in FWD} for a, b in pairs}
+    cross_n = defaultdict(list)
     picked_n = defaultdict(list)
     dates_used = []
 
@@ -182,17 +190,30 @@ def main():
         bench = {h: float(np.mean([r["_fwd"][h] for r in rows])) for h in FWD}
         ctx = {"buy_bar": 58, "horizon_key": None, "trend_bar": BUY_BAR}
 
+        topsets = {}
         for sdef in STRATEGIES:
             try:
-                sel = select(sdef, rows, ctx)[:args.topn]
+                sel = select(sdef, rows, ctx)
             except Exception:
                 sel = []
+            topsets[sdef["key"]] = sel[:CROSS_N]
+            sel = sel[:args.topn]
             picked_n[sdef["key"]].append(len(sel))
             if not sel:
                 continue
             for h in FWD:
                 r = float(np.mean([x["_fwd"][h] for x in sel]))
                 res[sdef["key"]][h].append(r - bench[h])
+
+        for a, b in pairs:
+            ida = {x["stock_id"] for x in topsets.get(a, [])}
+            both = [x for x in topsets.get(b, []) if x["stock_id"] in ida]
+            cross_n[f"{a}+{b}"].append(len(both))
+            if len(both) < 2:       # 只有 1 檔的組合是雜訊，不計入
+                continue
+            for h in FWD:
+                r = float(np.mean([x["_fwd"][h] for x in both]))
+                cross[f"{a}+{b}"][h].append(r - bench[h])
 
     print(f"\n有效換股日 {len(dates_used)} 個\n")
     print("=" * 100)
@@ -222,6 +243,37 @@ def main():
         print(line)
         out[kk] = rec
 
+    # ── 交叉篩選：同時進兩個策略前 N 名 ──────────────────────────────────
+    print("\n" + "=" * 100)
+    print(f"交叉篩選：同時擠進兩個策略前 {CROSS_N} 名的股票（≥2檔才計入）")
+    print("=" * 100)
+    print(f"{'組合':<30}{'有交集期數':>10}{'平均檔數':>8}"
+          + "".join(f"{'+' + str(h) + '日':>10}{'t':>7}" for h in FWD))
+    cross_out = {}
+    for a, b in pairs:
+        kk = f"{a}+{b}"
+        xs20 = cross[kk][20]
+        if len(xs20) < 20:
+            print(f"{kk:<30}{len(xs20):>10}{np.mean(cross_n[kk]):>8.1f}"
+                  f"   期數不足，不下結論")
+            continue
+        line = f"{kk:<30}{len(xs20):>10}{np.mean(cross_n[kk]):>8.1f}"
+        rec = {"periods": len(xs20), "avg_picks": round(float(np.mean(cross_n[kk])), 1)}
+        for h in FWD:
+            xs = cross[kk][h]
+            line += f"{np.mean(xs):>+9.2f}%{_t(xs):>7.2f}"
+            rec[f"h{h}"] = {"excess": round(float(np.mean(xs)), 2), "t": round(_t(xs), 2),
+                            "periods": len(xs)}
+        print(line)
+        cross_out[kk] = rec
+        # 與「單獨用較強的那一個」比
+        for h in (60,):
+            solo = max(float(np.mean(res[a][h])), float(np.mean(res[b][h])))
+            d = float(np.mean(cross[kk][h])) - solo
+            print(f"{'':<30}  → +{h}日 比單獨用較強的那個 {d:+.2f}%"
+                  f"（{'交集較優' if d > 0 else '交集較差'}）")
+            cross_out[kk]["vs_best_solo_h60"] = round(d, 2)
+
     # 走查：前後半段各自獨立，看名次穩不穩
     print("\n" + "=" * 100)
     print("走查：前半段 vs 後半段（名次會不會翻盤）")
@@ -250,6 +302,7 @@ def main():
         "method": ("同一次回測、同一批換股日、同一個當日等權基準；"
                    "直接呼叫 services/strategies.select()，測的就是 App 實跑的定義"),
         "strategies": out,
+        "cross_screen": {"top_n_per_strategy": CROSS_N, "pairs": cross_out},
     }
     with open("strategy_comparison.json", "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, indent=2)

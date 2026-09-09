@@ -344,3 +344,21 @@ def strategy_ranking(hold_days: int = 60) -> list:
             if v.get(f"h{hold_days}")]
     rows.sort(key=lambda kv: -kv[1]["excess"])
     return rows
+
+
+def cross_stats(key_a: str, key_b: str, hold_days: int = 60) -> dict:
+    """兩個策略「交集」的實證表現（strategy_comparison.py 的 cross_screen 段）。"""
+    cs = load_strategy_comparison().get("cross_screen", {}).get("pairs", {})
+    for kk in (f"{key_a}+{key_b}", f"{key_b}+{key_a}"):
+        if kk in cs:
+            d = cs[kk]
+            out = dict(d.get(f"h{hold_days}") or {})
+            out["avg_picks"] = d.get("avg_picks")
+            out["vs_best_solo_h60"] = d.get("vs_best_solo_h60")
+            return out
+    return {}
+
+
+def cross_top_n() -> int:
+    return load_strategy_comparison().get("cross_screen", {}).get(
+        "top_n_per_strategy", 20)

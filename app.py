@@ -41,7 +41,7 @@ from services.strategies import STRATEGIES, LABELS as STRAT_LABELS, \
     select as strat_select, explain as strat_explain
 from services.ui import (
     overheat_badge, trend_cell, score_legend, bucket_table,
-    strategy_caption, strategy_table,
+    strategy_caption, strategy_table, cross_evidence,
     pe_badge, pe_inline, horizon_cells, evidence_badge, rr_cell,
     threshold_note, long_threshold,
 )
@@ -96,7 +96,7 @@ def render_sidebar():
 
         page = st.radio(
             "功能選單",
-            ["📊 個股分析", "🎯 智能選股", "💼 我的持股"],
+            ["📊 個股分析", "🎯 智能選股", "🔎 交叉篩選", "💼 我的持股"],
             key="main_page",
             horizontal=False,
         )
@@ -2771,6 +2771,132 @@ def _render_smart_card(rank, r, strategy, horizon_key=None):
             st.rerun()
 
 
+# ─── Cross-screen (交叉篩選) ─────────────────────────────────────────────────
+
+def render_cross_screen_page():
+    """
+    多選策略 → 找出**同時**擠進每個策略前 N 名的股票。
+
+    刻意共用智能選股的掃描快取（`smart_*`），所以不會重抓資料；
+    沒掃過就請使用者先去掃一次，而不是在這裡再跑一輪全市場。
+    """
+    st.title("🔎 交叉篩選")
+    st.markdown(
+        "選好幾個策略，找出**每一個都排進前 N 名**的股票。"
+        "同時被不同邏輯選中的股票，通常是訊號比較一致的。"
+    )
+
+    results = None
+    for tag in ("full", "poplu", "pop"):
+        cached = st.session_state.get(f"smart_{tag}")
+        if cached:
+            results, uni_tag = cached, tag
+            break
+    if not results:
+        st.info("👈 請先到 **🎯 智能選股** 掃描一次（本頁直接沿用那份結果，不會重抓資料）。")
+        if st.button("前往智能選股"):
+            st.session_state["_nav_to"] = "🎯 智能選股"
+            st.rerun()
+        return
+
+    st.caption(f"沿用智能選股的掃描結果：**{len(results)} 檔**"
+               f"（{'全市場' if uni_tag == 'full' else '熱門股池'}）。"
+               "要更新資料請回智能選股重新掃描。")
+
+    c1, c2 = st.columns([3, 1])
+    with c1:
+        picked = st.multiselect(
+            "選擇策略（2 個以上才有交叉的意義）",
+            options=[s["key"] for s in STRATEGIES],
+            format_func=lambda k: next(s["label"] for s in STRATEGIES if s["key"] == k),
+            default=["trend", "limitup"],
+            key="cross_strats",
+        )
+    with c2:
+        top_n = st.number_input("每個策略取前 N 名", min_value=5, max_value=100,
+                                value=30, step=5, key="cross_topn",
+                                help="回測用的是前 20 名；N 調越大交集越多但訊號越稀。")
+
+    if len(picked) < 2:
+        st.warning("請至少選 2 個策略。")
+        return
+
+    with st.expander("⚠️ 先看這個：交集實測比單押更差", expanded=True):
+        _ce = cross_evidence(picked, 60)
+        if _ce:
+            st.markdown(_ce)
+        else:
+            st.markdown("（這些組合尚未納入交集回測）")
+
+    buy_bar = 58 + (get_market_regime().get("threshold_adj", 0) or 0)
+    ctx = {"buy_bar": buy_bar, "horizon_key": "long", "trend_bar": TREND_BUY_BAR}
+
+    picks, ranks = {}, {}
+    for k in picked:
+        sdef = get_strategy(k)
+        try:
+            sel = strat_select(sdef, results, ctx)[:int(top_n)]
+        except Exception:
+            sel = []
+        picks[k] = [r["stock_id"] for r in sel]
+        for i, r in enumerate(sel, 1):
+            ranks.setdefault(r["stock_id"], {})[k] = i
+
+    label_of = {s["key"]: s["label"] for s in STRATEGIES}
+    cols = st.columns(len(picked))
+    for col, k in zip(cols, picked):
+        with col:
+            st.metric(label_of[k], f"{len(picks[k])} 檔", f"取前 {top_n}")
+
+    by_id = {r["stock_id"]: r for r in results}
+    hit_counts = {sid: len(d) for sid, d in ranks.items()}
+    full_hits = [sid for sid, c in hit_counts.items() if c == len(picked)]
+
+    st.markdown("---")
+    if full_hits:
+        st.success(f"✅ **{len(full_hits)} 檔同時進入全部 {len(picked)} 個策略的前 {top_n} 名**")
+    else:
+        st.warning(
+            f"沒有股票同時進入全部 {len(picked)} 個策略的前 {top_n} 名。"
+            "可以調高 N，或看下方「部分命中」——策略彼此重疊度低本來就是常態"
+            "（實測趨勢分與族群策略的前 20 名只重疊 8%）。"
+        )
+
+    # 依「命中幾個策略」→「趨勢分」排序；部分命中也列出來，不要只給空白
+    rows_sorted = sorted(
+        ranks.items(),
+        key=lambda kv: (-len(kv[1]),
+                        -(by_id.get(kv[0], {}).get("trend_score") or 0)),
+    )
+    shown = [(sid, d) for sid, d in rows_sorted if len(d) >= 2] or rows_sorted[:20]
+
+    st.markdown(f"#### 命中結果（{len(shown)} 檔）")
+    head = ["股票", "命中", "趨勢分"] + [label_of[k] for k in picked] + ["本益比", "警示"]
+    lines = ["| " + " | ".join(head) + " |",
+             "|" + "|".join(["---"] * len(head)) + "|"]
+    for sid, d in shown[:60]:
+        r = by_id.get(sid, {})
+        ts = r.get("trend_score")
+        cells = [f"**{sid}** {r.get('company_name', '')}",
+                 f"{len(d)}/{len(picked)}",
+                 f"{ts:.0f}" if ts is not None else "—"]
+        for k in picked:
+            cells.append(f"第 {d[k]} 名" if k in d else "—")
+        pe = r.get("pe_ratio")
+        cells.append(f"{pe:.1f}" if pe else "—")
+        oh = r.get("overheat") or {}
+        cells.append(("🔥 " + oh.get("short", "")) if oh else "")
+        lines.append("| " + " | ".join(cells) + " |")
+    st.markdown("\n".join(lines))
+
+    if len(shown) > 60:
+        st.caption(f"（只顯示前 60 筆，共 {len(shown)} 筆）")
+
+    st.markdown("---")
+    st.markdown("#### 各策略單獨的實證表現（同一次回測，可直接比）")
+    st.markdown(strategy_table(60))
+
+
 # ─── Portfolio (我的持股) ─────────────────────────────────────────────────────
 
 def render_portfolio_page():
@@ -3369,7 +3495,7 @@ def main():
     # Widgets "own" their session_state key once rendered; setting it afterwards
     # raises StreamlitAPIException. Intercepting here (pre-render) is safe.
     nav = st.session_state.pop("_nav_to", None)
-    if nav in ("📊 個股分析", "🎯 智能選股", "💼 我的持股"):
+    if nav in ("📊 個股分析", "🎯 智能選股", "🔎 交叉篩選", "💼 我的持股"):
         st.session_state["main_page"] = nav
 
     stock_id, period, page, as_of_date = render_sidebar()
@@ -3378,6 +3504,8 @@ def main():
 
     if page == "🎯 智能選股":
         render_smart_screener_page()
+    elif page == "🔎 交叉篩選":
+        render_cross_screen_page()
     elif page == "💼 我的持股":
         render_portfolio_page()
     else:

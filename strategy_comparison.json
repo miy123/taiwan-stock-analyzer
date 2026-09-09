@@ -174,7 +174,7 @@
         "net_excess": -2.33
       },
       "h40": {
-        "excess": -3.46,
+        "excess": -3.47,
         "t": -5.65,
         "beat_rate": 26.6,
         "periods": 139,
@@ -194,12 +194,97 @@
         },
         "h40": {
           "first_half": -2.37,
-          "second_half": -4.54
+          "second_half": -4.55
         },
         "h60": {
           "first_half": -2.89,
           "second_half": -6.38
         }
+      }
+    }
+  },
+  "cross_screen": {
+    "top_n_per_strategy": 20,
+    "pairs": {
+      "trend+sectorhot": {
+        "periods": 127,
+        "avg_picks": 8.5,
+        "h20": {
+          "excess": 1.18,
+          "t": 1.45,
+          "periods": 127
+        },
+        "h40": {
+          "excess": 2.56,
+          "t": 1.91,
+          "periods": 127
+        },
+        "h60": {
+          "excess": 5.61,
+          "t": 3.23,
+          "periods": 127
+        },
+        "vs_best_solo_h60": -1.53
+      },
+      "trend+limitup": {
+        "periods": 133,
+        "avg_picks": 6.5,
+        "h20": {
+          "excess": 2.57,
+          "t": 2.61,
+          "periods": 133
+        },
+        "h40": {
+          "excess": 3.75,
+          "t": 2.8,
+          "periods": 133
+        },
+        "h60": {
+          "excess": 6.49,
+          "t": 3.77,
+          "periods": 133
+        },
+        "vs_best_solo_h60": -0.64
+      },
+      "sectorhot+limitup": {
+        "periods": 112,
+        "avg_picks": 4.3,
+        "h20": {
+          "excess": 2.04,
+          "t": 1.95,
+          "periods": 112
+        },
+        "h40": {
+          "excess": 2.25,
+          "t": 1.44,
+          "periods": 112
+        },
+        "h60": {
+          "excess": 2.74,
+          "t": 1.15,
+          "periods": 112
+        },
+        "vs_best_solo_h60": -2.79
+      },
+      "lowpe+contrarian": {
+        "periods": 58,
+        "avg_picks": 1.6,
+        "h20": {
+          "excess": -3.41,
+          "t": -4.28,
+          "periods": 58
+        },
+        "h40": {
+          "excess": -7.65,
+          "t": -4.8,
+          "periods": 58
+        },
+        "h60": {
+          "excess": -11.06,
+          "t": -5.06,
+          "periods": 58
+        },
+        "vs_best_solo_h60": -6.5
       }
     }
   }

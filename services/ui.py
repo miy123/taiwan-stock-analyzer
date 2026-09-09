@@ -306,3 +306,48 @@ def strategy_table(hold_days: int = 60) -> str:
                f"{meta.get('topn', 10)} 名、扣成本前。*"
                "**同一批換股日、同一個等權基準，所以這張表可以直接比。**")
     return "\n".join(out)
+
+
+def cross_evidence(keys, hold_days: int = 60) -> str:
+    """
+    交叉篩選的實證 —— 逐組報出「交集 vs 單獨用較強的那個」。
+
+    使用者要用這個選股，就必須看到它到底有沒有比較好。
+    實測結果是**每一組可測的交集都比較差**（第四次驗證「多加一層過濾更差」），
+    所以這裡不是裝飾，是必要的揭露。
+    """
+    from itertools import combinations
+    from services.evidence import cross_stats, strategy_stats, cross_top_n
+    from services.strategies import STRATEGIES
+    label = {s["key"]: s["label"] for s in STRATEGIES}
+    n = cross_top_n()
+    lines, any_row = [], False
+    for a, b in combinations(keys, 2):
+        c = cross_stats(a, b, hold_days)
+        if not c or not c.get("periods"):
+            lines.append(f"| {label.get(a, a)} ∩ {label.get(b, b)} | "
+                         f"樣本不足 | — | — | — |")
+            continue
+        any_row = True
+        sa = strategy_stats(a, hold_days).get("excess", 0)
+        sb = strategy_stats(b, hold_days).get("excess", 0)
+        best = max(sa, sb)
+        d = c["excess"] - best
+        lines.append(
+            f"| {label.get(a, a)} ∩ {label.get(b, b)} | {c['periods']} 期"
+            f"（平均 {c.get('avg_picks', 0):.1f} 檔）| **{c['excess']:+.2f}%** | "
+            f"{best:+.2f}% | {d:+.2f}% {'✅' if d > 0 else '⛔'} |"
+        )
+    if not lines:
+        return ""
+    lab = {20: "1個月", 40: "2個月", 60: "3個月"}.get(hold_days, f"{hold_days}日")
+    head = (f"每個策略取前 {n} 名取交集，持有{lab}的超額報酬：\n\n"
+            f"| 組合 | 有交集期數 | 交集超額 | 單獨用較強的那個 | 差異 |\n"
+            f"|---|---|---|---|---|\n")
+    tail = ("\n\n**實測：每一組可測的交集都輸給「單獨用較強的那一個」。**"
+            "這是本專案第四次得到「多加一層過濾會更差」的結果"
+            "（前三次：族群濾網、低波動濾網、四重確認）。\n\n"
+            "→ 交叉篩選適合用來**找共識標的、縮小研究範圍**，"
+            "但不要期待它比單押最強的策略賺更多。"
+            if any_row else "")
+    return head + "\n".join(lines) + tail
