@@ -3002,30 +3002,36 @@
         "T1 趨勢(連續)": {
           "20": {
             "periods": 139,
+            "portfolio_return": 4.59,
+            "net_return": 4.0,
             "excess_return": 1.62,
+            "stock_win_rate": 67.6,
+            "beat_benchmark_rate": 54.0,
             "t_stat": 2.21,
             "significant": true,
-            "beat_benchmark_rate": 54.0,
-            "recent_excess": 4.23,
-            "net_return": 1.04
+            "recent_excess": 4.23
           },
           "40": {
             "periods": 139,
+            "portfolio_return": 9.99,
+            "net_return": 9.41,
             "excess_return": 4.12,
+            "stock_win_rate": 68.3,
+            "beat_benchmark_rate": 57.6,
             "t_stat": 3.65,
             "significant": true,
-            "beat_benchmark_rate": 57.6,
-            "recent_excess": 8.0,
-            "net_return": 3.54
+            "recent_excess": 8.0
           },
           "60": {
             "periods": 139,
+            "portfolio_return": 16.18,
+            "net_return": 15.59,
             "excess_return": 7.18,
+            "stock_win_rate": 74.1,
+            "beat_benchmark_rate": 66.2,
             "t_stat": 5.52,
             "significant": true,
-            "beat_benchmark_rate": 66.2,
-            "recent_excess": 12.34,
-            "net_return": 6.6
+            "recent_excess": 12.34
           },
           "max_tie": 1.0503597122302157,
           "weights": {
@@ -3037,30 +3043,36 @@
         "T2 趨勢+動能": {
           "20": {
             "periods": 139,
+            "portfolio_return": 4.2,
+            "net_return": 3.61,
             "excess_return": 1.23,
+            "stock_win_rate": 65.5,
+            "beat_benchmark_rate": 46.0,
             "t_stat": 1.63,
             "significant": false,
-            "beat_benchmark_rate": 46.0,
-            "recent_excess": 3.9,
-            "net_return": 0.65
+            "recent_excess": 3.9
           },
           "40": {
             "periods": 139,
+            "portfolio_return": 9.06,
+            "net_return": 8.47,
             "excess_return": 3.19,
+            "stock_win_rate": 67.6,
+            "beat_benchmark_rate": 55.4,
             "t_stat": 2.86,
             "significant": true,
-            "beat_benchmark_rate": 55.4,
-            "recent_excess": 6.18,
-            "net_return": 2.6
+            "recent_excess": 6.18
           },
           "60": {
             "periods": 139,
+            "portfolio_return": 14.44,
+            "net_return": 13.85,
             "excess_return": 5.45,
+            "stock_win_rate": 72.7,
+            "beat_benchmark_rate": 58.3,
             "t_stat": 4.25,
             "significant": true,
-            "beat_benchmark_rate": 58.3,
-            "recent_excess": 9.79,
-            "net_return": 4.86
+            "recent_excess": 9.79
           },
           "max_tie": 1.0,
           "weights": {
@@ -3074,30 +3086,36 @@
         "T3 純動能": {
           "20": {
             "periods": 139,
+            "portfolio_return": 4.56,
+            "net_return": 3.98,
             "excess_return": 1.6,
+            "stock_win_rate": 64.7,
+            "beat_benchmark_rate": 53.2,
             "t_stat": 2.41,
             "significant": true,
-            "beat_benchmark_rate": 53.2,
-            "recent_excess": 5.85,
-            "net_return": 1.01
+            "recent_excess": 5.85
           },
           "40": {
             "periods": 139,
+            "portfolio_return": 9.75,
+            "net_return": 9.16,
             "excess_return": 3.88,
+            "stock_win_rate": 66.2,
+            "beat_benchmark_rate": 56.8,
             "t_stat": 3.78,
             "significant": true,
-            "beat_benchmark_rate": 56.8,
-            "recent_excess": 10.38,
-            "net_return": 3.29
+            "recent_excess": 10.38
           },
           "60": {
             "periods": 139,
-            "excess_return": 6.66,
+            "portfolio_return": 15.66,
+            "net_return": 15.07,
+            "excess_return": 6.67,
+            "stock_win_rate": 69.8,
+            "beat_benchmark_rate": 60.4,
             "t_stat": 4.82,
             "significant": true,
-            "beat_benchmark_rate": 60.4,
-            "recent_excess": 14.18,
-            "net_return": 6.08
+            "recent_excess": 14.18
           },
           "max_tie": 1.0863309352517985,
           "weights": {
@@ -3109,30 +3127,36 @@
         "T4 12-1動能": {
           "20": {
             "periods": 139,
+            "portfolio_return": 5.11,
+            "net_return": 4.52,
             "excess_return": 2.14,
+            "stock_win_rate": 69.1,
+            "beat_benchmark_rate": 59.0,
             "t_stat": 3.61,
             "significant": true,
-            "beat_benchmark_rate": 59.0,
-            "recent_excess": 5.38,
-            "net_return": 1.56
+            "recent_excess": 5.38
           },
           "40": {
             "periods": 139,
+            "portfolio_return": 9.77,
+            "net_return": 9.18,
             "excess_return": 3.9,
+            "stock_win_rate": 71.2,
+            "beat_benchmark_rate": 66.2,
             "t_stat": 4.3,
             "significant": true,
-            "beat_benchmark_rate": 66.2,
-            "recent_excess": 10.03,
-            "net_return": 3.31
+            "recent_excess": 10.03
           },
           "60": {
             "periods": 139,
+            "portfolio_return": 15.07,
+            "net_return": 14.48,
             "excess_return": 6.08,
+            "stock_win_rate": 72.7,
+            "beat_benchmark_rate": 59.7,
             "t_stat": 4.39,
             "significant": true,
-            "beat_benchmark_rate": 59.7,
-            "recent_excess": 16.07,
-            "net_return": 5.49
+            "recent_excess": 16.07
           },
           "max_tie": 1.0,
           "weights": {
@@ -3142,30 +3166,36 @@
         "V1 趨勢+量能": {
           "20": {
             "periods": 139,
+            "portfolio_return": 4.8,
+            "net_return": 4.22,
             "excess_return": 1.84,
+            "stock_win_rate": 69.8,
+            "beat_benchmark_rate": 59.7,
             "t_stat": 2.97,
             "significant": true,
-            "beat_benchmark_rate": 59.7,
-            "recent_excess": 4.65,
-            "net_return": 1.25
+            "recent_excess": 4.65
           },
           "40": {
             "periods": 139,
+            "portfolio_return": 8.42,
+            "net_return": 7.84,
             "excess_return": 2.55,
+            "stock_win_rate": 66.9,
+            "beat_benchmark_rate": 56.1,
             "t_stat": 2.55,
             "significant": true,
-            "beat_benchmark_rate": 56.1,
-            "recent_excess": 6.78,
-            "net_return": 1.97
+            "recent_excess": 6.78
           },
           "60": {
             "periods": 139,
+            "portfolio_return": 13.6,
+            "net_return": 13.02,
             "excess_return": 4.61,
+            "stock_win_rate": 66.2,
+            "beat_benchmark_rate": 54.7,
             "t_stat": 3.41,
             "significant": true,
-            "beat_benchmark_rate": 54.7,
-            "recent_excess": 10.14,
-            "net_return": 4.02
+            "recent_excess": 10.14
           },
           "max_tie": 1.0071942446043165,
           "weights": {
@@ -3179,30 +3209,36 @@
         "V2 趨勢+動能+量能": {
           "20": {
             "periods": 139,
+            "portfolio_return": 4.85,
+            "net_return": 4.27,
             "excess_return": 1.89,
+            "stock_win_rate": 69.8,
+            "beat_benchmark_rate": 57.6,
             "t_stat": 2.94,
             "significant": true,
-            "beat_benchmark_rate": 57.6,
-            "recent_excess": 5.0,
-            "net_return": 1.3
+            "recent_excess": 5.0
           },
           "40": {
             "periods": 139,
+            "portfolio_return": 9.15,
+            "net_return": 8.57,
             "excess_return": 3.29,
+            "stock_win_rate": 66.9,
+            "beat_benchmark_rate": 54.7,
             "t_stat": 3.16,
             "significant": true,
-            "beat_benchmark_rate": 54.7,
-            "recent_excess": 8.56,
-            "net_return": 2.7
+            "recent_excess": 8.56
           },
           "60": {
             "periods": 139,
+            "portfolio_return": 14.32,
+            "net_return": 13.73,
             "excess_return": 5.33,
+            "stock_win_rate": 64.0,
+            "beat_benchmark_rate": 54.0,
             "t_stat": 3.81,
             "significant": true,
-            "beat_benchmark_rate": 54.0,
-            "recent_excess": 12.03,
-            "net_return": 4.74
+            "recent_excess": 12.03
           },
           "max_tie": 1.0071942446043165,
           "weights": {
@@ -3218,30 +3254,36 @@
         "M1 趨勢+資券": {
           "20": {
             "periods": 139,
+            "portfolio_return": 4.15,
+            "net_return": 3.56,
             "excess_return": 1.18,
+            "stock_win_rate": 65.5,
+            "beat_benchmark_rate": 47.5,
             "t_stat": 2.31,
             "significant": true,
-            "beat_benchmark_rate": 47.5,
-            "recent_excess": 3.82,
-            "net_return": 0.6
+            "recent_excess": 3.82
           },
           "40": {
             "periods": 139,
+            "portfolio_return": 8.48,
+            "net_return": 7.9,
             "excess_return": 2.61,
+            "stock_win_rate": 71.2,
+            "beat_benchmark_rate": 53.2,
             "t_stat": 3.06,
             "significant": true,
-            "beat_benchmark_rate": 53.2,
-            "recent_excess": 7.04,
-            "net_return": 2.03
+            "recent_excess": 7.04
           },
           "60": {
             "periods": 139,
+            "portfolio_return": 12.28,
+            "net_return": 11.69,
             "excess_return": 3.29,
+            "stock_win_rate": 71.9,
+            "beat_benchmark_rate": 54.7,
             "t_stat": 3.12,
             "significant": true,
-            "beat_benchmark_rate": 54.7,
-            "recent_excess": 10.06,
-            "net_return": 2.7
+            "recent_excess": 10.06
           },
           "max_tie": 1.0,
           "weights": {
@@ -3255,30 +3297,36 @@
         "M2 趨勢+動能+資券": {
           "20": {
             "periods": 139,
+            "portfolio_return": 4.37,
+            "net_return": 3.79,
             "excess_return": 1.41,
+            "stock_win_rate": 66.9,
+            "beat_benchmark_rate": 50.4,
             "t_stat": 2.53,
             "significant": true,
-            "beat_benchmark_rate": 50.4,
-            "recent_excess": 4.67,
-            "net_return": 0.82
+            "recent_excess": 4.67
           },
           "40": {
             "periods": 139,
+            "portfolio_return": 9.74,
+            "net_return": 9.16,
             "excess_return": 3.87,
+            "stock_win_rate": 68.3,
+            "beat_benchmark_rate": 53.2,
             "t_stat": 4.04,
             "significant": true,
-            "beat_benchmark_rate": 53.2,
-            "recent_excess": 9.61,
-            "net_return": 3.29
+            "recent_excess": 9.61
           },
           "60": {
             "periods": 139,
+            "portfolio_return": 14.15,
+            "net_return": 13.57,
             "excess_return": 5.16,
+            "stock_win_rate": 71.9,
+            "beat_benchmark_rate": 54.0,
             "t_stat": 4.11,
             "significant": true,
-            "beat_benchmark_rate": 54.0,
-            "recent_excess": 13.9,
-            "net_return": 4.57
+            "recent_excess": 13.9
           },
           "max_tie": 1.0,
           "weights": {
@@ -3294,30 +3342,36 @@
         "P1 純低本益比": {
           "20": {
             "periods": 139,
+            "portfolio_return": 1.16,
+            "net_return": 0.57,
             "excess_return": -1.81,
+            "stock_win_rate": 57.6,
+            "beat_benchmark_rate": 37.4,
             "t_stat": -3.81,
             "significant": true,
-            "beat_benchmark_rate": 37.4,
-            "recent_excess": -7.04,
-            "net_return": -2.39
+            "recent_excess": -7.04
           },
           "40": {
             "periods": 139,
+            "portfolio_return": 2.66,
+            "net_return": 2.08,
             "excess_return": -3.21,
+            "stock_win_rate": 58.3,
+            "beat_benchmark_rate": 45.3,
             "t_stat": -3.77,
             "significant": true,
-            "beat_benchmark_rate": 45.3,
-            "recent_excess": -13.22,
-            "net_return": -3.79
+            "recent_excess": -13.22
           },
           "60": {
             "periods": 139,
+            "portfolio_return": 4.51,
+            "net_return": 3.93,
             "excess_return": -4.48,
+            "stock_win_rate": 61.9,
+            "beat_benchmark_rate": 48.9,
             "t_stat": -3.82,
             "significant": true,
-            "beat_benchmark_rate": 48.9,
-            "recent_excess": -18.25,
-            "net_return": -5.06
+            "recent_excess": -18.25
           },
           "max_tie": 1.0,
           "weights": {
@@ -3327,30 +3381,36 @@
         "P2 趨勢+估值": {
           "20": {
             "periods": 139,
+            "portfolio_return": 3.9,
+            "net_return": 3.32,
             "excess_return": 0.94,
+            "stock_win_rate": 63.3,
+            "beat_benchmark_rate": 55.4,
             "t_stat": 1.71,
             "significant": false,
-            "beat_benchmark_rate": 55.4,
-            "recent_excess": 1.97,
-            "net_return": 0.35
+            "recent_excess": 1.97
           },
           "40": {
             "periods": 139,
+            "portfolio_return": 7.25,
+            "net_return": 6.66,
             "excess_return": 1.38,
+            "stock_win_rate": 65.5,
+            "beat_benchmark_rate": 49.6,
             "t_stat": 1.66,
             "significant": false,
-            "beat_benchmark_rate": 49.6,
-            "recent_excess": 1.01,
-            "net_return": 0.79
+            "recent_excess": 1.01
           },
           "60": {
             "periods": 139,
+            "portfolio_return": 10.2,
+            "net_return": 9.61,
             "excess_return": 1.21,
+            "stock_win_rate": 67.6,
+            "beat_benchmark_rate": 49.6,
             "t_stat": 1.34,
             "significant": false,
-            "beat_benchmark_rate": 49.6,
-            "recent_excess": -1.39,
-            "net_return": 0.62
+            "recent_excess": -1.39
           },
           "max_tie": 1.0,
           "weights": {
@@ -3363,30 +3423,36 @@
         "P3 動能+估值(便宜的強勢股)": {
           "20": {
             "periods": 139,
+            "portfolio_return": 4.08,
+            "net_return": 3.49,
             "excess_return": 1.11,
+            "stock_win_rate": 67.6,
+            "beat_benchmark_rate": 53.2,
             "t_stat": 2.24,
             "significant": true,
-            "beat_benchmark_rate": 53.2,
-            "recent_excess": 2.82,
-            "net_return": 0.53
+            "recent_excess": 2.82
           },
           "40": {
             "periods": 139,
+            "portfolio_return": 8.09,
+            "net_return": 7.5,
             "excess_return": 2.22,
+            "stock_win_rate": 69.1,
+            "beat_benchmark_rate": 56.1,
             "t_stat": 3.06,
             "significant": true,
-            "beat_benchmark_rate": 56.1,
-            "recent_excess": 4.3,
-            "net_return": 1.64
+            "recent_excess": 4.3
           },
           "60": {
             "periods": 139,
+            "portfolio_return": 10.56,
+            "net_return": 9.97,
             "excess_return": 1.57,
+            "stock_win_rate": 69.8,
+            "beat_benchmark_rate": 59.0,
             "t_stat": 2.06,
             "significant": true,
-            "beat_benchmark_rate": 59.0,
-            "recent_excess": 2.1,
-            "net_return": 0.98
+            "recent_excess": 2.1
           },
           "max_tie": 1.0,
           "weights": {
@@ -3399,30 +3465,36 @@
         "A1 全因子等權": {
           "20": {
             "periods": 139,
+            "portfolio_return": 3.71,
+            "net_return": 3.12,
             "excess_return": 0.74,
+            "stock_win_rate": 64.7,
+            "beat_benchmark_rate": 51.1,
             "t_stat": 1.49,
             "significant": false,
-            "beat_benchmark_rate": 51.1,
-            "recent_excess": 3.05,
-            "net_return": 0.16
+            "recent_excess": 3.05
           },
           "40": {
             "periods": 139,
+            "portfolio_return": 7.37,
+            "net_return": 6.78,
             "excess_return": 1.5,
+            "stock_win_rate": 64.7,
+            "beat_benchmark_rate": 48.9,
             "t_stat": 1.82,
             "significant": false,
-            "beat_benchmark_rate": 48.9,
-            "recent_excess": 5.12,
-            "net_return": 0.91
+            "recent_excess": 5.12
           },
           "60": {
             "periods": 139,
+            "portfolio_return": 12.14,
+            "net_return": 11.56,
             "excess_return": 3.15,
+            "stock_win_rate": 68.3,
+            "beat_benchmark_rate": 48.9,
             "t_stat": 2.74,
             "significant": true,
-            "beat_benchmark_rate": 48.9,
-            "recent_excess": 8.36,
-            "net_return": 2.57
+            "recent_excess": 8.36
           },
           "max_tie": 1.0,
           "weights": {
@@ -3441,30 +3513,36 @@
         "A2 全因子(趨勢加重)": {
           "20": {
             "periods": 139,
+            "portfolio_return": 3.53,
+            "net_return": 2.95,
             "excess_return": 0.57,
+            "stock_win_rate": 60.4,
+            "beat_benchmark_rate": 48.9,
             "t_stat": 0.93,
             "significant": false,
-            "beat_benchmark_rate": 48.9,
-            "recent_excess": 3.03,
-            "net_return": -0.02
+            "recent_excess": 3.03
           },
           "40": {
             "periods": 139,
+            "portfolio_return": 7.58,
+            "net_return": 6.99,
             "excess_return": 1.71,
+            "stock_win_rate": 60.4,
+            "beat_benchmark_rate": 46.8,
             "t_stat": 1.64,
             "significant": false,
-            "beat_benchmark_rate": 46.8,
-            "recent_excess": 5.37,
-            "net_return": 1.13
+            "recent_excess": 5.37
           },
           "60": {
             "periods": 139,
+            "portfolio_return": 12.24,
+            "net_return": 11.66,
             "excess_return": 3.25,
+            "stock_win_rate": 61.9,
+            "beat_benchmark_rate": 43.9,
             "t_stat": 2.38,
             "significant": true,
-            "beat_benchmark_rate": 43.9,
-            "recent_excess": 7.44,
-            "net_return": 2.67
+            "recent_excess": 7.44
           },
           "max_tie": 1.0,
           "weights": {
@@ -3483,30 +3561,36 @@
         "A3 全因子(估值加重)": {
           "20": {
             "periods": 139,
+            "portfolio_return": 3.45,
+            "net_return": 2.86,
             "excess_return": 0.48,
+            "stock_win_rate": 69.1,
+            "beat_benchmark_rate": 49.6,
             "t_stat": 1.22,
             "significant": false,
-            "beat_benchmark_rate": 49.6,
-            "recent_excess": 0.82,
-            "net_return": -0.1
+            "recent_excess": 0.82
           },
           "40": {
             "periods": 139,
+            "portfolio_return": 6.42,
+            "net_return": 5.84,
             "excess_return": 0.55,
+            "stock_win_rate": 72.7,
+            "beat_benchmark_rate": 48.9,
             "t_stat": 0.98,
             "significant": false,
-            "beat_benchmark_rate": 48.9,
-            "recent_excess": -0.42,
-            "net_return": -0.03
+            "recent_excess": -0.42
           },
           "60": {
             "periods": 139,
+            "portfolio_return": 8.98,
+            "net_return": 8.39,
             "excess_return": -0.01,
+            "stock_win_rate": 69.8,
+            "beat_benchmark_rate": 51.8,
             "t_stat": -0.02,
             "significant": false,
-            "beat_benchmark_rate": 51.8,
-            "recent_excess": -2.2,
-            "net_return": -0.6
+            "recent_excess": -2.2
           },
           "max_tie": 1.0,
           "weights": {
@@ -3525,30 +3609,36 @@
         "P4 12-1動能+估值": {
           "20": {
             "periods": 139,
+            "portfolio_return": 2.37,
+            "net_return": 1.79,
             "excess_return": -0.59,
+            "stock_win_rate": 63.3,
+            "beat_benchmark_rate": 46.8,
             "t_stat": -1.53,
             "significant": false,
-            "beat_benchmark_rate": 46.8,
-            "recent_excess": -2.92,
-            "net_return": -1.18
+            "recent_excess": -2.92
           },
           "40": {
             "periods": 139,
+            "portfolio_return": 4.0,
+            "net_return": 3.42,
             "excess_return": -1.87,
+            "stock_win_rate": 63.3,
+            "beat_benchmark_rate": 40.3,
             "t_stat": -3.06,
             "significant": true,
-            "beat_benchmark_rate": 40.3,
-            "recent_excess": -6.91,
-            "net_return": -2.45
+            "recent_excess": -6.91
           },
           "60": {
             "periods": 139,
+            "portfolio_return": 5.82,
+            "net_return": 5.23,
             "excess_return": -3.18,
+            "stock_win_rate": 67.6,
+            "beat_benchmark_rate": 40.3,
             "t_stat": -3.94,
             "significant": true,
-            "beat_benchmark_rate": 40.3,
-            "recent_excess": -9.58,
-            "net_return": -3.76
+            "recent_excess": -9.58
           },
           "max_tie": 1.0,
           "weights": {
@@ -3559,30 +3649,36 @@
         "P5 趨勢+動能+估值(輕)": {
           "20": {
             "periods": 139,
+            "portfolio_return": 4.03,
+            "net_return": 3.45,
             "excess_return": 1.07,
+            "stock_win_rate": 59.0,
+            "beat_benchmark_rate": 45.3,
             "t_stat": 1.45,
             "significant": false,
-            "beat_benchmark_rate": 45.3,
-            "recent_excess": 5.05,
-            "net_return": 0.48
+            "recent_excess": 5.05
           },
           "40": {
             "periods": 139,
+            "portfolio_return": 8.44,
+            "net_return": 7.85,
             "excess_return": 2.57,
+            "stock_win_rate": 61.9,
+            "beat_benchmark_rate": 45.3,
             "t_stat": 2.29,
             "significant": true,
-            "beat_benchmark_rate": 45.3,
-            "recent_excess": 7.16,
-            "net_return": 1.98
+            "recent_excess": 7.16
           },
           "60": {
             "periods": 139,
+            "portfolio_return": 12.34,
+            "net_return": 11.76,
             "excess_return": 3.35,
+            "stock_win_rate": 71.9,
+            "beat_benchmark_rate": 48.9,
             "t_stat": 2.76,
             "significant": true,
-            "beat_benchmark_rate": 48.9,
-            "recent_excess": 6.53,
-            "net_return": 2.77
+            "recent_excess": 6.53
           },
           "max_tie": 1.0,
           "weights": {
@@ -3597,30 +3693,36 @@
         "S1 純券資比": {
           "20": {
             "periods": 139,
+            "portfolio_return": 3.49,
+            "net_return": 2.9,
             "excess_return": 0.52,
+            "stock_win_rate": 61.2,
+            "beat_benchmark_rate": 54.0,
             "t_stat": 1.13,
             "significant": false,
-            "beat_benchmark_rate": 54.0,
-            "recent_excess": 1.19,
-            "net_return": -0.06
+            "recent_excess": 1.19
           },
           "40": {
             "periods": 139,
+            "portfolio_return": 5.95,
+            "net_return": 5.37,
             "excess_return": 0.08,
+            "stock_win_rate": 69.1,
+            "beat_benchmark_rate": 48.9,
             "t_stat": 0.15,
             "significant": false,
-            "beat_benchmark_rate": 48.9,
-            "recent_excess": 1.32,
-            "net_return": -0.5
+            "recent_excess": 1.32
           },
           "60": {
             "periods": 139,
+            "portfolio_return": 8.07,
+            "net_return": 7.48,
             "excess_return": -0.92,
+            "stock_win_rate": 66.2,
+            "beat_benchmark_rate": 38.1,
             "t_stat": -1.24,
             "significant": false,
-            "beat_benchmark_rate": 38.1,
-            "recent_excess": -0.49,
-            "net_return": -1.51
+            "recent_excess": -0.49
           },
           "max_tie": 1.0,
           "weights": {
@@ -3630,30 +3732,36 @@
         "S2 純融資減少": {
           "20": {
             "periods": 139,
+            "portfolio_return": 2.63,
+            "net_return": 2.04,
             "excess_return": -0.34,
+            "stock_win_rate": 66.2,
+            "beat_benchmark_rate": 42.4,
             "t_stat": -0.91,
             "significant": false,
-            "beat_benchmark_rate": 42.4,
-            "recent_excess": -0.05,
-            "net_return": -0.92
+            "recent_excess": -0.05
           },
           "40": {
             "periods": 139,
+            "portfolio_return": 5.5,
+            "net_return": 4.91,
             "excess_return": -0.37,
+            "stock_win_rate": 71.9,
+            "beat_benchmark_rate": 44.6,
             "t_stat": -0.67,
             "significant": false,
-            "beat_benchmark_rate": 44.6,
-            "recent_excess": 0.04,
-            "net_return": -0.96
+            "recent_excess": 0.04
           },
           "60": {
             "periods": 139,
+            "portfolio_return": 8.9,
+            "net_return": 8.31,
             "excess_return": -0.09,
+            "stock_win_rate": 75.5,
+            "beat_benchmark_rate": 46.0,
             "t_stat": -0.14,
             "significant": false,
-            "beat_benchmark_rate": 46.0,
-            "recent_excess": 1.17,
-            "net_return": -0.68
+            "recent_excess": 1.17
           },
           "max_tie": 1.0,
           "weights": {
@@ -3663,30 +3771,36 @@
         "M3 趨勢+資券完整": {
           "20": {
             "periods": 139,
+            "portfolio_return": 4.19,
+            "net_return": 3.6,
             "excess_return": 1.22,
+            "stock_win_rate": 61.2,
+            "beat_benchmark_rate": 48.2,
             "t_stat": 2.24,
             "significant": true,
-            "beat_benchmark_rate": 48.2,
-            "recent_excess": 3.38,
-            "net_return": 0.64
+            "recent_excess": 3.38
           },
           "40": {
             "periods": 139,
+            "portfolio_return": 8.39,
+            "net_return": 7.81,
             "excess_return": 2.52,
+            "stock_win_rate": 71.9,
+            "beat_benchmark_rate": 51.8,
             "t_stat": 2.87,
             "significant": true,
-            "beat_benchmark_rate": 51.8,
-            "recent_excess": 6.8,
-            "net_return": 1.94
+            "recent_excess": 6.8
           },
           "60": {
             "periods": 139,
+            "portfolio_return": 12.3,
+            "net_return": 11.71,
             "excess_return": 3.31,
+            "stock_win_rate": 69.1,
+            "beat_benchmark_rate": 58.3,
             "t_stat": 2.88,
             "significant": true,
-            "beat_benchmark_rate": 58.3,
-            "recent_excess": 10.36,
-            "net_return": 2.72
+            "recent_excess": 10.36
           },
           "max_tie": 1.0,
           "weights": {
@@ -3701,30 +3815,36 @@
         "B1 趨勢+12-1+估值+量能": {
           "20": {
             "periods": 139,
+            "portfolio_return": 3.99,
+            "net_return": 3.41,
             "excess_return": 1.03,
+            "stock_win_rate": 64.0,
+            "beat_benchmark_rate": 54.7,
             "t_stat": 1.8,
             "significant": false,
-            "beat_benchmark_rate": 54.7,
-            "recent_excess": 3.6,
-            "net_return": 0.44
+            "recent_excess": 3.6
           },
           "40": {
             "periods": 139,
+            "portfolio_return": 8.1,
+            "net_return": 7.52,
             "excess_return": 2.24,
+            "stock_win_rate": 64.0,
+            "beat_benchmark_rate": 51.1,
             "t_stat": 2.36,
             "significant": true,
-            "beat_benchmark_rate": 51.1,
-            "recent_excess": 5.56,
-            "net_return": 1.65
+            "recent_excess": 5.56
           },
           "60": {
             "periods": 139,
+            "portfolio_return": 12.02,
+            "net_return": 11.43,
             "excess_return": 3.03,
+            "stock_win_rate": 69.8,
+            "beat_benchmark_rate": 50.4,
             "t_stat": 2.63,
             "significant": true,
-            "beat_benchmark_rate": 50.4,
-            "recent_excess": 4.97,
-            "net_return": 2.44
+            "recent_excess": 4.97
           },
           "max_tie": 1.0,
           "weights": {
@@ -3740,30 +3860,36 @@
         "B2 趨勢+12-1+估值": {
           "20": {
             "periods": 139,
+            "portfolio_return": 4.18,
+            "net_return": 3.59,
             "excess_return": 1.21,
+            "stock_win_rate": 63.3,
+            "beat_benchmark_rate": 48.2,
             "t_stat": 2.07,
             "significant": true,
-            "beat_benchmark_rate": 48.2,
-            "recent_excess": 4.76,
-            "net_return": 0.63
+            "recent_excess": 4.76
           },
           "40": {
             "periods": 139,
+            "portfolio_return": 8.21,
+            "net_return": 7.62,
             "excess_return": 2.34,
+            "stock_win_rate": 66.9,
+            "beat_benchmark_rate": 51.1,
             "t_stat": 2.69,
             "significant": true,
-            "beat_benchmark_rate": 51.1,
-            "recent_excess": 6.21,
-            "net_return": 1.75
+            "recent_excess": 6.21
           },
           "60": {
             "periods": 139,
+            "portfolio_return": 12.31,
+            "net_return": 11.73,
             "excess_return": 3.32,
-            "t_stat": 3.54,
-            "significant": true,
+            "stock_win_rate": 74.8,
             "beat_benchmark_rate": 54.0,
-            "recent_excess": 6.16,
-            "net_return": 2.74
+            "t_stat": 3.55,
+            "significant": true,
+            "recent_excess": 6.16
           },
           "max_tie": 1.0,
           "weights": {
@@ -3774,6 +3900,11 @@
             "pe_inv": 1
           }
         }
+      },
+      "benchmark": {
+        "h20": 2.964659343634982,
+        "h40": 5.869378501522378,
+        "h60": 8.990372496986685
       }
     }
   }
