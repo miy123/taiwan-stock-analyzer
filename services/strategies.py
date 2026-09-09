@@ -26,6 +26,18 @@ def _hscore(r, horizon_key):
     return _hz_tech(r, horizon_key)
 
 
+def _hscore_key(r, horizon_key):
+    """
+    週期評分的排序鍵 —— **一律附上距季線幅度破平手**。
+
+    週期分和長線分一樣是離散跳點疊出來的，實測「綜合強勢」用長線排序時
+    有 156 檔並列 94，前 10 名等於按股號由小到大取（1102、1216、1301…），
+    完全不是「最強的 10 檔」。凡是用分數排序的地方都要破平手，
+    這裡與 _long_key 用同一個連續指標。
+    """
+    return (_hscore(r, horizon_key), _tiebreak(r))
+
+
 def _long(r):
     """
     排序一律用**純技術**長線分（horizon_tech），不是混合分。
@@ -51,7 +63,27 @@ def _long_key(r):
       不破平手  1個月 +0.52%(t=1.42 不顯著) / 3個月 -1.08%
       距季線破  1個月 +2.51%(t=5.17)        / 3個月 +5.05%
     """
-    return (_long(r), r.get("above_ma120") if r.get("above_ma120") is not None else -999)
+    return (_long(r), _tiebreak(r))
+
+
+def _tiebreak(r):
+    """破平手用的連續值：距季線幅度。缺值排最後，不要讓 None 參與比較。"""
+    v = r.get("above_ma120")
+    return v if v is not None else -999
+
+
+def _combined(r):
+    """
+    攻守兼備分＝綜合評分與潛力分的幾何平均。
+
+    以前只在 app.py 算好塞進 row，strategies 直接讀 r["combined_score"]——
+    呼叫者忘記塞就整個策略沉默地按股號排序。改成這裡自己算，讀不到才回退。
+    """
+    v = r.get("combined_score")
+    if v is not None:
+        return v
+    pt = (r.get("potential") or {}).get("total", 0)
+    return int(round((max(r.get("total_score", 0), 0) * max(pt, 0)) ** 0.5))
 
 
 def _hz_tech(r, key):
@@ -186,7 +218,7 @@ STRATEGIES = [
         "uses_horizon": True, "evidence_model": "綜合強勢(技術)",
         "metric": lambda r: r.get("total_score", 0),
         "filters": [("所選週期評分達買進線", _f_hscore_bar)],
-        "sort_key": lambda r, c: _hscore(r, c.get("horizon_key")),
+        "sort_key": lambda r, c: _hscore_key(r, c.get("horizon_key")),
     },
     {
         "key": "lowpe", "label": "💎 超低本益比",
@@ -208,7 +240,7 @@ STRATEGIES = [
         "uses_horizon": False, "evidence_model": None,
         "metric": lambda r: r.get("total_score", 0),
         "filters": [("近期連日漲停", _f_is_limitup)],
-        "sort_key": lambda r, c: (r.get("max_streak", 0), r.get("total_score", 0)),
+        "sort_key": lambda r, c: (r.get("max_streak", 0), r.get("total_score", 0), _tiebreak(r)),
     },
     {
         "key": "sleeper", "label": "🌱 潛力潛伏",
@@ -219,7 +251,7 @@ STRATEGIES = [
         "uses_horizon": False, "evidence_model": "潛力潛伏",
         "metric": lambda r: (r.get("potential") or {}).get("total", 0),
         "filters": [("通過潛伏股檢核", _f_sleeper_ok)],
-        "sort_key": lambda r, c: (r.get("potential") or {}).get("total", 0),
+        "sort_key": lambda r, c: ((r.get("potential") or {}).get("total", 0), _tiebreak(r)),
     },
     {
         "key": "balanced", "label": "⚖️ 攻守兼備",
@@ -228,10 +260,10 @@ STRATEGIES = [
         "sort_desc": "**攻守兼備分**（綜合×潛力幾何平均）",
         "prelim_key": "prelim_balanced", "color": "#4dd0e1",
         "uses_horizon": False, "evidence_model": "攻守兼備",
-        "metric": lambda r: r.get("combined_score", 0),
+        "metric": lambda r: _combined(r),
         "filters": [("綜合評分 ≥48", _f_total_48), ("低基期 ≥45", _f_lowbase_45),
                     ("潛力分 ≥45", _f_pot_45), ("風報比 ≥1.5", _f_rr_15)],
-        "sort_key": lambda r, c: r.get("combined_score", 0),
+        "sort_key": lambda r, c: (_combined(r), _tiebreak(r)),
     },
 ]
 

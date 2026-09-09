@@ -17,127 +17,127 @@
       {
         "range": "0-35",
         "5": {
-          "win_rate": 51.0,
-          "excess": -0.23,
-          "n": 13950
+          "win_rate": 50.4,
+          "excess": -0.27,
+          "n": 14041
         },
         "20": {
-          "win_rate": 54.6,
-          "excess": -0.95,
-          "n": 13950
+          "win_rate": 54.5,
+          "excess": -1.04,
+          "n": 14041
         },
         "60": {
-          "win_rate": 57.0,
-          "excess": -2.58,
-          "n": 13950
+          "win_rate": 56.3,
+          "excess": -2.86,
+          "n": 14041
         }
       },
       {
         "range": "35-45",
         "5": {
-          "win_rate": 51.0,
-          "excess": -0.23,
-          "n": 4562
+          "win_rate": 50.2,
+          "excess": -0.21,
+          "n": 4396
         },
         "20": {
-          "win_rate": 53.3,
-          "excess": -0.78,
-          "n": 4562
+          "win_rate": 53.8,
+          "excess": -0.65,
+          "n": 4396
         },
         "60": {
-          "win_rate": 55.3,
-          "excess": -2.65,
-          "n": 4562
+          "win_rate": 56.1,
+          "excess": -2.24,
+          "n": 4396
         }
       },
       {
         "range": "55-60",
         "5": {
-          "win_rate": 53.2,
-          "excess": -0.22,
-          "n": 1636
+          "win_rate": 50.1,
+          "excess": -0.41,
+          "n": 1742
         },
         "20": {
-          "win_rate": 54.6,
-          "excess": -0.88,
-          "n": 1636
+          "win_rate": 53.9,
+          "excess": -1.18,
+          "n": 1742
         },
         "60": {
-          "win_rate": 58.3,
-          "excess": -1.03,
-          "n": 1636
+          "win_rate": 56.0,
+          "excess": -2.29,
+          "n": 1742
         }
       },
       {
         "range": "60-65",
         "5": {
           "win_rate": 47.8,
-          "excess": 0.06,
-          "n": 1896
+          "excess": -0.03,
+          "n": 1792
         },
         "20": {
-          "win_rate": 51.1,
-          "excess": -0.06,
-          "n": 1896
+          "win_rate": 51.8,
+          "excess": -0.11,
+          "n": 1792
         },
         "60": {
           "win_rate": 57.9,
-          "excess": -0.1,
-          "n": 1896
+          "excess": -0.47,
+          "n": 1792
         }
       },
       {
         "range": "65-70",
         "5": {
-          "win_rate": 51.6,
-          "excess": -0.08,
-          "n": 2414
+          "win_rate": 53.5,
+          "excess": -0.03,
+          "n": 2429
         },
         "20": {
-          "win_rate": 54.8,
-          "excess": -0.36,
-          "n": 2414
+          "win_rate": 55.1,
+          "excess": -0.25,
+          "n": 2429
         },
         "60": {
-          "win_rate": 56.0,
-          "excess": -0.77,
-          "n": 2414
+          "win_rate": 55.5,
+          "excess": -0.22,
+          "n": 2429
         }
       },
       {
         "range": "70-75",
         "5": {
-          "win_rate": 47.5,
-          "excess": 0.45,
-          "n": 1131
+          "win_rate": 46.7,
+          "excess": 0.36,
+          "n": 1189
         },
         "20": {
-          "win_rate": 50.5,
-          "excess": 1.3,
-          "n": 1131
+          "win_rate": 50.9,
+          "excess": 1.38,
+          "n": 1189
         },
         "60": {
-          "win_rate": 56.3,
-          "excess": 5.11,
-          "n": 1131
+          "win_rate": 58.0,
+          "excess": 4.47,
+          "n": 1189
         }
       },
       {
         "range": "80-100",
         "5": {
-          "win_rate": 50.3,
-          "excess": 0.3,
-          "n": 23799
+          "win_rate": 50.9,
+          "excess": 0.28,
+          "n": 23917
         },
         "20": {
-          "win_rate": 53.8,
-          "excess": 0.92,
-          "n": 23799
+          "win_rate": 54.3,
+          "excess": 0.97,
+          "n": 23917
         },
         "60": {
-          "win_rate": 58.8,
-          "excess": 2.49,
-          "n": 23799
+          "win_rate": 58.6,
+          "excess": 2.32,
+          "n": 23917
         }
       }
     ],
@@ -145,127 +145,127 @@
       {
         "range": "0-35",
         "5": {
-          "win_rate": 51.1,
-          "excess": -0.25,
-          "n": 19285
+          "win_rate": 50.7,
+          "excess": -0.26,
+          "n": 19290
         },
         "20": {
-          "win_rate": 54.7,
-          "excess": -0.97,
-          "n": 19285
+          "win_rate": 54.9,
+          "excess": -1.04,
+          "n": 19290
         },
         "60": {
           "win_rate": 57.3,
-          "excess": -2.58,
-          "n": 19285
+          "excess": -2.74,
+          "n": 19290
         }
       },
       {
         "range": "35-45",
         "5": {
-          "win_rate": 51.0,
-          "excess": -0.3,
-          "n": 6104
+          "win_rate": 50.2,
+          "excess": -0.26,
+          "n": 5873
         },
         "20": {
-          "win_rate": 53.0,
-          "excess": -0.98,
-          "n": 6104
+          "win_rate": 53.9,
+          "excess": -0.83,
+          "n": 5873
         },
         "60": {
-          "win_rate": 55.4,
-          "excess": -2.77,
-          "n": 6104
+          "win_rate": 56.2,
+          "excess": -2.48,
+          "n": 5873
         }
       },
       {
         "range": "55-60",
         "5": {
-          "win_rate": 52.9,
-          "excess": -0.3,
-          "n": 2291
+          "win_rate": 50.5,
+          "excess": -0.46,
+          "n": 2397
         },
         "20": {
-          "win_rate": 55.3,
-          "excess": -0.89,
-          "n": 2291
+          "win_rate": 54.2,
+          "excess": -1.16,
+          "n": 2397
         },
         "60": {
-          "win_rate": 56.9,
-          "excess": -1.77,
-          "n": 2291
+          "win_rate": 55.7,
+          "excess": -2.51,
+          "n": 2397
         }
       },
       {
         "range": "60-65",
         "5": {
-          "win_rate": 47.7,
-          "excess": 0.06,
-          "n": 2318
+          "win_rate": 47.8,
+          "excess": -0.08,
+          "n": 2199
         },
         "20": {
-          "win_rate": 51.8,
-          "excess": 0.04,
-          "n": 2318
+          "win_rate": 51.1,
+          "excess": -0.13,
+          "n": 2199
         },
         "60": {
           "win_rate": 58.1,
-          "excess": -0.12,
-          "n": 2318
+          "excess": -0.33,
+          "n": 2199
         }
       },
       {
         "range": "65-70",
         "5": {
-          "win_rate": 51.1,
-          "excess": -0.17,
-          "n": 3255
+          "win_rate": 53.4,
+          "excess": -0.08,
+          "n": 3248
         },
         "20": {
-          "win_rate": 54.0,
-          "excess": -0.46,
-          "n": 3255
+          "win_rate": 55.4,
+          "excess": -0.36,
+          "n": 3248
         },
         "60": {
-          "win_rate": 55.4,
-          "excess": -1.05,
-          "n": 3255
+          "win_rate": 56.2,
+          "excess": -0.35,
+          "n": 3248
         }
       },
       {
         "range": "70-75",
         "5": {
-          "win_rate": 48.2,
-          "excess": 0.41,
-          "n": 1362
+          "win_rate": 46.2,
+          "excess": 0.22,
+          "n": 1417
         },
         "20": {
-          "win_rate": 49.9,
-          "excess": 0.9,
-          "n": 1362
+          "win_rate": 50.6,
+          "excess": 1.08,
+          "n": 1417
         },
         "60": {
-          "win_rate": 56.2,
-          "excess": 4.85,
-          "n": 1362
+          "win_rate": 58.2,
+          "excess": 4.49,
+          "n": 1417
         }
       },
       {
         "range": "80-100",
         "5": {
-          "win_rate": 49.8,
-          "excess": 0.23,
-          "n": 31055
+          "win_rate": 50.6,
+          "excess": 0.25,
+          "n": 31116
         },
         "20": {
-          "win_rate": 53.6,
-          "excess": 0.87,
-          "n": 31055
+          "win_rate": 54.2,
+          "excess": 0.88,
+          "n": 31116
         },
         "60": {
-          "win_rate": 58.4,
-          "excess": 2.18,
-          "n": 31055
+          "win_rate": 58.6,
+          "excess": 2.22,
+          "n": 31116
         }
       }
     ],
@@ -273,181 +273,181 @@
       {
         "range": "0-35",
         "5": {
-          "win_rate": 52.8,
-          "excess": -0.17,
-          "n": 24022
+          "win_rate": 51.8,
+          "excess": -0.15,
+          "n": 23982
         },
         "20": {
-          "win_rate": 55.6,
-          "excess": -0.77,
-          "n": 24022
+          "win_rate": 56.1,
+          "excess": -0.75,
+          "n": 23982
         },
         "60": {
-          "win_rate": 58.0,
-          "excess": -1.41,
-          "n": 24022
+          "win_rate": 57.5,
+          "excess": -1.42,
+          "n": 23982
         }
       },
       {
         "range": "35-45",
         "5": {
-          "win_rate": 51.4,
-          "excess": -0.14,
-          "n": 961
+          "win_rate": 51.0,
+          "excess": 0.21,
+          "n": 975
         },
         "20": {
-          "win_rate": 53.8,
-          "excess": -0.34,
-          "n": 961
+          "win_rate": 52.8,
+          "excess": -0.53,
+          "n": 975
         },
         "60": {
-          "win_rate": 55.5,
-          "excess": -1.52,
-          "n": 961
+          "win_rate": 55.3,
+          "excess": -1.5,
+          "n": 975
         }
       },
       {
         "range": "45-50",
         "5": {
-          "win_rate": 52.2,
-          "excess": 0.16,
-          "n": 4394
+          "win_rate": 51.1,
+          "excess": 0.11,
+          "n": 4575
         },
         "20": {
-          "win_rate": 54.6,
-          "excess": 0.18,
-          "n": 4394
+          "win_rate": 53.4,
+          "excess": 0.39,
+          "n": 4575
         },
         "60": {
-          "win_rate": 57.5,
-          "excess": 0.52,
-          "n": 4394
+          "win_rate": 57.2,
+          "excess": 0.42,
+          "n": 4575
         }
       },
       {
         "range": "50-55",
         "5": {
-          "win_rate": 46.4,
-          "excess": -0.26,
-          "n": 1745
+          "win_rate": 50.7,
+          "excess": 0.09,
+          "n": 1627
         },
         "20": {
-          "win_rate": 52.3,
-          "excess": -0.76,
-          "n": 1745
+          "win_rate": 54.3,
+          "excess": 0.33,
+          "n": 1627
         },
         "60": {
-          "win_rate": 56.6,
-          "excess": -0.79,
-          "n": 1745
+          "win_rate": 59.6,
+          "excess": 0.62,
+          "n": 1627
         }
       },
       {
         "range": "55-60",
         "5": {
-          "win_rate": 49.7,
-          "excess": -0.15,
-          "n": 3274
+          "win_rate": 52.1,
+          "excess": -0.35,
+          "n": 3188
         },
         "20": {
-          "win_rate": 54.4,
-          "excess": -0.51,
-          "n": 3274
+          "win_rate": 54.1,
+          "excess": -0.93,
+          "n": 3188
         },
         "60": {
-          "win_rate": 56.2,
-          "excess": -1.25,
-          "n": 3274
+          "win_rate": 56.6,
+          "excess": -1.7,
+          "n": 3188
         }
       },
       {
         "range": "60-65",
         "5": {
-          "win_rate": 51.5,
-          "excess": 0.16,
-          "n": 272
+          "win_rate": 55.4,
+          "excess": 0.45,
+          "n": 296
         },
         "20": {
-          "win_rate": 52.9,
-          "excess": 0.07,
-          "n": 272
+          "win_rate": 55.4,
+          "excess": 1.1,
+          "n": 296
         },
         "60": {
-          "win_rate": 53.7,
-          "excess": -0.04,
-          "n": 272
+          "win_rate": 58.4,
+          "excess": 1.11,
+          "n": 296
         }
       },
       {
         "range": "65-70",
         "5": {
-          "win_rate": 47.9,
+          "win_rate": 48.9,
           "excess": 0.11,
-          "n": 1724
+          "n": 1621
         },
         "20": {
-          "win_rate": 52.1,
-          "excess": 1.71,
-          "n": 1724
+          "win_rate": 52.9,
+          "excess": 1.56,
+          "n": 1621
         },
         "60": {
-          "win_rate": 56.4,
-          "excess": 2.84,
-          "n": 1724
+          "win_rate": 57.2,
+          "excess": 3.41,
+          "n": 1621
         }
       },
       {
         "range": "70-75",
         "5": {
-          "win_rate": 49.1,
-          "excess": 0.06,
-          "n": 5498
+          "win_rate": 49.4,
+          "excess": 0.03,
+          "n": 5615
         },
         "20": {
-          "win_rate": 53.4,
-          "excess": 0.45,
-          "n": 5498
+          "win_rate": 53.8,
+          "excess": 0.26,
+          "n": 5615
         },
         "60": {
           "win_rate": 59.9,
-          "excess": 1.39,
-          "n": 5498
+          "excess": 1.25,
+          "n": 5615
         }
       },
       {
         "range": "75-80",
         "5": {
-          "win_rate": 49.3,
-          "excess": 0.2,
-          "n": 11035
+          "win_rate": 49.2,
+          "excess": 0.14,
+          "n": 11063
         },
         "20": {
-          "win_rate": 52.8,
-          "excess": 0.75,
-          "n": 11035
+          "win_rate": 52.7,
+          "excess": 0.71,
+          "n": 11063
         },
         "60": {
-          "win_rate": 55.5,
-          "excess": 0.7,
-          "n": 11035
+          "win_rate": 55.9,
+          "excess": 0.73,
+          "n": 11063
         }
       },
       {
         "range": "80-100",
         "5": {
-          "win_rate": 47.4,
-          "excess": 0.13,
-          "n": 12745
+          "win_rate": 49.2,
+          "excess": 0.14,
+          "n": 12598
         },
         "20": {
-          "win_rate": 51.5,
+          "win_rate": 52.8,
           "excess": 0.56,
-          "n": 12745
+          "n": 12598
         },
         "60": {
-          "win_rate": 58.2,
-          "excess": 1.43,
-          "n": 12745
+          "win_rate": 59.3,
+          "excess": 1.36,
+          "n": 12598
         }
       }
     ],
@@ -455,181 +455,181 @@
       {
         "range": "0-35",
         "5": {
-          "win_rate": 53.8,
+          "win_rate": 52.3,
           "excess": -0.06,
-          "n": 19069
+          "n": 18792
         },
         "20": {
-          "win_rate": 55.8,
-          "excess": -0.34,
-          "n": 19069
+          "win_rate": 54.6,
+          "excess": -0.46,
+          "n": 18792
         },
         "60": {
-          "win_rate": 58.7,
-          "excess": -0.53,
-          "n": 19069
+          "win_rate": 57.3,
+          "excess": -0.72,
+          "n": 18792
         }
       },
       {
         "range": "35-45",
         "5": {
-          "win_rate": 51.3,
+          "win_rate": 50.9,
           "excess": -0.07,
-          "n": 7627
+          "n": 8066
         },
         "20": {
-          "win_rate": 53.4,
-          "excess": -0.51,
-          "n": 7627
+          "win_rate": 55.8,
+          "excess": -0.27,
+          "n": 8066
         },
         "60": {
           "win_rate": 57.7,
-          "excess": -1.0,
-          "n": 7627
+          "excess": -0.7,
+          "n": 8066
         }
       },
       {
         "range": "45-50",
         "5": {
-          "win_rate": 54.9,
-          "excess": 0.13,
-          "n": 5258
+          "win_rate": 51.2,
+          "excess": -0.06,
+          "n": 4992
         },
         "20": {
-          "win_rate": 54.2,
-          "excess": 0.03,
-          "n": 5258
+          "win_rate": 53.1,
+          "excess": 0.08,
+          "n": 4992
         },
         "60": {
-          "win_rate": 56.9,
-          "excess": -0.67,
-          "n": 5258
+          "win_rate": 57.1,
+          "excess": -0.5,
+          "n": 4992
         }
       },
       {
         "range": "50-55",
         "5": {
-          "win_rate": 50.6,
-          "excess": 0.11,
-          "n": 405
+          "win_rate": 53.7,
+          "excess": 0.27,
+          "n": 395
         },
         "20": {
-          "win_rate": 51.4,
-          "excess": 0.16,
-          "n": 405
+          "win_rate": 59.0,
+          "excess": 1.84,
+          "n": 395
         },
         "60": {
-          "win_rate": 56.8,
-          "excess": 1.55,
-          "n": 405
+          "win_rate": 64.6,
+          "excess": 2.74,
+          "n": 395
         }
       },
       {
         "range": "55-60",
         "5": {
-          "win_rate": 47.5,
-          "excess": -0.09,
-          "n": 8535
+          "win_rate": 48.6,
+          "excess": -0.07,
+          "n": 9068
         },
         "20": {
-          "win_rate": 52.4,
-          "excess": -0.19,
-          "n": 8535
+          "win_rate": 53.4,
+          "excess": -0.11,
+          "n": 9068
         },
         "60": {
-          "win_rate": 55.9,
-          "excess": -0.32,
-          "n": 8535
+          "win_rate": 57.7,
+          "excess": -0.36,
+          "n": 9068
         }
       },
       {
         "range": "60-65",
         "5": {
-          "win_rate": 45.1,
-          "excess": -0.11,
-          "n": 3045
+          "win_rate": 48.7,
+          "excess": 0.12,
+          "n": 2955
         },
         "20": {
-          "win_rate": 52.4,
-          "excess": 0.27,
-          "n": 3045
+          "win_rate": 53.2,
+          "excess": 0.18,
+          "n": 2955
         },
         "60": {
-          "win_rate": 58.1,
-          "excess": 0.95,
-          "n": 3045
+          "win_rate": 58.8,
+          "excess": 1.05,
+          "n": 2955
         }
       },
       {
         "range": "65-70",
         "5": {
-          "win_rate": 50.3,
-          "excess": -0.09,
-          "n": 2350
+          "win_rate": 51.9,
+          "excess": 0.04,
+          "n": 2492
         },
         "20": {
-          "win_rate": 53.5,
-          "excess": -0.17,
-          "n": 2350
+          "win_rate": 54.7,
+          "excess": 0.18,
+          "n": 2492
         },
         "60": {
-          "win_rate": 57.9,
-          "excess": -0.05,
-          "n": 2350
+          "win_rate": 57.1,
+          "excess": 0.02,
+          "n": 2492
         }
       },
       {
         "range": "70-75",
         "5": {
-          "win_rate": 50.0,
-          "excess": 0.55,
-          "n": 1509
+          "win_rate": 51.7,
+          "excess": 0.74,
+          "n": 1504
         },
         "20": {
-          "win_rate": 54.2,
-          "excess": 1.65,
-          "n": 1509
+          "win_rate": 54.5,
+          "excess": 1.95,
+          "n": 1504
         },
         "60": {
-          "win_rate": 56.3,
-          "excess": 3.6,
-          "n": 1509
+          "win_rate": 59.2,
+          "excess": 4.03,
+          "n": 1504
         }
       },
       {
         "range": "75-80",
         "5": {
-          "win_rate": 47.2,
-          "excess": 0.01,
-          "n": 11693
+          "win_rate": 50.1,
+          "excess": 0.06,
+          "n": 11530
         },
         "20": {
-          "win_rate": 52.8,
-          "excess": 0.39,
-          "n": 11693
+          "win_rate": 54.2,
+          "excess": 0.35,
+          "n": 11530
         },
         "60": {
-          "win_rate": 57.6,
-          "excess": 0.81,
-          "n": 11693
+          "win_rate": 58.5,
+          "excess": 0.77,
+          "n": 11530
         }
       },
       {
         "range": "80-100",
         "5": {
-          "win_rate": 47.1,
-          "excess": 0.24,
-          "n": 6179
+          "win_rate": 47.5,
+          "excess": 0.04,
+          "n": 5746
         },
         "20": {
-          "win_rate": 52.5,
-          "excess": 0.72,
-          "n": 6179
+          "win_rate": 53.4,
+          "excess": 0.46,
+          "n": 5746
         },
         "60": {
-          "win_rate": 55.9,
-          "excess": 0.92,
-          "n": 6179
+          "win_rate": 57.3,
+          "excess": 0.99,
+          "n": 5746
         }
       }
     ],
@@ -637,181 +637,181 @@
       {
         "range": "0-35",
         "5": {
-          "win_rate": 49.0,
-          "excess": 0.11,
-          "n": 6008
+          "win_rate": 50.5,
+          "excess": 0.03,
+          "n": 6240
         },
         "20": {
-          "win_rate": 51.5,
-          "excess": 0.12,
-          "n": 6008
+          "win_rate": 53.5,
+          "excess": 0.57,
+          "n": 6240
         },
         "60": {
-          "win_rate": 56.2,
-          "excess": 0.19,
-          "n": 6008
+          "win_rate": 57.7,
+          "excess": 0.74,
+          "n": 6240
         }
       },
       {
         "range": "35-45",
         "5": {
-          "win_rate": 51.0,
-          "excess": 0.05,
-          "n": 19531
+          "win_rate": 50.9,
+          "excess": 0.08,
+          "n": 19550
         },
         "20": {
           "win_rate": 53.4,
-          "excess": 0.2,
-          "n": 19531
+          "excess": 0.16,
+          "n": 19550
         },
         "60": {
-          "win_rate": 58.0,
-          "excess": 0.61,
-          "n": 19531
+          "win_rate": 57.3,
+          "excess": 0.2,
+          "n": 19550
         }
       },
       {
         "range": "45-50",
         "5": {
-          "win_rate": 50.3,
-          "excess": 0.1,
-          "n": 3242
+          "win_rate": 51.7,
+          "excess": -0.06,
+          "n": 3201
         },
         "20": {
-          "win_rate": 56.3,
-          "excess": 0.39,
-          "n": 3242
+          "win_rate": 56.6,
+          "excess": 0.08,
+          "n": 3201
         },
         "60": {
-          "win_rate": 60.8,
-          "excess": 0.44,
-          "n": 3242
+          "win_rate": 61.7,
+          "excess": 0.01,
+          "n": 3201
         }
       },
       {
         "range": "50-55",
         "5": {
-          "win_rate": 52.5,
+          "win_rate": 50.7,
           "excess": -0.03,
-          "n": 5784
+          "n": 5610
         },
         "20": {
-          "win_rate": 54.7,
-          "excess": -0.25,
-          "n": 5784
+          "win_rate": 54.3,
+          "excess": -0.4,
+          "n": 5610
         },
         "60": {
-          "win_rate": 57.6,
-          "excess": -0.58,
-          "n": 5784
+          "win_rate": 56.8,
+          "excess": -0.49,
+          "n": 5610
         }
       },
       {
         "range": "55-60",
         "5": {
-          "win_rate": 48.6,
-          "excess": -0.12,
-          "n": 15788
+          "win_rate": 50.1,
+          "excess": -0.06,
+          "n": 15441
         },
         "20": {
-          "win_rate": 53.8,
-          "excess": -0.25,
-          "n": 15788
+          "win_rate": 54.2,
+          "excess": -0.23,
+          "n": 15441
         },
         "60": {
-          "win_rate": 57.6,
-          "excess": -0.35,
-          "n": 15788
+          "win_rate": 57.4,
+          "excess": -0.21,
+          "n": 15441
         }
       },
       {
         "range": "60-65",
         "5": {
-          "win_rate": 51.5,
-          "excess": -0.11,
-          "n": 6094
+          "win_rate": 50.2,
+          "excess": -0.07,
+          "n": 6172
         },
         "20": {
-          "win_rate": 54.7,
-          "excess": -0.3,
-          "n": 6094
+          "win_rate": 55.1,
+          "excess": -0.28,
+          "n": 6172
         },
         "60": {
-          "win_rate": 55.7,
-          "excess": -0.58,
-          "n": 6094
+          "win_rate": 57.3,
+          "excess": -0.57,
+          "n": 6172
         }
       },
       {
         "range": "65-70",
         "5": {
-          "win_rate": 51.8,
-          "excess": 0.2,
-          "n": 4007
+          "win_rate": 49.7,
+          "excess": -0.04,
+          "n": 3829
         },
         "20": {
-          "win_rate": 55.7,
-          "excess": 0.33,
-          "n": 4007
+          "win_rate": 53.8,
+          "excess": -0.16,
+          "n": 3829
         },
         "60": {
-          "win_rate": 57.9,
-          "excess": -0.1,
-          "n": 4007
+          "win_rate": 57.1,
+          "excess": -0.57,
+          "n": 3829
         }
       },
       {
         "range": "70-75",
         "5": {
-          "win_rate": 49.9,
-          "excess": -0.03,
-          "n": 3801
+          "win_rate": 51.1,
+          "excess": 0.08,
+          "n": 4016
         },
         "20": {
-          "win_rate": 52.9,
-          "excess": 0.05,
-          "n": 3801
+          "win_rate": 56.0,
+          "excess": 0.31,
+          "n": 4016
         },
         "60": {
-          "win_rate": 56.8,
-          "excess": -0.3,
-          "n": 3801
+          "win_rate": 60.2,
+          "excess": 0.8,
+          "n": 4016
         }
       },
       {
         "range": "75-80",
         "5": {
           "win_rate": 52.2,
-          "excess": -0.5,
-          "n": 358
+          "excess": -0.22,
+          "n": 387
         },
         "20": {
-          "win_rate": 55.6,
-          "excess": -1.11,
-          "n": 358
+          "win_rate": 55.8,
+          "excess": -1.15,
+          "n": 387
         },
         "60": {
-          "win_rate": 57.3,
-          "excess": -1.81,
-          "n": 358
+          "win_rate": 58.9,
+          "excess": -4.45,
+          "n": 387
         }
       },
       {
         "range": "80-100",
         "5": {
           "win_rate": 49.6,
-          "excess": 0.22,
-          "n": 1057
+          "excess": -0.12,
+          "n": 1094
         },
         "20": {
-          "win_rate": 51.5,
-          "excess": 0.18,
-          "n": 1057
+          "win_rate": 57.1,
+          "excess": 0.38,
+          "n": 1094
         },
         "60": {
-          "win_rate": 56.6,
-          "excess": 0.28,
-          "n": 1057
+          "win_rate": 58.3,
+          "excess": 1.43,
+          "n": 1094
         }
       }
     ],
@@ -819,181 +819,181 @@
       {
         "range": "0-35",
         "5": {
-          "win_rate": 49.3,
-          "excess": -0.23,
-          "n": 5737
+          "win_rate": 52.0,
+          "excess": -0.05,
+          "n": 5662
         },
         "20": {
-          "win_rate": 55.1,
-          "excess": -0.76,
-          "n": 5737
+          "win_rate": 56.3,
+          "excess": -0.98,
+          "n": 5662
         },
         "60": {
-          "win_rate": 57.7,
-          "excess": -1.3,
-          "n": 5737
+          "win_rate": 57.0,
+          "excess": -1.6,
+          "n": 5662
         }
       },
       {
         "range": "35-45",
         "5": {
           "win_rate": 50.4,
-          "excess": -0.11,
-          "n": 7223
+          "excess": -0.12,
+          "n": 7450
         },
         "20": {
-          "win_rate": 54.5,
-          "excess": -0.38,
-          "n": 7223
+          "win_rate": 54.6,
+          "excess": -0.04,
+          "n": 7450
         },
         "60": {
-          "win_rate": 56.5,
-          "excess": -0.84,
-          "n": 7223
+          "win_rate": 58.4,
+          "excess": 0.14,
+          "n": 7450
         }
       },
       {
         "range": "45-50",
         "5": {
-          "win_rate": 51.7,
-          "excess": 0.09,
-          "n": 12816
+          "win_rate": 52.0,
+          "excess": 0.08,
+          "n": 12981
         },
         "20": {
-          "win_rate": 54.4,
-          "excess": 0.09,
-          "n": 12816
+          "win_rate": 55.3,
+          "excess": 0.06,
+          "n": 12981
         },
         "60": {
-          "win_rate": 58.6,
-          "excess": 0.25,
-          "n": 12816
+          "win_rate": 58.8,
+          "excess": 0.01,
+          "n": 12981
         }
       },
       {
         "range": "50-55",
         "5": {
-          "win_rate": 50.9,
-          "excess": -0.06,
-          "n": 3798
+          "win_rate": 48.4,
+          "excess": -0.27,
+          "n": 3807
         },
         "20": {
-          "win_rate": 54.0,
-          "excess": -0.48,
-          "n": 3798
+          "win_rate": 54.2,
+          "excess": -0.57,
+          "n": 3807
         },
         "60": {
-          "win_rate": 58.6,
-          "excess": -0.92,
-          "n": 3798
+          "win_rate": 57.0,
+          "excess": -1.78,
+          "n": 3807
         }
       },
       {
         "range": "55-60",
         "5": {
-          "win_rate": 50.4,
-          "excess": 0.03,
-          "n": 10969
+          "win_rate": 50.0,
+          "excess": -0.03,
+          "n": 10810
         },
         "20": {
-          "win_rate": 54.4,
-          "excess": 0.2,
-          "n": 10969
+          "win_rate": 53.1,
+          "excess": -0.08,
+          "n": 10810
         },
         "60": {
-          "win_rate": 57.8,
-          "excess": 0.37,
-          "n": 10969
+          "win_rate": 56.8,
+          "excess": 0.07,
+          "n": 10810
         }
       },
       {
         "range": "60-65",
         "5": {
-          "win_rate": 50.6,
-          "excess": -0.1,
-          "n": 8563
+          "win_rate": 50.7,
+          "excess": -0.02,
+          "n": 8573
         },
         "20": {
-          "win_rate": 53.4,
-          "excess": -0.15,
-          "n": 8563
+          "win_rate": 54.8,
+          "excess": -0.06,
+          "n": 8573
         },
         "60": {
-          "win_rate": 57.7,
-          "excess": -0.21,
-          "n": 8563
+          "win_rate": 58.5,
+          "excess": -0.07,
+          "n": 8573
         }
       },
       {
         "range": "65-70",
         "5": {
-          "win_rate": 50.7,
-          "excess": 0.06,
-          "n": 5215
+          "win_rate": 51.0,
+          "excess": 0.22,
+          "n": 5140
         },
         "20": {
-          "win_rate": 53.6,
-          "excess": 0.34,
-          "n": 5215
+          "win_rate": 54.6,
+          "excess": 0.94,
+          "n": 5140
         },
         "60": {
-          "win_rate": 58.2,
-          "excess": 1.12,
-          "n": 5215
+          "win_rate": 58.4,
+          "excess": 0.96,
+          "n": 5140
         }
       },
       {
         "range": "70-75",
         "5": {
-          "win_rate": 49.1,
-          "excess": 0.05,
-          "n": 3630
+          "win_rate": 48.7,
+          "excess": -0.11,
+          "n": 3526
         },
         "20": {
-          "win_rate": 52.0,
-          "excess": 0.12,
-          "n": 3630
+          "win_rate": 52.1,
+          "excess": 0.14,
+          "n": 3526
         },
         "60": {
-          "win_rate": 54.6,
-          "excess": -0.46,
-          "n": 3630
+          "win_rate": 55.8,
+          "excess": 0.26,
+          "n": 3526
         }
       },
       {
         "range": "75-80",
         "5": {
-          "win_rate": 49.0,
-          "excess": 0.17,
-          "n": 6456
+          "win_rate": 50.0,
+          "excess": 0.16,
+          "n": 6455
         },
         "20": {
-          "win_rate": 51.5,
-          "excess": 0.6,
-          "n": 6456
+          "win_rate": 52.6,
+          "excess": 0.59,
+          "n": 6455
         },
         "60": {
-          "win_rate": 56.9,
-          "excess": 1.36,
-          "n": 6456
+          "win_rate": 57.8,
+          "excess": 1.31,
+          "n": 6455
         }
       },
       {
         "range": "80-100",
         "5": {
-          "win_rate": 46.0,
-          "excess": 0.07,
-          "n": 1263
+          "win_rate": 46.4,
+          "excess": -0.12,
+          "n": 1136
         },
         "20": {
-          "win_rate": 53.0,
-          "excess": 0.64,
-          "n": 1263
+          "win_rate": 51.1,
+          "excess": -0.43,
+          "n": 1136
         },
         "60": {
-          "win_rate": 53.6,
-          "excess": -1.1,
-          "n": 1263
+          "win_rate": 54.0,
+          "excess": 0.07,
+          "n": 1136
         }
       }
     ],
@@ -1001,109 +1001,109 @@
       {
         "range": "35-45",
         "5": {
-          "win_rate": 49.5,
-          "excess": 0.57,
-          "n": 14456
+          "win_rate": 50.5,
+          "excess": 0.56,
+          "n": 14450
         },
         "20": {
-          "win_rate": 54.4,
-          "excess": 2.04,
-          "n": 14456
+          "win_rate": 54.7,
+          "excess": 2.12,
+          "n": 14450
         },
         "60": {
-          "win_rate": 59.6,
-          "excess": 4.59,
-          "n": 14456
+          "win_rate": 60.4,
+          "excess": 4.81,
+          "n": 14450
         }
       },
       {
         "range": "45-50",
         "5": {
-          "win_rate": 49.6,
-          "excess": 0.05,
-          "n": 6438
+          "win_rate": 49.8,
+          "excess": 0.11,
+          "n": 6477
         },
         "20": {
-          "win_rate": 53.0,
-          "excess": 0.41,
-          "n": 6438
+          "win_rate": 53.9,
+          "excess": 0.35,
+          "n": 6477
         },
         "60": {
-          "win_rate": 57.8,
-          "excess": 1.41,
-          "n": 6438
+          "win_rate": 58.2,
+          "excess": 0.86,
+          "n": 6477
         }
       },
       {
         "range": "50-55",
         "5": {
-          "win_rate": 48.7,
-          "excess": 0.01,
-          "n": 9283
+          "win_rate": 49.5,
+          "excess": -0.12,
+          "n": 9227
         },
         "20": {
-          "win_rate": 53.0,
-          "excess": 0.04,
-          "n": 9283
+          "win_rate": 54.1,
+          "excess": -0.03,
+          "n": 9227
         },
         "60": {
-          "win_rate": 58.0,
-          "excess": 0.56,
-          "n": 9283
+          "win_rate": 58.3,
+          "excess": -0.14,
+          "n": 9227
         }
       },
       {
         "range": "55-60",
         "5": {
-          "win_rate": 50.0,
-          "excess": -0.17,
-          "n": 12573
+          "win_rate": 50.5,
+          "excess": -0.1,
+          "n": 12483
         },
         "20": {
-          "win_rate": 51.2,
-          "excess": -0.61,
-          "n": 12573
+          "win_rate": 52.3,
+          "excess": -0.56,
+          "n": 12483
         },
         "60": {
-          "win_rate": 54.6,
-          "excess": -1.35,
-          "n": 12573
+          "win_rate": 54.8,
+          "excess": -0.64,
+          "n": 12483
         }
       },
       {
         "range": "60-65",
         "5": {
-          "win_rate": 50.3,
-          "excess": -0.27,
-          "n": 11960
+          "win_rate": 50.1,
+          "excess": -0.3,
+          "n": 12092
         },
         "20": {
-          "win_rate": 52.8,
-          "excess": -0.99,
-          "n": 11960
+          "win_rate": 53.1,
+          "excess": -1.03,
+          "n": 12092
         },
         "60": {
-          "win_rate": 55.2,
-          "excess": -2.56,
-          "n": 11960
+          "win_rate": 55.4,
+          "excess": -2.59,
+          "n": 12092
         }
       },
       {
         "range": "65-70",
         "5": {
-          "win_rate": 53.8,
-          "excess": -0.3,
-          "n": 10960
+          "win_rate": 52.4,
+          "excess": -0.26,
+          "n": 10811
         },
         "20": {
-          "win_rate": 58.3,
-          "excess": -1.18,
-          "n": 10960
+          "win_rate": 57.4,
+          "excess": -1.22,
+          "n": 10811
         },
         "60": {
-          "win_rate": 60.1,
-          "excess": -3.03,
-          "n": 10960
+          "win_rate": 59.5,
+          "excess": -3.18,
+          "n": 10811
         }
       }
     ],
@@ -1111,181 +1111,181 @@
       {
         "range": "0-35",
         "5": {
-          "win_rate": 49.5,
+          "win_rate": 50.6,
           "excess": 0.52,
-          "n": 15451
+          "n": 15425
         },
         "20": {
-          "win_rate": 54.6,
-          "excess": 1.9,
-          "n": 15451
+          "win_rate": 54.9,
+          "excess": 2.0,
+          "n": 15425
         },
         "60": {
-          "win_rate": 60.0,
-          "excess": 4.3,
-          "n": 15451
+          "win_rate": 60.7,
+          "excess": 4.47,
+          "n": 15425
         }
       },
       {
         "range": "35-45",
         "5": {
           "win_rate": 49.6,
-          "excess": 0.12,
-          "n": 3787
+          "excess": 0.14,
+          "n": 3875
         },
         "20": {
-          "win_rate": 52.2,
-          "excess": 0.45,
-          "n": 3787
+          "win_rate": 53.5,
+          "excess": 0.25,
+          "n": 3875
         },
         "60": {
-          "win_rate": 56.2,
-          "excess": 1.35,
-          "n": 3787
+          "win_rate": 56.4,
+          "excess": 0.47,
+          "n": 3875
         }
       },
       {
         "range": "45-50",
         "5": {
-          "win_rate": 50.0,
-          "excess": 0.15,
-          "n": 2378
+          "win_rate": 50.1,
+          "excess": 0.05,
+          "n": 2348
         },
         "20": {
           "win_rate": 53.2,
-          "excess": 0.52,
-          "n": 2378
+          "excess": 0.5,
+          "n": 2348
         },
         "60": {
-          "win_rate": 57.6,
-          "excess": 1.84,
-          "n": 2378
+          "win_rate": 59.2,
+          "excess": 1.61,
+          "n": 2348
         }
       },
       {
         "range": "50-55",
         "5": {
-          "win_rate": 48.1,
-          "excess": -0.12,
-          "n": 3159
+          "win_rate": 49.7,
+          "excess": -0.16,
+          "n": 3194
         },
         "20": {
-          "win_rate": 53.0,
-          "excess": -0.26,
-          "n": 3159
+          "win_rate": 55.1,
+          "excess": -0.13,
+          "n": 3194
         },
         "60": {
-          "win_rate": 58.5,
-          "excess": 0.02,
-          "n": 3159
+          "win_rate": 58.2,
+          "excess": -0.69,
+          "n": 3194
         }
       },
       {
         "range": "55-60",
         "5": {
-          "win_rate": 48.4,
-          "excess": 0.1,
-          "n": 1809
+          "win_rate": 48.8,
+          "excess": -0.09,
+          "n": 1778
         },
         "20": {
-          "win_rate": 51.3,
-          "excess": 0.55,
-          "n": 1809
+          "win_rate": 51.9,
+          "excess": 0.35,
+          "n": 1778
         },
         "60": {
-          "win_rate": 57.2,
-          "excess": 1.3,
-          "n": 1809
+          "win_rate": 57.5,
+          "excess": 1.69,
+          "n": 1778
         }
       },
       {
         "range": "60-65",
         "5": {
-          "win_rate": 48.7,
-          "excess": -0.02,
-          "n": 3536
+          "win_rate": 49.6,
+          "excess": -0.11,
+          "n": 3482
         },
         "20": {
-          "win_rate": 53.4,
-          "excess": -0.02,
-          "n": 3536
+          "win_rate": 54.4,
+          "excess": -0.16,
+          "n": 3482
         },
         "60": {
-          "win_rate": 57.6,
-          "excess": 0.67,
-          "n": 3536
+          "win_rate": 58.2,
+          "excess": -0.34,
+          "n": 3482
         }
       },
       {
         "range": "65-70",
         "5": {
-          "win_rate": 51.3,
-          "excess": -0.06,
-          "n": 3304
+          "win_rate": 50.6,
+          "excess": -0.09,
+          "n": 3416
         },
         "20": {
-          "win_rate": 51.0,
-          "excess": -0.6,
-          "n": 3304
+          "win_rate": 51.9,
+          "excess": -0.62,
+          "n": 3416
         },
         "60": {
-          "win_rate": 55.1,
-          "excess": -1.06,
-          "n": 3304
+          "win_rate": 55.8,
+          "excess": -0.26,
+          "n": 3416
         }
       },
       {
         "range": "70-75",
         "5": {
-          "win_rate": 50.3,
-          "excess": -0.21,
-          "n": 2883
+          "win_rate": 49.6,
+          "excess": -0.1,
+          "n": 2793
         },
         "20": {
-          "win_rate": 51.0,
-          "excess": -0.32,
-          "n": 2883
+          "win_rate": 51.3,
+          "excess": -0.43,
+          "n": 2793
         },
         "60": {
-          "win_rate": 53.6,
-          "excess": -0.68,
-          "n": 2883
+          "win_rate": 52.8,
+          "excess": -0.62,
+          "n": 2793
         }
       },
       {
         "range": "75-80",
         "5": {
-          "win_rate": 49.7,
-          "excess": -0.13,
-          "n": 4463
+          "win_rate": 50.6,
+          "excess": -0.12,
+          "n": 4431
         },
         "20": {
-          "win_rate": 51.5,
-          "excess": -0.56,
-          "n": 4463
+          "win_rate": 52.1,
+          "excess": -0.62,
+          "n": 4431
         },
         "60": {
-          "win_rate": 55.4,
-          "excess": -1.23,
-          "n": 4463
+          "win_rate": 55.7,
+          "excess": -0.56,
+          "n": 4431
         }
       },
       {
         "range": "80-100",
         "5": {
-          "win_rate": 51.6,
-          "excess": -0.29,
-          "n": 24900
+          "win_rate": 51.2,
+          "excess": -0.27,
+          "n": 24798
         },
         "20": {
           "win_rate": 55.1,
-          "excess": -1.08,
-          "n": 24900
+          "excess": -1.07,
+          "n": 24798
         },
         "60": {
-          "win_rate": 57.2,
-          "excess": -2.8,
-          "n": 24900
+          "win_rate": 57.0,
+          "excess": -2.78,
+          "n": 24798
         }
       }
     ]
