@@ -214,44 +214,54 @@ def trend_cell(trend_score, min_width=104, primary=True) -> str:
 
 def score_legend() -> str:
     """
-    卡片上每個數字是什麼、哪個能拿來選股 —— 三頁共用同一份說明。
+    卡片上每個數字是什麼、哪個能拿來選股 —— 三頁共用的唯一說明。
 
-    使用者實際問過「這些分數各自代表啥、哪個比較能當選股指標」，
-    表示光靠標籤不夠。這裡直接把答案寫在頁面上。
+    **所有數字都從實證檔生成。** 這張表先前是手寫的，換模型後就過期了，
+    而且沒有任何測試會抓到（`check_consistency.py` 就是為此而寫的）。
     """
-    return """
+    from services.evidence import (
+        strategy_stats, get_stats_for_model, trend_bucket_rows,
+    )
+    tr = strategy_stats("trend", 60) or {}
+    lp = strategy_stats("lowpe", 60) or {}
+    ct = strategy_stats("contrarian", 60) or {}
+    total = get_stats_for_model("綜合強勢(技術)", 20, run="main_3y") or {}
+
+    def fmt(d, extra=""):
+        if not d:
+            return "（無實證資料）"
+        sig = "" if d.get("t") is None else f"、t={d['t']:+.2f}"
+        return f"超額 **{d['excess']:+.2f}%**{sig}{extra}"
+
+    rows = trend_bucket_rows(60)
+    top = rows[-1] if rows else None
+    trend_line = (f"✅ **就是用它**。持有3個月{fmt(tr)}"
+                  f"、贏大盤 {tr.get('beat_rate', 0):.0f}%"
+                  if tr else "✅ 選股主訊號")
+    if top:
+        trend_line += f"；最高分區間（{top['range']}）達 {top['excess']:+.2f}%"
+
+    total_line = ("🟡 弱。"
+                  + (f"超額 {total.get('excess_return', 0):+.2f}%、"
+                     f"t={total.get('t_stat', 0):+.2f}"
+                     f"（{'顯著' if total.get('significant') else '**不顯著**'}）"
+                     if total else "預測力弱")
+                  + "。當健檢用，不要拿來排序")
+
+    return f"""
 | 卡片上的數字 | 代表什麼 | 能當選股指標嗎 |
 |---|---|---|
-| **趨勢結構分** ★ | 距季線／均線排列／季線斜率在**當日全市場的百分位**。80 分＝趨勢強度贏過八成股票 | ✅ **就是用它**。139期回測持有3個月超額 **+7.18%**、t=5.52、贏大盤 66% |
-| 綜合評分 | 技術40%＋基本面30%＋消息15%＋目標價15% 的體質總覽 | 🟡 弱。超額僅 +0.40%、t=1.06（**不顯著**）。當健檢用，不要拿來排序 |
-| 潛力分 | 低基期×題材，找「還沒漲的」 | ⛔ 多頭失效（−0.98%），只有空頭轉正（+2.23%） |
-| 極短／短／中 週期評分 | 各持有期的技術強弱（1–3天／1週／1個月） | 🟡 越短越弱：中線 +1.90%、短線 +1.29%、極短 +0.23%（不顯著） |
-| 本益比 | 估值 | ⛔ **單獨用會虧錢**：買最低本益比持有3個月超額 −4.48%、t=−3.82 |
-| 融資使用率 | 籌碼風險 | ⛔ 無選股訊號（t=−0.14），只當**風險警示**用 |
+| **趨勢結構分** ★ | 距季線／均線排列／季線斜率在**當日全市場的百分位**。80 分＝趨勢強度贏過八成股票 | {trend_line} |
+| 綜合評分 | 技術40%＋基本面30%＋消息15%＋目標價15% 的體質總覽 | {total_line} |
+| 潛力分 | 低基期×題材，找「還沒漲的」 | ⛔ 持有3個月{fmt(ct)} |
+| 極短／短／中 週期評分 | 各持有期的技術強弱（1–3天／1週／1個月） | 🟡 越短週期越弱，僅供參考 |
+| 本益比 | 估值 | ⛔ **單獨用會虧錢**：持有3個月{fmt(lp)} |
+| 融資使用率 | 籌碼風險 | ⛔ 回測顯示無選股訊號，只當**風險警示**用 |
 
 **結論：選股看「趨勢結構分」，其他都是背景資訊。**
 但它是純技術的**相對排名**，不看貴不貴——高分常常正是因為已經漲很多，
 請搭配 🔥 過熱警示與本益比一起看。
 """
-
-
-def bucket_table(hold_days=60) -> str:
-    """分數區間 → 後續表現的表格（由實證檔生成，畫面上不寫死任何數字）。"""
-    rows = trend_bucket_rows(hold_days)
-    if not rows:
-        return ""
-    lab = {20: "1個月", 40: "2個月", 60: "3個月"}.get(hold_days, f"{hold_days}日")
-    out = [f"| 趨勢分區間 | 持有{lab}超額 | t值 | 贏大盤比率 | 絕對報酬 |",
-           "|---|---|---|---|---|"]
-    for r in rows:
-        star = " ⬅" if r["lo"] >= 90 else ""
-        out.append(f"| {r['range']}{star} | {r['excess']:+.2f}% | {r['t']:+.2f} | "
-                   f"{r['beat_rate']:.0f}% | {r['abs_return']:+.2f}% |")
-    rho = trend_monotonicity(hold_days)
-    if rho is not None:
-        out.append("")
-        out.append(f"單調性 Spearman **ρ = {rho:+.2f}** —— 分數與後續超額幾乎完全同向。")
-    return "\n".join(out)
 
 
 def strategy_caption(key: str, hold_days: int = 60) -> str:
@@ -351,3 +361,63 @@ def cross_evidence(keys, hold_days: int = 60) -> str:
             "但不要期待它比單押最強的策略賺更多。"
             if any_row else "")
     return head + "\n".join(lines) + tail
+
+
+def hold_longer_note() -> str:
+    """「抱越久超額越大」的證據 —— 取最高分區間在各持有期的超額，由資料生成。"""
+    from services.evidence import trend_bucket_rows
+    parts = []
+    for h in (20, 40, 60):
+        rows = trend_bucket_rows(h)
+        if rows:
+            parts.append(f"{ {20:'1個月', 40:'2個月', 60:'3個月'}[h] } "
+                         f"{rows[-1]['excess']:+.2f}%")
+    if not parts:
+        return "同一批高分股，持有越久超額越大。"
+    return ("同一批高分股（分數最高的區間），持有越久超額越大："
+            + "　→　".join(parts) + "。")
+
+
+def cmp_periods():
+    """策略對照回測的期數（畫面顯示期數時用，不要寫死）。"""
+    from services.evidence import load_strategy_comparison
+    return load_strategy_comparison().get("generated_periods")
+
+
+def bucket_table(hold_days=60) -> str:
+    """分數區間 → 後續表現的表格（由實證檔生成，畫面上不寫死任何數字）。"""
+    from services.evidence import trend_bucket_rows, trend_monotonicity
+    rows = trend_bucket_rows(hold_days)
+    if not rows:
+        return ""
+    lab = {20: "1個月", 40: "2個月", 60: "3個月"}.get(hold_days, f"{hold_days}日")
+    out = [f"| 趨勢分區間 | 持有{lab}超額 | t值 | 贏大盤比率 | 絕對報酬 |",
+           "|---|---|---|---|---|"]
+    for r in rows:
+        star = " ⬅" if r["lo"] >= 90 else ""
+        out.append(f"| {r['range']}{star} | {r['excess']:+.2f}% | {r['t']:+.2f} | "
+                   f"{r['beat_rate']:.0f}% | {r['abs_return']:+.2f}% |")
+    rho = trend_monotonicity(hold_days)
+    if rho is not None:
+        out.append("")
+        out.append(f"單調性 Spearman **ρ = {rho:+.2f}** —— 分數與後續超額幾乎完全同向。")
+    return "\n".join(out)
+
+
+def trend_delta_badge(delta, prev_date=None) -> str:
+    """
+    趨勢分與上次快照的變化。
+
+    刻意在「沒有前次資料」時回傳空字串而不是「0」——
+    「查無資料」與「沒有變化」是兩件事，混在一起顯示會誤導。
+    """
+    if delta is None:
+        return ""
+    if abs(delta) < 1:
+        return ("<div style='font-size:9px;color:#78909c;'>≈ 持平</div>")
+    up = delta > 0
+    color = "#f03e3e" if up else "#2f9e44"      # 台股習慣：紅漲綠跌
+    arrow = "▲" if up else "▼"
+    tip = f"對比 {prev_date}" if prev_date else ""
+    return (f"<div title='{tip}' style='font-size:10px;color:{color};font-weight:700;'>"
+            f"{arrow} {abs(delta):.0f}</div>")

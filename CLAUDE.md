@@ -342,3 +342,34 @@ UI 一律用 `ui.strategy_caption()` / `ui.strategy_table()` 產生說明，
    `strategy_comparison.json` 生成，並說明先前結論為何無效。
 7. `evidence.py` 殘留已刪策略鍵、`universe.py` 仍算沒人用的 `prelim_balanced`、
    `limitup` 初篩鍵用不相干的 `total_score` —— 都已清理。
+
+## ✅ 改完一定要跑 `check_consistency.py`（2026-09-09）
+`AppTest` 只驗「頁面不拋例外」——頁面顯示**錯的數字**時它一樣是綠燈，
+所以這個專案最常犯的兩類錯它一個都抓不到。`check_consistency.py` 補上：
+
+1. **UI 字串裡不得寫死回測數字**（AST 掃 app.py / services/ui.py 的字串常數，
+   找 `+N.NN%`、`t=N.NN`、`NNN期`、`勝率N%`）。第一次跑就抓到 9 處漏網。
+2. **同一檔股票在各頁必須顯示同一個趨勢結構分**（真的把頁面渲染出來、
+   從畫面文字挖數字比對，而不是比對內部變數——使用者看到的是畫面）。
+
+```bash
+python3 check_consistency.py            # 兩項都跑
+python3 check_consistency.py --numbers  # 只掃寫死數字（快）
+```
+它已經抓到一次真的回歸：改 `score_legend` 時用字串切片，
+連帶把 `ui.bucket_table` 整個刪掉，`app.py` 因此 ImportError。
+
+⚠️ 白名單（ALLOW）比對的是**命中的那一段**，不是整個字串。
+先前寫成整段跳過，結果一段文字只要提到 0.585% 手續費，
+同段裡所有寫死的回測數字都被放行。
+
+## 📈 持股頁的趨勢分變化（2026-09-09）
+`services/trend_history.py` 每次持股頁重新評分就存一筆 `{日期: {股號: 分數}}`，
+卡片上顯示 ▲/▼ 對比**最近一個不同日期**的快照（不是「上一次評分」——
+同一天按五次重新評分不該產生五個比較基準）。
+沒有前次資料時**不顯示**，不要拿 0 當「沒變化」。
+`trend_history.json` 是個人資料，已列入 .gitignore。
+
+## 🔎 交叉篩選的「至少命中 K 個」
+⚠️ 只選 2 個策略時 K 只能是 2，此時**不能畫滑桿**：
+Streamlit 的 `st.slider` 要求 `min_value < max_value`，min==max 會拋錯讓整頁掛掉。

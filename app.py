@@ -27,8 +27,11 @@ from services.stock_lookup import resolve_query, display_name, resolve_company_n
 from services.potential import calculate_potential_score
 from services.universe import scan_universe, get_listed_snapshot
 from services.evidence import (
+    meta as ev_meta,
+    run_periods as ev_run_periods,
     trend_bucket_stats as ev_trend_bucket,
     strategy_stats as ev_strategy_stats,
+    strategy_walk_forward as ev_strategy_wf,
     get_stats as ev_stats, verdict as ev_verdict, all_model_rows as ev_rows,
     benchmark_return as ev_bench, meta as ev_meta,
     regime_stats as ev_regime_stats, best_strategies_for_regime as ev_best_for_regime,
@@ -38,12 +41,17 @@ from services.evidence import (
     MODEL_TO_STRATEGY,
 )
 from services.sector import analyse_sectors, get_industry_map, industry_name
+from services.trend_history import (
+    record as th_record, previous as th_previous, delta_for as th_delta,
+)
 from services.strategies import STRATEGIES, LABELS as STRAT_LABELS, \
     CAPTIONS as STRAT_CAPTIONS, get as get_strategy, \
     select as strat_select, explain as strat_explain
 from services.ui import (
     overheat_badge, trend_cell, score_legend, bucket_table,
     strategy_caption, strategy_table, cross_evidence,
+    hold_longer_note as _hold_longer_note, cmp_periods as _cmp_periods,
+    trend_delta_badge,
     pe_badge, pe_inline, horizon_cells, evidence_badge, rr_cell,
     threshold_note, long_threshold,
 )
@@ -1431,9 +1439,8 @@ def render_recommendation_tab(
             "與近20日低點中較合理者；停利優先用加權目標價。"
         )
         st.warning(
-            "⚠️ **回測實證：機械式 2×ATR 停損會嚴重侵蝕長期報酬**——139 期回測顯示，"
-            "同樣的選股加上此停損後，超額報酬 1個月由 +3.10% 降至 +1.80%、"
-            "**3個月由 +12.54% 大幅降至 +4.21%**（持有越久傷害越大，因為會被洗出後續反彈的部位）。"
+            "⚠️ **回測實證：機械式 2×ATR 停損會嚴重侵蝕長期報酬**——滾動回測顯示，"
+            "同樣的選股加上此停損後，超額報酬明顯下降（持有越久傷害越大，因為會被洗出後續反彈的部位）。"
             "另外「依風報比 R:R 排序選股」在回測中**無效**（超額報酬為負）。"
             "→ 建議把停損價當作**風險意識與部位控管的參考**，而非機械執行的出場規則。"
         )
@@ -1931,16 +1938,17 @@ def render_smart_screener_page():
             st.info(
                 f"💡 目前大盤為「{regime.get('label', '')}」，此策略在這類環境的歷史表現不佳。"
                 "**但走查驗證顯示：與其隨盤勢換策略，不如固定用同一個模型**"
-                "——滾動4折走查換模型 +5.97%，同期間固定用趨勢結構分 +8.16%。"
+                "——滾動走查中「每折重挑最佳模型」的成績，輸給從頭到尾固定用趨勢結構分。"
             )
 
         if ev["excess_return"] < 0 and ev["significant"]:
             st.warning(
                 f"⚠️ **全期間平均而言，此策略輸給「隨便買」**（超額 {ev['excess_return']:+.2f}%，"
                 f"{ev['periods']} 期中僅 {ev['beat_benchmark_rate']:.0f}% 贏過大盤）。"
-                "分環境檢驗顯示它在**空頭期間轉為有效**（潛力潛伏 +2.23%、攻守兼備 +1.13%），"
-                "屬於逆勢型策略；但**走查驗證中，靠盤勢切換到這類策略並未帶來好處**"
-                "（+3.05% vs 穩定用長線型 +5.27%）——因為等你確認是空頭，跌勢常已走完一段。"
+                "分環境檢驗顯示這類逆勢型策略**在空頭期間才轉為有效**；"
+                "但**走查驗證中，靠盤勢切換到這類策略並未帶來好處**"
+                "——切換的成績輸給從頭到尾固定用趨勢型，"
+                "因為等你確認是空頭，跌勢常已走完一段。"
             )
     elif strategy == "lowpe":
         st.warning(
@@ -2246,12 +2254,21 @@ def render_smart_screener_page():
 
     st.markdown("---")
     if strategy == "contrarian":
+        _c = ev_strategy_stats("contrarian", 60)
+        _cr = ev_regime_model("潛力潛伏", "bull")
         st.caption("⚠️ 逆勢潛伏本質是「還沒漲」，可能長期沉潛或題材落空。"
-                   "回測：多頭 −0.98%、空頭 +2.23% —— 只在空頭有優勢，多頭請避開。")
+                   + (f" 同場回測：持有3個月超額 {_c['excess']:+.2f}%"
+                      f"（t={_c['t']:+.2f}、贏大盤 {_c['beat_rate']:.0f}%）。" if _c else "")
+                   + (f" 分環境檢驗顯示它在多頭為 {_cr['excess_return']:+.2f}%，"
+                      "屬逆勢型，多頭請避開。" if _cr else ""))
     elif strategy == "lowpe":
-        st.caption("⚠️ 139期回測顯示**單純買最低本益比顯著虧錢**"
-                   "（持有3個月超額 −4.48%、t=−3.82；近一年更達 −18.25%）。"
-                   "低本益比多半反映衰退預期而非便宜。此頁供你自行研判，不是推薦。")
+        _lp = ev_strategy_stats("lowpe", 60)
+        _lw = ev_strategy_wf("lowpe", 60)
+        st.caption("⚠️ 回測顯示**單純買最低本益比顯著虧錢**"
+                   + (f"（持有3個月超額 {_lp['excess']:+.2f}%、t={_lp['t']:+.2f}）" if _lp else "")
+                   + (f"，而且**不穩定**：走查前半 {_lw['first_half']:+.2f}%、"
+                      f"後半 {_lw['second_half']:+.2f}%" if _lw else "")
+                   + "。低本益比多半反映衰退預期而非便宜。此頁供你自行研判，不是推薦。")
     elif strategy == "limitup":
         st.caption("⚠️ 漲停股波動極大、籌碼凌亂，追高風險高。請務必參考卡片上的風報比與停損幅度，嚴格控管部位。")
     else:
@@ -2261,8 +2278,10 @@ def render_smart_screener_page():
         st.markdown(strategy_table(60))
         st.markdown("\n**持有 1 個月的排名不一樣：**\n")
         st.markdown(strategy_table(20))
-        st.caption("⚠️ 走查前後半段變號（⚠️翻盤）代表該策略不穩定，"
-                   "全期平均會掩蓋這件事——超低本益比就是典型：前半 +3.26%、後半 −12.28%。")
+        _lw2 = ev_strategy_wf("lowpe", 60)
+        st.caption("⚠️ 走查前後半段變號（⚠️翻盤）代表該策略不穩定，全期平均會掩蓋這件事"
+                   + (f"——超低本益比就是典型：前半 {_lw2['first_half']:+.2f}%、"
+                      f"後半 {_lw2['second_half']:+.2f}%。" if _lw2 else "。"))
 
     with st.expander("📖 卡片上這些分數各自代表什麼？哪個能當選股指標？", expanded=False):
         st.markdown(score_legend())
@@ -2303,15 +2322,23 @@ def render_sector_view(results):
                 f"「前5強族群＋趨勢分」持有3個月超額 **{_st_sec['excess']:+.2f}%**"
                 f"（t={_st_sec['t']:+.2f}），**輸給什麼濾網都不加的趨勢結構分 "
                 f"{_st_tr['excess']:+.2f}%**（t={_st_tr['t']:+.2f}）。\n\n"
-                "先前寫的「+3.07% 優於預設策略」是**跨不同次回測**比出來的，"
+                "先前那句「優於預設策略」是**跨不同次回測**比出來的，"
                 "而本專案自己量過跨 run 全距（0.6~0.76%）大於模型間差異，那種比較無效。"
                 "族群動能本身確實存在，但拿它當**過濾條件**會把好股票一起砍掉。"
             )
-        st.error(
-            "⛔ **但「補漲」是錯覺**——「強勢族群裡還沒跟上的落後股」1個月超額 **−0.25%**、"
-            "3個月 **−0.88%**，贏基準率僅 36–40%。**族群強不代表落後股會補漲**，"
-            "落後通常有它落後的理由。（對照組「弱勢族群的落後股」更差：−1.38%，t=−3.27）"
-        )
+        _lag = ev_stats_model("強勢族群落後股", 20, run="main_3y")
+        _lag3 = ev_stats_model("強勢族群落後股", 60, run="main_3y")
+        _ctrl = ev_stats_model("弱勢族群落後股(對照)", 20, run="main_3y")
+        if _lag:
+            st.error(
+                "⛔ **但「補漲」是錯覺**——「強勢族群裡還沒跟上的落後股」"
+                f"1個月超額 **{_lag['excess_return']:+.2f}%**"
+                + (f"、3個月 **{_lag3['excess_return']:+.2f}%**" if _lag3 else "")
+                + f"，贏基準率僅 {_lag.get('beat_benchmark_rate', 0):.0f}%。"
+                "**族群強不代表落後股會補漲**，落後通常有它落後的理由。"
+                + (f"（對照組「弱勢族群的落後股」更差：{_ctrl['excess_return']:+.2f}%，"
+                   f"t={_ctrl['t_stat']:+.2f}）" if _ctrl else "")
+            )
 
         rows_html = []
         for i, s in enumerate(sectors[:14], 1):
@@ -2375,7 +2402,9 @@ def render_evidence_table():
     if not meta:
         return
     st.markdown("---")
-    with st.expander("📚 各模型歷史實證（近3年 139 期滾動回測）", expanded=False):
+    with st.expander(f"📚 各模型歷史實證"
+                     f"（近3年 {ev_run_periods('main_3y') or '—'} 期滾動回測）",
+                     expanded=False):
         st.caption(
             f"**方法**：{meta.get('method', '')}　**樣本**：{meta.get('universe', '')}　"
             f"**基準**：{meta.get('benchmark', '')}"
@@ -2805,6 +2834,22 @@ def render_cross_screen_page():
         st.warning("請至少選 2 個策略。")
         return
 
+    # 嚴格交集常常是空的（策略彼此重疊度本來就低），所以讓使用者自己決定
+    # 「至少命中幾個」——K = 策略數 就是嚴格交集，K 調低則放寬成「多數共識」。
+    # ⚠️ 只選 2 個策略時 K 只能是 2，此時不能畫滑桿：Streamlit 的 slider
+    #    要求 min_value < max_value，min==max 會直接拋錯讓整頁掛掉。
+    if len(picked) == 2:
+        min_hits = 2
+        st.caption("選了 2 個策略，門檻固定為「兩個都命中」。"
+                   "多選幾個策略就能調整「至少命中幾個」。")
+    else:
+        min_hits = st.slider(
+            "至少命中幾個策略", min_value=2, max_value=len(picked),
+            value=len(picked), key="cross_minhits",
+            help="等於策略數＝嚴格交集；調低就是「多數共識」。"
+                 "交集越嚴格標的越少，但實證上並不會因此更準（見下方）。",
+        )
+
     with st.expander("⚠️ 先看這個：交集實測比單押更差", expanded=True):
         _ce = cross_evidence(picked, 60)
         if _ce:
@@ -2833,28 +2878,32 @@ def render_cross_screen_page():
             st.metric(label_of[k], f"{len(picks[k])} 檔", f"取前 {top_n}")
 
     by_id = {r["stock_id"]: r for r in results}
-    hit_counts = {sid: len(d) for sid, d in ranks.items()}
-    full_hits = [sid for sid, c in hit_counts.items() if c == len(picked)]
+    qualified = [(sid, d) for sid, d in ranks.items() if len(d) >= min_hits]
 
     st.markdown("---")
-    if full_hits:
-        st.success(f"✅ **{len(full_hits)} 檔同時進入全部 {len(picked)} 個策略的前 {top_n} 名**")
+    if qualified:
+        st.success(
+            f"✅ **{len(qualified)} 檔命中 ≥{min_hits} 個策略的前 {top_n} 名**"
+            + ("（＝全部策略的嚴格交集）" if min_hits == len(picked) else "")
+        )
     else:
         st.warning(
-            f"沒有股票同時進入全部 {len(picked)} 個策略的前 {top_n} 名。"
-            "可以調高 N，或看下方「部分命中」——策略彼此重疊度低本來就是常態"
-            "（實測趨勢分與族群策略的前 20 名只重疊 8%）。"
+            f"沒有股票命中 ≥{min_hits} 個策略的前 {top_n} 名。"
+            "可以調低「至少命中幾個」或調高 N——策略彼此重疊度低本來就是常態。"
         )
 
-    # 依「命中幾個策略」→「趨勢分」排序；部分命中也列出來，不要只給空白
+    # 依「命中幾個」→「趨勢分」排序。未達門檻的也列在後面供參考，
+    # 不要在門檻嚴格時只給一片空白。
     rows_sorted = sorted(
         ranks.items(),
         key=lambda kv: (-len(kv[1]),
                         -(by_id.get(kv[0], {}).get("trend_score") or 0)),
     )
-    shown = [(sid, d) for sid, d in rows_sorted if len(d) >= 2] or rows_sorted[:20]
+    shown = qualified or [(sid, d) for sid, d in rows_sorted if len(d) >= 2] \
+        or rows_sorted[:20]
 
-    st.markdown(f"#### 命中結果（{len(shown)} 檔）")
+    st.markdown(f"#### 命中結果（{len(shown)} 檔）"
+                + ("" if qualified else "　— 未達門檻，以下為命中數最多者供參考"))
     head = ["股票", "命中", "趨勢分"] + [label_of[k] for k in picked] + ["本益比", "警示"]
     lines = ["| " + " | ".join(head) + " |",
              "|" + "|".join(["---"] * len(head)) + "|"]
@@ -2894,17 +2943,21 @@ def render_portfolio_page():
     # 綜合評分只是弱有效（+0.81%, t=2.04），故預設用長線分排名。
     # 實證數字一律從新的因子回測取，別再指向已移除的舊策略鍵
     ev_trend = ev_stats_model("T1 趨勢(連續)", hold_days=20, run="factor_3y")
+    _ev_t60 = ev_strategy_stats("trend", 60)
     ev_total = ev_stats_model("綜合強勢(技術)", hold_days=20, run="main_3y")
     rank_label = st.radio(
         "排名依據",
         ["🏆 趨勢結構分（回測最強）", "綜合評分"],
         horizontal=True, key="pf_rank_by",
         captions=[
-            (f"139期回測・持有1個月超額 {ev_trend['excess_return']:+.2f}%、"
-             f"t={ev_trend['t_stat']:+.2f}；持有3個月 +7.18%、t=5.52"
+            (f"{ev_trend.get('periods', '—')}期回測・持有1個月超額 "
+             f"{ev_trend['excess_return']:+.2f}%、t={ev_trend['t_stat']:+.2f}"
+             + (f"；持有3個月 {_ev_t60['excess']:+.2f}%、t={_ev_t60['t']:+.2f}"
+                if _ev_t60 else "")
              if ev_trend else "回測最強訊號"),
-            (f"179期回測・超額 {ev_total['excess_return']:+.2f}%、"
-             f"t={ev_total['t_stat']:+.2f}（不顯著）"
+            (f"{ev_total.get('periods', '—')}期回測・超額 "
+             f"{ev_total['excess_return']:+.2f}%、t={ev_total['t_stat']:+.2f}"
+             f"（{'顯著' if ev_total.get('significant') else '不顯著'}）"
              if ev_total else "四面向加權，預測力弱"),
         ],
     )
@@ -2932,10 +2985,10 @@ def render_portfolio_page():
 **這正是必須看超額而非絕對報酬的理由。**
 
 **為什麼建議抱 3 個月？**
-同一批高分股，持有越久超額越大（+1.78% → +3.29% → +5.25%），
+""" + _hold_longer_note() + """
 而且每次換股都要付 0.585% 的手續費與證交稅，短進短出會被成本吃掉。
 
-⚠️ **限制**：139 期、近 3 年，期間以多頭為主；且有存活者偏誤
+⚠️ **限制**：""" + f"{_cmp_periods() or '—'} 期" + """、近 3 年，期間以多頭為主；且有存活者偏誤
 （已下市公司不在樣本內）。這是**一籃子 10 檔重複 139 次**的統計優勢，
 不是對單一檔股票的預測——贏大盤的期數比率 66%，代表每 3 次仍有 1 次落後。
 詳見 `BACKTEST_FINDINGS.md`。
@@ -3022,6 +3075,12 @@ def render_portfolio_page():
             prog.progress((i + 1) / len(holdings))
         prog.empty(); status.empty()
         st.session_state[cache_key] = scores
+        # 記錄本次趨勢分，供下次比較「變強還是變弱」
+        try:
+            th_record({sid: (r or {}).get("trend_score")
+                       for sid, r in scores.items()})
+        except Exception:
+            pass
         st.session_state[f"{cache_key}_time"] = datetime.datetime.now()
 
     scores = st.session_state.get(cache_key, {})
@@ -3059,6 +3118,9 @@ def render_portfolio_page():
             return (r.get("horizon") or {}).get("long", {}).get("score",
                                                                 r["total_score"])
         return r["total_score"]
+
+    # 上一次的趨勢分快照——用來顯示每檔是變強還是變弱
+    _prev_date, _prev_scores = th_previous()
 
     rows.sort(key=lambda x: _key_score(x["r"]), reverse=True)
     totals = portfolio_totals([x["pos"] for x in rows])
@@ -3181,10 +3243,12 @@ def render_portfolio_page():
             evid_html = evidence_badge((r.get("horizon_tech") or {}).get("long")
                                        or (hz.get("long") or {}).get("score"))
             oh_html = overheat_badge(r.get("overheat"))
+            trend_delta = th_delta(sid, r.get("trend_score"), _prev_scores)
         else:
             color, icon, action, total, pot = "#78909c", "❔", "無資料", 0, 0
             price, t_w, f_w, n_w = 0, 0, 0, 0
             hz_html, rr_txt, evid_html, pe_txt, oh_html, trend_html = "", "", "", "", "", ""
+            trend_delta = None
 
         pl_color = "#f03e3e" if pos["pnl"] >= 0 else "#2f9e44"
         pnl_pct_txt = f"{pos['pnl_pct']:+.2f}%" if pos["pnl_pct"] is not None else "N/A"
@@ -3210,7 +3274,8 @@ def render_portfolio_page():
       <div style="font-size:16px;font-weight:800;color:{pl_color};">{pos['pnl']:+,.0f}</div>
       <div style="font-size:12px;color:{pl_color};">{pnl_pct_txt}</div>
     </div>
-    {trend_html}
+    <div style="text-align:center;">{trend_html}
+      {trend_delta_badge(trend_delta, _prev_date)}</div>
     <div style="min-width:88px;text-align:center;padding:4px 8px;">
       <div style="font-size:22px;font-weight:800;color:{color};line-height:1;">{total}</div>
       <div style="font-size:10px;color:#aaa;margin-top:2px;">綜合評分</div>

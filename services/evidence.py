@@ -364,3 +364,9 @@ def cross_stats(key_a: str, key_b: str, hold_days: int = 60) -> dict:
 def cross_top_n() -> int:
     return load_strategy_comparison().get("cross_screen", {}).get(
         "top_n_per_strategy", 20)
+
+
+def run_periods(run: str = "main_3y"):
+    """某次回測的期數 —— 說明文字要顯示期數時從這裡取，不要寫死。"""
+    r = load_evidence().get("runs", {}).get(run) or {}
+    return r.get("periods")

@@ -17,3 +17,6 @@ venv/
 # 回測暫存輸出
 *.log
 .histcache/
+
+# 個人資料：趨勢分歷史快照
+trend_history.json
