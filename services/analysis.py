@@ -19,7 +19,7 @@ from services.stock_data import (
 )
 from services.technical import (
     calculate_indicators, calculate_technical_score, calculate_horizon_scores,
-    analyze_volume_price, calculate_risk_plan,
+    analyze_volume_price, calculate_risk_plan, dist_from_ma120, overheat_flag,
 )
 from services.fundamental import analyze_fundamentals, calculate_fundamental_score
 from services.news import get_all_news, calculate_news_sentiment_score, get_catalysts
@@ -124,28 +124,16 @@ def compute_scores(df, info, financials, stock_id, company_name, as_of_date=None
         as_of=as_of_date.strftime("%Y-%m-%d") if as_of_date else ""
     )
 
-    # 新聞評分有反身性：股價漲越兇、正面報導越多、消息分越高。
-    # 高消息分 + 高本益比 + 已大漲 = 利多多半已反映，不該當成買進理由。
+    # 「利多已反映」示警與「距季線幅度」平手鍵：邏輯都在 services/technical.py，
+    # 全市場掃描（universe.py）呼叫的是同兩個函式，確保三頁判斷一致。
     _pe = fundamentals.get("pe_ratio")
-    _r60 = potential_pre = None
     try:
         _r60 = (float(df["Close"].iloc[-1]) / float(df["Close"].iloc[-61]) - 1) * 100 \
             if len(df) > 61 else None
     except Exception:
-        pass
-    priced_in = None
-    if news_score >= 75 and ((_pe and _pe > 40) or (_r60 and _r60 > 50)):
-        bits = []
-        if _pe and _pe > 40:
-            bits.append(f"本益比 {_pe:.0f} 偏高")
-        if _r60 and _r60 > 50:
-            bits.append(f"近60日已漲 {_r60:.0f}%")
-        priced_in = (
-            f"消息面 {news_score} 分很高，但{('、'.join(bits))}——"
-            "**新聞評分有反身性：股價漲越多、正面報導越多**，"
-            "此時的高消息分多半是在反映『已經發生的漲勢』，而非預告後續上漲。"
-            "利多可能已反映在價格中，追高請謹慎。"
-        )
+        _r60 = None
+    overheat = overheat_flag(pe=_pe, r60=_r60, news_score=news_score)
+    priced_in = overheat.get("detail")
 
     rec = generate_recommendation(
         tech_score, fund_score, news_score,
@@ -210,4 +198,9 @@ def compute_scores(df, info, financials, stock_id, company_name, as_of_date=None
         "horizon_cards": horizon_cards,     # 顯示用（純技術，與實證一致）
         "timeframe_recs": timeframe_recs,   # 保留給回測相容，不再用於顯示
         "potential": potential,
+        # 排序平手鍵。以前只有 universe.py 算，compute_scores 沒回傳，
+        # 於是個股／持股頁的 above_ma120 永遠是 None、排序照樣亂跳。
+        "above_ma120": dist_from_ma120(df),
+        "r60": _r60,
+        "overheat": overheat,               # 三頁共用的「利多已反映」示警
     }

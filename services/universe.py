@@ -220,6 +220,7 @@ def scan_universe(min_turnover=1e7, period="2y", progress_cb=None, include_otc=T
     """
     from services.technical import (
         calculate_indicators, calculate_technical_score, calculate_horizon_scores,
+        dist_from_ma120, overheat_flag,
         analyze_volume_price, calculate_risk_plan,
     )
     from services.fundamental import calculate_fundamental_score
@@ -285,6 +286,8 @@ def scan_universe(min_turnover=1e7, period="2y", progress_cb=None, include_otc=T
 
             close = float(df["Close"].iloc[-1])
             prev = float(df["Close"].iloc[-2]) if len(df) > 1 else close
+            r60 = ((close / float(df["Close"].iloc[-61]) - 1) * 100
+                   if len(df) > 61 else None)
 
             # Shortlist ranking must use only signals that ACTUALLY vary in the
             # bulk pass. buzz / upside / prospect are neutral placeholders here,
@@ -334,10 +337,11 @@ def scan_universe(min_turnover=1e7, period="2y", progress_cb=None, include_otc=T
                             for k, v in horizon_tech.items()},
                 # 純技術週期分：排序與實證對照用（回測驗證的就是它）
                 "horizon_tech": {k: v["score"] for k, v in horizon_tech.items()},
-                "above_ma120": (
-                    (close / float(df["MA120"].iloc[-1]) - 1) * 100
-                    if df["MA120"].iloc[-1] == df["MA120"].iloc[-1]
-                    and float(df["MA120"].iloc[-1]) > 0 else None),
+                # 平手鍵與過熱示警：與 analysis.compute_scores 共用同一實作
+                "above_ma120": dist_from_ma120(df),
+                "r60": r60,
+                "overheat": overheat_flag(pe=meta.get("pe"), r60=r60,
+                                          news_score=None),
                 "turnover": meta.get("turnover"),
                 "is_limit_up": False, "max_streak": 0, "last_days_ago": 0,
                 "exchange": meta.get("market", "TWSE"), "limit_up_pct": None,

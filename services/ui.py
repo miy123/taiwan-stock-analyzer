@@ -135,3 +135,27 @@ def threshold_note(hold_days=20) -> str:
 def long_threshold(hold_days=20, default=70.0) -> float:
     """三頁共用的買進門檻分數。"""
     return buy_threshold("長線+量能確認", hold_days) or default
+
+
+def overheat_badge(overheat: dict, compact: bool = True) -> str:
+    """
+    「利多已反映／漲多留意」徽章 —— 三頁共用。
+
+    先前這個提醒只寫在個股分析頁的風險警語裡，選股頁與持股頁完全看不到，
+    於是使用者在持股頁看到台虹長線 88 分卻沒有任何「它已經漲 105%、本益比 91」
+    的提示。判斷邏輯在 `technical.overheat_flag()`（唯一實作），這裡只負責畫。
+    """
+    if not overheat:
+        return ""
+    lvl = overheat.get("level")
+    color = "#f44336" if lvl == "high" else "#ff9800"
+    icon = "🔥" if lvl == "high" else "⚠️"
+    txt = overheat.get("short", "")
+    if compact:
+        tip = "　".join(overheat.get("bits", []))
+        return (f"<span title='{tip}' style='background:{color}22;color:{color};"
+                f"border:1px solid {color}66;border-radius:4px;padding:1px 5px;"
+                f"font-size:10px;font-weight:700;margin-right:4px;'>"
+                f"{icon}{txt}</span>")
+    return (f"<div style='font-size:11px;color:{color};'>{icon} <b>{txt}</b>　"
+            f"{'　'.join(overheat.get('bits', []))}</div>")

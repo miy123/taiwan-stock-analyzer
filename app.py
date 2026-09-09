@@ -40,6 +40,7 @@ from services.strategies import STRATEGIES, LABELS as STRAT_LABELS, \
     CAPTIONS as STRAT_CAPTIONS, get as get_strategy, \
     select as strat_select, explain as strat_explain
 from services.ui import (
+    overheat_badge,
     pe_badge, pe_inline, horizon_cells, evidence_badge, rr_cell,
     threshold_note, long_threshold,
 )
@@ -1765,6 +1766,8 @@ def _analyze_one_stock(stock_id: str, period: str = None, limit_up_info=None,
             # 純技術週期分：排序與實證對照用（回測驗證的就是它）
             "horizon_tech": {k: v["score"] for k, v in a["horizon_tech"].items()},
             "above_ma120": a.get("above_ma120"),
+            "r60": a.get("r60"),
+            "overheat": a.get("overheat") or {},
             # 量價方向（回測顯示：長線分 + 量價未轉弱 是最佳組合）
             "volume_adj": (a["volume_signal"] or {}).get("score_adj", 0),
             # Backtest only: realized forward returns from the as-of date
@@ -2649,7 +2652,7 @@ def _render_smart_card(rank, r, strategy, horizon_key=None):
     <div style="min-width:150px;">
       <div style="font-size:17px;font-weight:900;">{r['stock_id']}
         <span style="font-size:13px;font-weight:600;color:#ccc;">{r['company_name']}</span></div>
-      <div style="font-size:12px;">{lu_badge}{margin_badge}{sleeper_badge}</div>
+      <div style="font-size:12px;">{overheat_badge(r.get("overheat"))}{lu_badge}{margin_badge}{sleeper_badge}</div>
     </div>
     <div style="min-width:78px;">
       <div style="font-size:15px;font-weight:700;">TWD {current:.2f}</div>
@@ -3009,10 +3012,11 @@ def render_portfolio_page():
             # 實證區間徽章（共用元件）
             evid_html = evidence_badge((r.get("horizon_tech") or {}).get("long")
                                        or (hz.get("long") or {}).get("score"))
+            oh_html = overheat_badge(r.get("overheat"))
         else:
             color, icon, action, total, pot = "#78909c", "❔", "無資料", 0, 0
             price, t_w, f_w, n_w = 0, 0, 0, 0
-            hz_html, rr_txt, evid_html, pe_txt = "", "", "", ""
+            hz_html, rr_txt, evid_html, pe_txt, oh_html = "", "", "", "", ""
 
         pl_color = "#f03e3e" if pos["pnl"] >= 0 else "#2f9e44"
         pnl_pct_txt = f"{pos['pnl_pct']:+.2f}%" if pos["pnl_pct"] is not None else "N/A"
@@ -3027,6 +3031,7 @@ def render_portfolio_page():
         <span style="font-size:13px;font-weight:600;color:#ccc;">{name}</span></div>
       <div style="font-size:11px;color:#90a4ae;">
         {pos['shares']:,.0f} 股　成本 {pos['cost']:,.2f}</div>
+      <div style="margin-top:3px;">{oh_html}</div>
     </div>
     <div style="min-width:96px;">
       <div style="font-size:11px;color:#90a4ae;">現價</div>

@@ -702,3 +702,73 @@ def calculate_horizon_scores(df: pd.DataFrame) -> dict:
         "medium":      {"score": max(0, min(100, int(md))), "drivers": mdd},
         "long":        {"score": max(0, min(100, int(lg))), "drivers": lgd},
     }
+
+
+def dist_from_ma120(df: pd.DataFrame):
+    """
+    收盤價高出季線 MA120 幾 %（跌破為負）。**破長線分平手用的排序鍵。**
+
+    為什麼要有這個：長線分只有 18 種離散值、156/566 檔並列滿分 94，只用它排序
+    等於在同分群裡亂數挑。回測（兩次獨立執行一致）證實用「距季線幅度」破平手，
+    1個月超額 0.52%→2.51%、3個月 −1.08%→+5.05%。
+
+    ⚠️ 這裡是**唯一**實作。個股／持股走 analysis.compute_scores，全市場掃描走
+    universe.scan_universe，兩條路徑以前各算各的（實際上掃描算了、compute_scores
+    漏算，導致持股頁的 above_ma120 永遠是 None、平手照樣亂排）。
+    """
+    try:
+        if df is None or df.empty or "MA120" not in df:
+            return None
+        ma = float(df["MA120"].iloc[-1])
+        close = float(df["Close"].iloc[-1])
+        if ma != ma or ma <= 0:      # NaN（歷史不足 120 日）或 0
+            return None
+        return (close / ma - 1) * 100
+    except Exception:
+        return None
+
+
+def overheat_flag(pe=None, r60=None, news_score=None) -> dict:
+    """
+    「利多可能已反映」偵測 —— 三頁共用的唯一實作。
+
+    新聞評分有反身性：股價漲越兇 → 正面報導越多 → 消息分越高，
+    所以高消息分常常是在描述「已經發生的漲勢」，而不是預告後續上漲。
+    典型案例台虹 8039：消息 90 分，但本益比 91、近 60 日已漲 105%。
+
+    參數都可為 None（全市場掃描沒抓新聞、有些股沒有本益比），有幾項算幾項。
+    示警條件＝**漲多（近60日>50%）** 且 **至少一項「貴或熱」**（本益比>40 或 消息≥75）。
+    單純漲多不示警——回測結論是動能有效，對「漲太多」示警會與實證矛盾；
+    真正該提醒的是「漲多且評價已墊高／利多已被報導完」。
+
+    回傳 {} 表示沒事；否則 {level, short, detail, bits}。
+    """
+    hot_pe = pe is not None and pe > 40
+    ran_up = r60 is not None and r60 > 50
+    hot_news = news_score is not None and news_score >= 75
+    if not ran_up:
+        return {}
+
+    bits = []
+    if ran_up:
+        bits.append(f"近60日已漲 {r60:.0f}%")
+    if hot_pe:
+        bits.append(f"本益比 {pe:.0f} 偏高")
+
+    if hot_news and hot_pe:
+        level, short = "high", "利多已反映"
+    elif hot_news or hot_pe:
+        level, short = "mid", "漲多留意"
+    else:
+        return {}
+
+    detail = "、".join(bits)
+    if hot_news:
+        detail = (f"消息面 {news_score} 分很高，但{detail}——"
+                  "**新聞評分有反身性：股價漲越多、正面報導越多**，"
+                  "此時的高消息分多半是在反映『已經發生的漲勢』，而非預告後續上漲。"
+                  "利多可能已反映在價格中，追高請謹慎。")
+    else:
+        detail = (f"{detail}——漲幅與評價都已墊高，長線結構分只看趨勢、"
+                  "不會因為「漲太多」而扣分，進場前請自行衡量追高風險。")
+    return {"level": level, "short": short, "detail": detail, "bits": bits}
