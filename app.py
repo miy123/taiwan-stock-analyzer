@@ -1127,14 +1127,13 @@ def render_recommendation_tab(
         margin_signal = a["margin_signal"]; margin_trend = a["margin_trend"]
         volume_signal = a["volume_signal"]; market_regime = a["market_regime"]
         rec = a["rec"]; rationale = a["rationale"]; risk_plan = a["risk_plan"]
-        timeframe_recs = a["timeframe_recs"]; potential = a["potential"]
+        timeframe_recs = a["horizon_cards"]; potential = a["potential"]
 
     # 主視覺改用「長線結構分」——實證 t=4.71，是綜合評分(t=2.04)的兩倍強度。
     # 原本最大的儀表板顯示最弱的訊號，等於把使用者的注意力導向最不可靠的數字。
     # 用**純技術**長線分（回測驗證的就是它）；混合分另外顯示
     _long_sc = a["horizon_tech"]["long"]["score"]
-    _long_mixed = next((h["score"] for h in timeframe_recs if h["key"] == "long"),
-                       rec["total_score"])
+
     _long_act = _action_for_score(_long_sc)
     _pf_thr = long_threshold()
 
@@ -1183,10 +1182,7 @@ def render_recommendation_tab(
         st.caption(
             f"依 179 期回測，長線結構分 **≥{_pf_thr:.0f} 分**的區間 1個月超額報酬才轉正；"
             "此分數的預測力（t=4.71）約為下方綜合評分（t=2.04）的兩倍。\n\n"
-            f"⚠️ 這是**純技術**分數（均線結構／季線位置／半年報酬），也是回測驗證的對象。"
-            f"下方「四種週期評分」的長線分是 **{_long_mixed}**，那是再混入基本面45%／"
-            f"目標價30%／新聞5% 的**綜合建議分**——那三項沒有歷史快照、無法回測，"
-            f"**不適用上面的門檻與勝率**。"
+            f"下方「四種週期評分」用的是同一個純技術分數，前後一致。"
         )
 
         # 綜合評分退居輔助
@@ -1197,6 +1193,22 @@ def render_recommendation_tab(
   <div style="font-size:26px;font-weight:900;color:{rec['color']}">{rec['total_score']}</div>
   <div style="font-size:13px;color:{rec['color']}">{rec['icon']} {rec['action']}</div>
 </div>""", unsafe_allow_html=True)
+
+        # 兩個分數常常不一致，直接說明為什麼，而不是讓使用者自己猜
+        if abs(_long_sc - rec["total_score"]) >= 15:
+            higher = "長線結構分" if _long_sc > rec["total_score"] else "綜合評分"
+            st.info(
+                f"❓ **為什麼兩個分數差這麼多？**（{_long_sc} vs {rec['total_score']}）\n\n"
+                "它們量的是**不同東西**，不是互相矛盾：\n\n"
+                f"· **長線結構分 {_long_sc}**＝只看**價格結構**"
+                "（季線位置、均線排列、半年報酬）。這是回測驗證過的**進場時機**訊號。\n\n"
+                f"· **綜合評分 {rec['total_score']}**＝再加上基本面（{rec['fund_score']}）、"
+                f"消息（{rec['news_score']}）、目標價，並扣除融資籌碼風險。"
+                "這是**體質與風險**的總覽，但預測力較弱（t=2.04）。\n\n"
+                f"目前 **{higher}** 較高。常見情境：**股價長期走勢很強、但基本面偏弱或"
+                "散戶槓桿過重**——趨勢還在，但底子與籌碼有隱憂。"
+                "兩者都看，不要只憑一個數字下決定。"
+            )
 
     with col_details:
         st.markdown(f"#### 評分分解")
@@ -1748,7 +1760,7 @@ def _analyze_one_stock(stock_id: str, period: str = None, limit_up_info=None,
             "horizon": {h["key"]: {"score": h["score"], "action": h["action"],
                                    "icon": h["icon"], "color": h["color"],
                                    "name": h["name"], "span": h["span"]}
-                        for h in a["timeframe_recs"]},
+                        for h in a["horizon_cards"]},
             # 純技術週期分：排序與實證對照用（回測驗證的就是它）
             "horizon_tech": {k: v["score"] for k, v in a["horizon_tech"].items()},
             # 量價方向（回測顯示：長線分 + 量價未轉弱 是最佳組合）

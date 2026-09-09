@@ -27,6 +27,7 @@ from services.stock_data import get_news
 from services.target_price import calculate_target_price
 from services.recommendation import (
     generate_recommendation, generate_timeframe_recommendations, build_rationale,
+    _action_for,
 )
 from services.margin import get_margin_data, get_margin_trend, calculate_margin_signal
 from services.market import get_market_regime
@@ -135,6 +136,26 @@ def compute_scores(df, info, financials, stock_id, company_name, as_of_date=None
     risk_plan = calculate_risk_plan(df, target_price=tp.get("recommended_target"))
 
     horizon_tech = calculate_horizon_scores(df)
+
+    # 四週期卡片：**一律用純技術分**，建議動作也由同一個分數推導。
+    # 先前卡片顯示的是混合分（含基本面/目標價/新聞），於是同一檔股票會出現
+    # 兩個都叫「長線分」的數字（台虹：純技術 88 vs 混合 60），使用者根本無從判斷
+    # 該信哪個。既然實證是在純技術分上量的，就讓顯示與實證一致，只留一個數字。
+    horizon_cards = []
+    for cfg_key, cfg_name, cfg_span, cfg_desc in [
+        ("ultra_short", "極短線分", "指標：1–3 天", "當日動能與量價、KD/RSI 極值、MA5"),
+        ("short", "短線分", "指標：約 1 週", "MA5/MA10、MACD 交叉、量能"),
+        ("medium", "中線分", "指標：約 1 個月", "MA20/MA60 排列與斜率、近月報酬"),
+        ("long", "長線分", "指標：半年結構", "季線 MA120、MA60>MA120、半年報酬"),
+    ]:
+        sc = horizon_tech[cfg_key]["score"]
+        act = _action_for(sc)
+        horizon_cards.append({
+            "key": cfg_key, "name": cfg_name, "span": cfg_span, "desc": cfg_desc,
+            "score": sc, "drivers": horizon_tech[cfg_key]["drivers"][:3],
+            "action": act["action"], "icon": act["icon"], "color": act["color"],
+        })
+
     timeframe_recs = generate_timeframe_recommendations(
         horizon_tech, fund_score, news_score,
         target_upside_pct=target_upside,
@@ -161,6 +182,8 @@ def compute_scores(df, info, financials, stock_id, company_name, as_of_date=None
         "margin_signal": margin_signal, "margin_trend": margin_trend,
         "volume_signal": volume_signal, "market_regime": market_regime,
         "rec": rec, "rationale": rationale, "risk_plan": risk_plan,
-        "horizon_tech": horizon_tech, "timeframe_recs": timeframe_recs,
+        "horizon_tech": horizon_tech,
+        "horizon_cards": horizon_cards,     # 顯示用（純技術，與實證一致）
+        "timeframe_recs": timeframe_recs,   # 保留給回測相容，不再用於顯示
         "potential": potential,
     }

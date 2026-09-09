@@ -328,10 +328,10 @@ def scan_universe(min_turnover=1e7, period="2y", progress_cb=None, include_otc=T
                 "rr": (risk or {}).get("rr"),
                 "atr_pct": (risk or {}).get("atr_pct"),
                 "stop_pct": (risk or {}).get("stop_pct"),
-                "horizon": {h["key"]: {"score": h["score"], "action": h["action"],
-                                       "icon": h["icon"], "color": h["color"],
-                                       "name": h["name"], "span": h["span"]}
-                            for h in tfr},
+                # 顯示與排序都用純技術分，避免同一檔出現兩個「長線分」
+                "horizon": {k: {"score": v["score"], "action": "", "icon": "",
+                                "color": "#4caf50", "name": k, "span": ""}
+                            for k, v in horizon_tech.items()},
                 # 純技術週期分：排序與實證對照用（回測驗證的就是它）
                 "horizon_tech": {k: v["score"] for k, v in horizon_tech.items()},
                 "turnover": meta.get("turnover"),
