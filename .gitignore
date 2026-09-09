@@ -16,3 +16,4 @@ venv/
 
 # 回測暫存輸出
 *.log
+.histcache/
