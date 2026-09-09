@@ -42,6 +42,18 @@ def _long(r):
     return (r.get("horizon") or {}).get("long", {}).get("score", 0)
 
 
+def _long_key(r):
+    """
+    排序鍵＝(長線分, 距季線幅度)。
+
+    長線分是 50 加減幾個離散跳點疊出來的，全市場只有 18 種值，且 156/566 檔
+    並列滿分 94——只用它排序等於在同分群裡亂數挑。回測（兩次獨立執行一致）：
+      不破平手  1個月 +0.52%(t=1.42 不顯著) / 3個月 -1.08%
+      距季線破  1個月 +2.51%(t=5.17)        / 3個月 +5.05%
+    """
+    return (_long(r), r.get("above_ma120") if r.get("above_ma120") is not None else -999)
+
+
 def _hz_tech(r, key):
     ht = r.get("horizon_tech")
     if isinstance(ht, dict) and key in ht:
@@ -152,7 +164,7 @@ STRATEGIES = [
         "uses_horizon": False, "evidence_model": "強勢族群+長線分",
         "metric": _long,
         "filters": [("屬於前5強族群", _f_hot_sector), ("長線分達買進線", _f_long_bar)],
-        "sort_key": lambda r, c: _long(r),
+        "sort_key": lambda r, c: _long_key(r),
     },
     {
         "key": "bestproven", "label": "🏆 長線+量能確認",
@@ -163,7 +175,7 @@ STRATEGIES = [
         "uses_horizon": False, "evidence_model": "長線+量能確認",
         "metric": _long,
         "filters": [("長線分達買進線", _f_long_bar), ("量價未轉弱", _f_vol_ok)],
-        "sort_key": lambda r, c: _long(r),
+        "sort_key": lambda r, c: _long_key(r),
     },
     {
         "key": "momentum", "label": "🚀 綜合強勢",

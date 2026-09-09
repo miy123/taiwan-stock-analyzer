@@ -176,6 +176,19 @@ MODELS = [
     _m("長線+中線平均", lambda s: 0.5 * s["h_long"] + 0.5 * s["h_medium"], None,
        "長線與中線各半加權"),
 
+    # ── 長線分「平手」處理：156/566 檔並列 94 分（滿分），取前10名等於亂數挑。
+    # 分數本身是 50 + 幾個離散跳點（±14/±12/±8/+10）疊出來，最高就是 94。
+    # 測試：同分時再用連續指標排序，能不能把「碰運氣」變成「有依據」。
+    _m("長線分(現行,平手不處理)", lambda s: s["h_long"], None, "對照組：與現行完全相同"),
+    _m("長線分+動能破平手", lambda s: (s["h_long"], s["r120"] or -999), None,
+       "同分時比 120 日報酬"),
+    _m("長線分+距季線破平手", lambda s: (s["h_long"], s["above_ma120"] or -999), None,
+       "同分時比高出季線幾 %"),
+    _m("長線分+技術分破平手", lambda s: (s["h_long"], s["tech"]), None,
+       "同分時比綜合技術分"),
+    _m("長線分+量價破平手", lambda s: (s["h_long"], s["vol_adj"]), None,
+       "同分時比量價分"),
+
     # ── 題材/族群輪動：強勢族群裡的落後股（補漲）是否真的有效？────────────
     # 注意：這與「個股低基期」是不同的假設——族群動能(順勢) + 個股落後(逆勢)。
     _m("強勢族群龍頭", lambda s: s["sec_mom"] if s["sec_mom"] is not None else -999,
@@ -272,6 +285,11 @@ def build_signals(df_slice):
         "r250": r250,
         # 12-1 動能：跳過最近一個月，避開短期反轉效應
         "mom_12_1": (r250 - r20) if (r250 is not None and r20 is not None) else None,
+        # 距季線幅度（連續值，用來打破長線分的平手）
+        "above_ma120": (
+            (float(c.iloc[-1]) / float(df_slice["MA120"].iloc[-1]) - 1) * 100
+            if "MA120" in df_slice.columns and df_slice["MA120"].iloc[-1] == df_slice["MA120"].iloc[-1]
+            else None),
         # 族群欄位在掃描迴圈中回填（此處給預設值避免 KeyError）
         "sec_rank": None, "sec_mom": None, "sec_gap": None,
     }

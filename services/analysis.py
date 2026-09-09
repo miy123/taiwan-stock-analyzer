@@ -124,6 +124,29 @@ def compute_scores(df, info, financials, stock_id, company_name, as_of_date=None
         as_of=as_of_date.strftime("%Y-%m-%d") if as_of_date else ""
     )
 
+    # 新聞評分有反身性：股價漲越兇、正面報導越多、消息分越高。
+    # 高消息分 + 高本益比 + 已大漲 = 利多多半已反映，不該當成買進理由。
+    _pe = fundamentals.get("pe_ratio")
+    _r60 = potential_pre = None
+    try:
+        _r60 = (float(df["Close"].iloc[-1]) / float(df["Close"].iloc[-61]) - 1) * 100 \
+            if len(df) > 61 else None
+    except Exception:
+        pass
+    priced_in = None
+    if news_score >= 75 and ((_pe and _pe > 40) or (_r60 and _r60 > 50)):
+        bits = []
+        if _pe and _pe > 40:
+            bits.append(f"本益比 {_pe:.0f} 偏高")
+        if _r60 and _r60 > 50:
+            bits.append(f"近60日已漲 {_r60:.0f}%")
+        priced_in = (
+            f"消息面 {news_score} 分很高，但{('、'.join(bits))}——"
+            "**新聞評分有反身性：股價漲越多、正面報導越多**，"
+            "此時的高消息分多半是在反映『已經發生的漲勢』，而非預告後續上漲。"
+            "利多可能已反映在價格中，追高請謹慎。"
+        )
+
     rec = generate_recommendation(
         tech_score, fund_score, news_score,
         tech_reasons, fund_reasons, news_reasons,
@@ -131,6 +154,7 @@ def compute_scores(df, info, financials, stock_id, company_name, as_of_date=None
         margin_signal=margin_signal,
         volume_signal=volume_signal,
         market_regime=market_regime,
+        priced_in=priced_in,
     )
     rationale = build_rationale(rec, volume_signal=volume_signal, margin_signal=margin_signal)
     risk_plan = calculate_risk_plan(df, target_price=tp.get("recommended_target"))

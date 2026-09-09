@@ -1764,6 +1764,7 @@ def _analyze_one_stock(stock_id: str, period: str = None, limit_up_info=None,
                         for h in a["horizon_cards"]},
             # 純技術週期分：排序與實證對照用（回測驗證的就是它）
             "horizon_tech": {k: v["score"] for k, v in a["horizon_tech"].items()},
+            "above_ma120": a.get("above_ma120"),
             # 量價方向（回測顯示：長線分 + 量價未轉弱 是最佳組合）
             "volume_adj": (a["volume_signal"] or {}).get("score_adj", 0),
             # Backtest only: realized forward returns from the as-of date

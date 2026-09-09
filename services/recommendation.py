@@ -47,6 +47,7 @@ def generate_recommendation(
     margin_signal=None,       # dict | None — from calculate_margin_signal
     volume_signal=None,       # dict | None — from analyze_volume_price
     market_regime=None,       # dict | None — from get_market_regime
+    priced_in=None,           # str | None — 「利多已反映」警語（見 analysis.py）
 ) -> dict:
 
     # ── Target price component ────────────────────────────────────────────────
@@ -175,6 +176,12 @@ def generate_recommendation(
         risk_warnings.append(
             "量增價跌：成交量放大但股價下跌，通常代表主力／大戶趁勢出貨，賣壓沉重"
         )
+
+    # 「利多已反映」警示：新聞很好，但股價早就漲上去、估值也貴了。
+    # 新聞評分有反身性問題——媒體是在**報導漲勢**而非預測漲勢，
+    # 漲得越兇正面報導越多，分數就越高。此時高消息分不是買進理由。
+    if news_score >= 75 and priced_in:
+        risk_warnings.append(priced_in)
 
     if market_regime and market_regime.get("regime") in ("bear", "mild_bear"):
         risk_warnings.append(
