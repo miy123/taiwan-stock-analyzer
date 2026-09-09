@@ -28,8 +28,10 @@ STRATEGY_TO_MODEL = {
     ("bestproven", None): "長線+量能確認",   # 回測次佳：長線分 + 量價未轉弱
     ("bestproven", "long"): "長線+量能確認",
     ("limitup", None): None,          # 漲停股未單獨回測
-    ("sleeper", None): "潛力潛伏",
-    ("balanced", None): "攻守兼備",
+    # 舊策略鍵（bestproven/momentum/sleeper/balanced）已整併，保留對照只為
+    # 讀得懂舊的 backtest_results.json；**新程式不要再用這些鍵查資料**，
+    # 策略強弱一律看 strategy_comparison.json（同一次回測才可比）。
+    ("contrarian", None): "潛力潛伏",
 }
 
 HORIZON_DAYS = {"1週": 5, "1個月": 20, "3個月": 60}

@@ -251,7 +251,9 @@ STRATEGIES = [
         "caption": "近期連日漲停　（1個月最強，但波動極大）",
         "bar_note": "門檻：近期有連日漲停紀錄",
         "sort_desc": "**連續漲停天數 → 趨勢結構分**",
-        "prelim_key": "prelim_momentum", "color": None,
+        # 初篩鍵決定「哪些股票會被補齊新聞/財報」。用 total_score 與漲停毫無關係，
+        # 改用趨勢分初篩鍵，至少讓被深度分析的是趨勢也不差的漲停股。
+        "prelim_key": "prelim_bestproven", "color": None,
         "uses_horizon": False, "evidence_model": None, "evidence_run": "main_3y",
         "metric": _trend,
         "filters": [("近期連日漲停", _f_is_limitup)],

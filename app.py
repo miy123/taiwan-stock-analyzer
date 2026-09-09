@@ -27,6 +27,8 @@ from services.stock_lookup import resolve_query, display_name, resolve_company_n
 from services.potential import calculate_potential_score
 from services.universe import scan_universe, get_listed_snapshot
 from services.evidence import (
+    trend_bucket_stats as ev_trend_bucket,
+    strategy_stats as ev_strategy_stats,
     get_stats as ev_stats, verdict as ev_verdict, all_model_rows as ev_rows,
     benchmark_return as ev_bench, meta as ev_meta,
     regime_stats as ev_regime_stats, best_strategies_for_regime as ev_best_for_regime,
@@ -1136,11 +1138,14 @@ def render_recommendation_tab(
         rec = a["rec"]; rationale = a["rationale"]; risk_plan = a["risk_plan"]
         timeframe_recs = a["horizon_cards"]; potential = a["potential"]
 
-    # 主視覺改用「長線結構分」——實證 t=4.71，是綜合評分(t=2.04)的兩倍強度。
-    # 原本最大的儀表板顯示最弱的訊號，等於把使用者的注意力導向最不可靠的數字。
-    # 用**純技術**長線分（回測驗證的就是它）；混合分另外顯示
-    _long_sc = a["horizon_tech"]["long"]["score"]
-
+    # 主視覺＝**連續趨勢結構分**，與智能選股／我的持股完全同一個數字。
+    # 這裡曾經顯示舊的離散長線分，於是同一檔股票在個股頁是 94、在持股頁是 56.7
+    # （台積電實測），使用者連續問了兩次「到底幾分」。全站只留一個長期分數。
+    _tr = a.get("trend") or {}
+    _long_sc = _tr.get("score")
+    _stale = _tr.get("stale") or _long_sc is None
+    if _stale:
+        _long_sc = 0
     _long_act = _action_for_score(_long_sc)
     _pf_thr = long_threshold()
 
@@ -1150,7 +1155,7 @@ def render_recommendation_tab(
         fig_gauge = go.Figure(go.Indicator(
             mode="gauge+number",
             value=_long_sc,
-            title={"text": "長線結構分（純技術）✅實證最強",
+            title={"text": "趨勢結構分（全市場百分位）✅實證最強",
                    "font": {"size": 15, "color": "#fafafa"}},
             number={"font": {"size": 52, "color": _long_act["color"]}},
             gauge={
@@ -1174,7 +1179,7 @@ def render_recommendation_tab(
         )
         st.plotly_chart(fig_gauge, use_container_width=True)
 
-        _pass = _long_sc >= _pf_thr
+        _pass = (not _stale) and _long_sc >= _pf_thr
         st.markdown(f"""
 <div style="background:{'#0a3d1c' if _pass else '#3d2a0a'};
             border:2px solid {_long_act['color']};
@@ -1186,11 +1191,17 @@ def render_recommendation_tab(
     {'✅ 已達實證門檻' if _pass else '⚠️ 未達實證門檻'} {_pf_thr:.0f} 分
   </div>
 </div>""", unsafe_allow_html=True)
-        st.caption(
-            f"依 179 期回測，長線結構分 **≥{_pf_thr:.0f} 分**的區間 1個月超額報酬才轉正；"
-            "此分數的預測力（t=4.71）約為下方綜合評分（t=2.04）的兩倍。\n\n"
-            f"下方「四種週期評分」用的是同一個純技術分數，前後一致。"
-        )
+        if _stale:
+            st.warning("尚未跑過全市場掃描，無法算出這檔在市場中的百分位。"
+                       "請先到 **🎯 智能選股** 掃描一次。")
+        else:
+            st.caption(
+                f"分數＝距季線／均線排列／季線斜率在**全市場的百分位**，"
+                f"{_long_sc:.0f} 分代表趨勢強度贏過 {_long_sc:.0f}% 的股票。\n\n"
+                + threshold_note(20)
+            )
+            for _w in (a.get("trend_why") or []):
+                st.caption(f"· {_w}")
 
         # 綜合評分退居輔助
         st.markdown(f"""
@@ -1202,16 +1213,17 @@ def render_recommendation_tab(
 </div>""", unsafe_allow_html=True)
 
         # 兩個分數常常不一致，直接說明為什麼，而不是讓使用者自己猜
-        if abs(_long_sc - rec["total_score"]) >= 15:
-            higher = "長線結構分" if _long_sc > rec["total_score"] else "綜合評分"
+        if (not _stale) and abs(_long_sc - rec["total_score"]) >= 15:
+            higher = "趨勢結構分" if _long_sc > rec["total_score"] else "綜合評分"
             st.info(
                 f"❓ **為什麼兩個分數差這麼多？**（{_long_sc} vs {rec['total_score']}）\n\n"
                 "它們量的是**不同東西**，不是互相矛盾：\n\n"
-                f"· **長線結構分 {_long_sc}**＝只看**價格結構**"
-                "（季線位置、均線排列、半年報酬）。這是回測驗證過的**進場時機**訊號。\n\n"
+                f"· **趨勢結構分 {_long_sc:.0f}**＝只看**價格結構**"
+                "（距季線、均線排列、季線斜率）在全市場的相對位置。"
+                "這是回測驗證過的**進場時機**訊號。\n\n"
                 f"· **綜合評分 {rec['total_score']}**＝再加上基本面（{rec['fund_score']}）、"
                 f"消息（{rec['news_score']}）、目標價，並扣除融資籌碼風險。"
-                "這是**體質與風險**的總覽，但預測力較弱（t=2.04）。\n\n"
+                "這是**體質與風險**的總覽，但預測力弱得多。\n\n"
                 f"目前 **{higher}** 較高。常見情境：**股價長期走勢很強、但基本面偏弱或"
                 "散戶槓桿過重**——趨勢還在，但底子與籌碼有隱憂。"
                 "兩者都看，不要只憑一個數字下決定。"
@@ -1324,14 +1336,15 @@ def render_recommendation_tab(
 
     # ── Timeframe-specific recommendations ────────────────────────────────────
     st.markdown("---")
-    st.markdown("#### ⏱ 四種週期評分")
+    st.markdown("#### ⏱ 短中期評分（輔助）")
     st.info(
-        "📌 **這四個分數的差別是「用多長週期的指標計算」，不是「建議你抱多久」。**\n\n"
-        "兩者互相獨立——實證顯示**即使你只想抱一週，用「長線分」選股仍然最好**"
-        "（持有1週：長線分超額 +0.53%／t=2.61，優於短線分 +0.39%）。"
-        "所以不要因為想做短線就去看短線分。"
+        "📌 **這些分數的差別是「用多長週期的指標計算」，不是「建議你抱多久」。**\n\n"
+        "兩者互相獨立——實證顯示**即使你只想抱一週，用上方的趨勢結構分選股仍然最好**。"
+        "所以不要因為想做短線就改看短線分。\n\n"
+        "「長期」不在這裡，因為那就是上方的**趨勢結構分**——"
+        "全站只留一個長期數字，避免同一檔出現兩個都叫長線的分數。"
     )
-    tf_cols = st.columns(4)
+    tf_cols = st.columns(3)
     for tcol, h in zip(tf_cols, timeframe_recs):
         with tcol:
             eff = ev_horizon_efficacy(h["key"])
@@ -1449,11 +1462,12 @@ def render_recommendation_tab(
         if pos_txt:
             st.caption(pos_txt)
 
-    # ── 這檔的長線分落在哪個實證區間？ ────────────────────────────────────────
-    long_sc = a["horizon_tech"]["long"]["score"]
-    if long_sc is not None:
-        b = ev_bucket("長線+量能確認", long_sc, 20) or ev_bucket("長線結構分", long_sc, 20)
-        thr = long_threshold()
+    # ── 這檔的趨勢分落在哪個實證區間？ ──────────────────────────────────────
+    # ⚠️ 必須用**趨勢結構分**查趨勢分的分桶表。先前這裡拿舊的離散長線分去查，
+    #    等於用 A 量表的分數去對 B 量表的門檻。
+    _bsc = (a.get("trend") or {}).get("score")
+    if _bsc is not None:
+        b = ev_trend_bucket(_bsc, 20)
         if b:
             ok = b.get("excess", 0) > 0
             bc = "#4caf50" if ok else "#f44336"
@@ -1461,11 +1475,12 @@ def render_recommendation_tab(
 <div style="background:#161b26;border-left:4px solid {bc};border-radius:6px;
             padding:10px 14px;margin:8px 0;">
   <span style="color:{bc};font-weight:700;">
-    {'✅' if ok else '⚠️'} 長線結構分 {long_sc} 落在 {b['range']} 區間</span>
+    {'✅' if ok else '⚠️'} 趨勢結構分 {_bsc:.0f} 落在 {b['range']} 區間</span>
   <span style="color:#cfd8dc;font-size:13px;">
-    — 歷史上此區間持有1個月的**勝率 {b.get('win_rate', 0):.1f}%、超額報酬
-    {b.get('excess', 0):+.2f}%**（樣本 {b.get('n', 0):,} 筆）
-    {'，屬於值得進場的區間。' if ok else f'。實證門檻約 {thr:.0f} 分，此分數以下歷史超額為負，追價需謹慎。' if thr else '。'}
+    — 歷史上此區間持有1個月的**超額報酬 {b.get('excess', 0):+.2f}%、
+    贏大盤比率 {b.get('beat_rate', 0):.0f}%**（t={b.get('t', 0):+.2f}、
+    {b.get('periods', 0)} 期）
+    {'，屬於值得進場的區間。' if ok else '。此區間歷史超額為負，追價需謹慎。'}
   </span>
 </div>""", unsafe_allow_html=True)
 
@@ -1842,24 +1857,14 @@ def render_smart_screener_page():
     col_cfg1, col_cfg2, col_cfg3 = st.columns([1, 1.3, 1.7])
     with col_cfg1:
         top_n = st.selectbox("顯示前 N 名", [5, 10, 15, 20, 30], index=1)
+    # 「排序用的週期評分」選單已移除。整併成 5 個策略後，**沒有一個**的排序會讀它
+    # （`uses_horizon` 全為 False），它永遠是停用狀態的裝飾品，還掛著一段舊 run 的
+    # 說明數字。排序依據改由每個策略的 `sort_desc` 直接寫在下方說明列。
+    horizon_key, horizon_label = None, "趨勢結構分"
     with col_cfg2:
-        # Borrowed from 個股分析: rank by holding horizon instead of one blended score
-        # ⚠️ 只有「綜合強勢」的排序真的會用到這個選擇；其他策略各自有固定的排序
-        # 依據（族群/長線分/本益比/潛力分/漲停天數），選了也不會改變結果——
-        # 實測換週期時卡片順序完全不動。故對那些策略直接停用，避免誤導。
-        _hz_applies = sdef["uses_horizon"]
-        horizon_label = st.selectbox(
-            "排序用的週期評分",
-            ["長線 半年+ ✅最強", "中線 1個月+ ✅次強", "綜合（不分週期）",
-             "短線 1週內", "極短線 1–3天"],
-            index=0, key="smart_horizon", disabled=not _hz_applies,
-            help=("**只有「🚀 綜合強勢」策略會用到這個選項**——其他策略各有固定排序依據。\n\n"
-                  "回測（179期、持有1個月超額報酬）：長線 +2.62%✅、中線 +1.90%✅、"
-                  "短線 +1.29%✅、極短線 +0.23%（不顯著）。越長週期的結構分越有效。"),
-        )
-        horizon_key = {"長線 半年+ ✅最強": "long", "中線 1個月+ ✅次強": "medium",
-                       "綜合（不分週期）": None, "短線 1週內": "short",
-                       "極短線 1–3天": "ultra_short"}[horizon_label]
+        st.markdown(
+            "<div style='padding-top:26px;font-size:13px;color:#78909c;'>"
+            "排序依據見下方說明列</div>", unsafe_allow_html=True)
     with col_cfg3:
         regime = get_market_regime()
         if regime.get("regime") != "unknown":
@@ -1959,11 +1964,7 @@ def render_smart_screener_page():
     )
 
     # 說明文字全部來自策略表（services/strategies.py），不再散落
-    _sort_desc = sdef["sort_desc"]
-    if sdef["uses_horizon"]:
-        _sort_desc = f"**{horizon_label.split()[0]}分**（可用上方選單切換）"
-    st.caption(f"📋 {sdef['bar_note']}　｜　排序依據：{_sort_desc}"
-               + ("" if sdef["uses_horizon"] else "（此策略不使用上方的週期選單）"))
+    st.caption(f"📋 {sdef['bar_note']}　｜　排序依據：{sdef['sort_desc']}")
 
     # ── 分數門檻實證：幾分以上才值得買 ────────────────────────────────────────
     _note = threshold_note(20)
@@ -2203,8 +2204,6 @@ def render_smart_screener_page():
     metric_of = sdef["metric"]
     # 圖表標題＝排序依據的白話名稱（去掉 markdown 粗體與括號說明）
     metric_name = sdef["sort_desc"].replace("**", "").split("（")[0]
-    if sdef["uses_horizon"]:
-        metric_name = f"{horizon_label.split()[0]} 評分"
 
     st.markdown("---")
     st.markdown(f"### 依「{strat_label}」排序 — 前 {len(display)} 名")
@@ -2296,11 +2295,18 @@ def render_sector_view(results):
             "族群動能＝該族群成員近 60 日報酬的**中位數**（用中位數避免被單一飆股拉高）；"
             "廣度＝族群內上漲家數比率。依證交所／櫃買官方「產業別」分類。"
         )
-        st.success(
-            "✅ **實證：買「強勢族群裡的強股」有效**——只在前 5 強族群裡挑長線分最高者，"
-            "1個月超額 **+3.07%**（t=5.32）、3個月 **+10.59%**（t=6.94），"
-            "**優於不分族群的預設策略**（+2.58% / +9.34%）。"
-        )
+        _st_sec = ev_strategy_stats("sectorhot", 60)
+        _st_tr = ev_strategy_stats("trend", 60)
+        if _st_sec and _st_tr:
+            st.warning(
+                f"⚠️ **族群濾網其實是扣分的（已修正先前的結論）**——同一次回測裡，"
+                f"「前5強族群＋趨勢分」持有3個月超額 **{_st_sec['excess']:+.2f}%**"
+                f"（t={_st_sec['t']:+.2f}），**輸給什麼濾網都不加的趨勢結構分 "
+                f"{_st_tr['excess']:+.2f}%**（t={_st_tr['t']:+.2f}）。\n\n"
+                "先前寫的「+3.07% 優於預設策略」是**跨不同次回測**比出來的，"
+                "而本專案自己量過跨 run 全距（0.6~0.76%）大於模型間差異，那種比較無效。"
+                "族群動能本身確實存在，但拿它當**過濾條件**會把好股票一起砍掉。"
+            )
         st.error(
             "⛔ **但「補漲」是錯覺**——「強勢族群裡還沒跟上的落後股」1個月超額 **−0.25%**、"
             "3個月 **−0.88%**，贏基準率僅 36–40%。**族群強不代表落後股會補漲**，"
@@ -2442,28 +2448,6 @@ def _select_by_strategy(results, strategy, horizon_key, buy_bar, top_n):
                              "trend_bar": TREND_BUY_BAR})[:top_n]
     # 策略表是唯一來源；找不到策略就明講，不要退回一份會與它不一致的舊邏輯
     raise KeyError(f"未知策略 {strategy}（請在 services/strategies.py 定義）")
-
-    def hs(r):
-        if not horizon_key:
-            return r["total_score"]
-        return (r.get("horizon") or {}).get(horizon_key, {}).get("score", r["total_score"])
-
-    if strategy == "momentum":
-        v = [r for r in results if hs(r) >= buy_bar]; v.sort(key=hs, reverse=True)
-    elif strategy == "limitup":
-        v = [r for r in results if r.get("is_limit_up")]
-        v.sort(key=lambda r: (r.get("max_streak", 0), r["total_score"]), reverse=True)
-    elif strategy == "sleeper":
-        v = [r for r in results if (r.get("potential") or {}).get("qualifies")]
-        v.sort(key=lambda r: (r.get("potential") or {}).get("total", 0), reverse=True)
-    else:
-        v = [r for r in results
-             if r["total_score"] >= 48
-             and (r.get("potential") or {}).get("low_base", 0) >= 45
-             and (r.get("potential") or {}).get("total", 0) >= 45
-             and (r.get("rr") is None or r["rr"] >= 1.5)]
-        v.sort(key=lambda r: r["combined_score"], reverse=True)
-    return v[:top_n]
 
 
 def render_strategy_backtest(strategy, strat_label, horizon_key, horizon_label,

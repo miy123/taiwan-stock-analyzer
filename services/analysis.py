@@ -151,16 +151,16 @@ def compute_scores(df, info, financials, stock_id, company_name, as_of_date=None
     horizon_tech = calculate_horizon_scores(df)
     _trend = score_single(df)
 
-    # 四週期卡片：**一律用純技術分**，建議動作也由同一個分數推導。
-    # 先前卡片顯示的是混合分（含基本面/目標價/新聞），於是同一檔股票會出現
-    # 兩個都叫「長線分」的數字（台虹：純技術 88 vs 混合 60），使用者根本無從判斷
-    # 該信哪個。既然實證是在純技術分上量的，就讓顯示與實證一致，只留一個數字。
+    # 短中期卡片：一律用純技術分，建議動作由同一個分數推導。
+    # **不含「長線」**——長期已由 services/scoring 的連續趨勢結構分負責。
+    # 舊的離散長線分只有 40 種值、49% 並列滿分，鑑別力遠差於趨勢分；
+    # 同時顯示兩個都叫「長期」的數字（台積電：離散 94 vs 趨勢 56.7）
+    # 只會讓使用者不知道該信哪個——這個坑本專案踩過三次。
     horizon_cards = []
     for cfg_key, cfg_name, cfg_span, cfg_desc in [
         ("ultra_short", "極短線分", "指標：1–3 天", "當日動能與量價、KD/RSI 極值、MA5"),
         ("short", "短線分", "指標：約 1 週", "MA5/MA10、MACD 交叉、量能"),
         ("medium", "中線分", "指標：約 1 個月", "MA20/MA60 排列與斜率、近月報酬"),
-        ("long", "長線分", "指標：半年結構", "季線 MA120、MA60>MA120、半年報酬"),
     ]:
         sc = horizon_tech[cfg_key]["score"]
         act = _action_for(sc)
