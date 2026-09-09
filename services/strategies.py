@@ -23,12 +23,30 @@ def _hscore(r, horizon_key):
     """依選定週期取分數；未選則用綜合評分。"""
     if not horizon_key:
         return r.get("total_score", 0)
-    return (r.get("horizon") or {}).get(horizon_key, {}).get(
-        "score", r.get("total_score", 0))
+    return _hz_tech(r, horizon_key)
 
 
 def _long(r):
+    """
+    排序一律用**純技術**長線分（horizon_tech），不是混合分。
+
+    ⚠️ 這兩個是不同數字（台積電：純技術 94 vs 混合 81）。回測與分數門檻分析
+    用的是純技術分——基本面/目標價/新聞沒有歷史快照，無法納入回測。若改用
+    混合分排序，等於把「未經驗證的 30% 目標價 + 45% 基本面」偷渡進一個
+    宣稱有實證支持的策略裡，實證數字就不再適用。
+    """
+    ht = r.get("horizon_tech")
+    if isinstance(ht, dict) and "long" in ht:
+        return ht["long"]
+    # 舊快取沒有 horizon_tech 時退回混合分（會有偏差，但不至於壞掉）
     return (r.get("horizon") or {}).get("long", {}).get("score", 0)
+
+
+def _hz_tech(r, key):
+    ht = r.get("horizon_tech")
+    if isinstance(ht, dict) and key in ht:
+        return ht[key]
+    return (r.get("horizon") or {}).get(key, {}).get("score", 0)
 
 
 # ── 各策略的篩選＋排序 ────────────────────────────────────────────────────────

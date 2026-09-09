@@ -1131,8 +1131,10 @@ def render_recommendation_tab(
 
     # 主視覺改用「長線結構分」——實證 t=4.71，是綜合評分(t=2.04)的兩倍強度。
     # 原本最大的儀表板顯示最弱的訊號，等於把使用者的注意力導向最不可靠的數字。
-    _long_sc = next((h["score"] for h in timeframe_recs if h["key"] == "long"),
-                    rec["total_score"])
+    # 用**純技術**長線分（回測驗證的就是它）；混合分另外顯示
+    _long_sc = a["horizon_tech"]["long"]["score"]
+    _long_mixed = next((h["score"] for h in timeframe_recs if h["key"] == "long"),
+                       rec["total_score"])
     _long_act = _action_for_score(_long_sc)
     _pf_thr = long_threshold()
 
@@ -1142,8 +1144,8 @@ def render_recommendation_tab(
         fig_gauge = go.Figure(go.Indicator(
             mode="gauge+number",
             value=_long_sc,
-            title={"text": "長線結構分 ✅實證最強",
-                   "font": {"size": 16, "color": "#fafafa"}},
+            title={"text": "長線結構分（純技術）✅實證最強",
+                   "font": {"size": 15, "color": "#fafafa"}},
             number={"font": {"size": 52, "color": _long_act["color"]}},
             gauge={
                 "axis": {"range": [0, 100], "tickfont": {"color": "#fafafa"}},
@@ -1180,7 +1182,11 @@ def render_recommendation_tab(
 </div>""", unsafe_allow_html=True)
         st.caption(
             f"依 179 期回測，長線結構分 **≥{_pf_thr:.0f} 分**的區間 1個月超額報酬才轉正；"
-            "此分數的預測力（t=4.71）約為下方綜合評分（t=2.04）的兩倍。"
+            "此分數的預測力（t=4.71）約為下方綜合評分（t=2.04）的兩倍。\n\n"
+            f"⚠️ 這是**純技術**分數（均線結構／季線位置／半年報酬），也是回測驗證的對象。"
+            f"下方「四種週期評分」的長線分是 **{_long_mixed}**，那是再混入基本面45%／"
+            f"目標價30%／新聞5% 的**綜合建議分**——那三項沒有歷史快照、無法回測，"
+            f"**不適用上面的門檻與勝率**。"
         )
 
         # 綜合評分退居輔助
@@ -1425,7 +1431,7 @@ def render_recommendation_tab(
             st.caption(pos_txt)
 
     # ── 這檔的長線分落在哪個實證區間？ ────────────────────────────────────────
-    long_sc = next((h["score"] for h in timeframe_recs if h["key"] == "long"), None)
+    long_sc = a["horizon_tech"]["long"]["score"]
     if long_sc is not None:
         b = ev_bucket("長線+量能確認", long_sc, 20) or ev_bucket("長線結構分", long_sc, 20)
         thr = long_threshold()
@@ -1743,6 +1749,8 @@ def _analyze_one_stock(stock_id: str, period: str = None, limit_up_info=None,
                                    "icon": h["icon"], "color": h["color"],
                                    "name": h["name"], "span": h["span"]}
                         for h in a["timeframe_recs"]},
+            # 純技術週期分：排序與實證對照用（回測驗證的就是它）
+            "horizon_tech": {k: v["score"] for k, v in a["horizon_tech"].items()},
             # 量價方向（回測顯示：長線分 + 量價未轉弱 是最佳組合）
             "volume_adj": (a["volume_signal"] or {}).get("score_adj", 0),
             # Backtest only: realized forward returns from the as-of date
@@ -2978,7 +2986,8 @@ def render_portfolio_page():
                       if rr is not None and stop_pct is not None else "")
             pe_txt = pe_inline(r.get("pe_ratio"), r.get("dividend_yield"))
             # 實證區間徽章（共用元件）
-            evid_html = evidence_badge((hz.get("long") or {}).get("score"))
+            evid_html = evidence_badge((r.get("horizon_tech") or {}).get("long")
+                                       or (hz.get("long") or {}).get("score"))
         else:
             color, icon, action, total, pot = "#78909c", "❔", "無資料", 0, 0
             price, t_w, f_w, n_w = 0, 0, 0, 0

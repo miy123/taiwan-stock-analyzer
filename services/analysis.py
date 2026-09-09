@@ -147,6 +147,13 @@ def compute_scores(df, info, financials, stock_id, company_name, as_of_date=None
     )
 
     return {
+        # ⚠️ 兩種長線分，用途不同，別搞混：
+        #   horizon_tech = calculate_horizon_scores() 的**純技術**分數
+        #     → 回測與分數門檻分析用的就是這個，實證結論（+3.07%、70分門檻、
+        #       勝率58.7%）全部基於它。排序與實證對照**必須**用這個。
+        #   timeframe_recs = 再混入基本面45%/目標價30%/新聞5% 的**混合**分數
+        #     → 僅適合當「綜合建議」呈現。它混入的三項都沒有歷史快照、
+        #       從未被驗證，拿它套用實證門檻是張冠李戴（台積電：純技術94 vs 混合81）。
         "fundamentals": fundamentals,
         "tech_score": tech_score, "fund_score": fund_score, "news_score": news_score,
         "all_news": all_news, "catalysts": catalysts,

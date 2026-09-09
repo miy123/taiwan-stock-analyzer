@@ -84,7 +84,10 @@ def horizon_cells(horizon: dict, selected_key=None, show_legend=True,
 def evidence_badge(long_score, hold_days=20, min_width=150) -> str:
     """
     該檔長線分落在哪個實證區間 → 歷史勝率與超額報酬。
-    三頁共用同一套門檻與說法，避免同一個分數在不同頁得到不同判定。
+
+    ⚠️ long_score 必須傳**純技術**長線分（horizon_tech["long"]），
+    因為實證門檻是在那個分數上量出來的。傳混合分會張冠李戴
+    （台積電：純技術 94 vs 混合 81）——見 services/strategies._long。
     """
     if long_score is None:
         return f"<div style='min-width:{min_width}px;'></div>"

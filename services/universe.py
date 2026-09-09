@@ -332,6 +332,8 @@ def scan_universe(min_turnover=1e7, period="2y", progress_cb=None, include_otc=T
                                        "icon": h["icon"], "color": h["color"],
                                        "name": h["name"], "span": h["span"]}
                             for h in tfr},
+                # 純技術週期分：排序與實證對照用（回測驗證的就是它）
+                "horizon_tech": {k: v["score"] for k, v in horizon_tech.items()},
                 "turnover": meta.get("turnover"),
                 "is_limit_up": False, "max_streak": 0, "last_days_ago": 0,
                 "exchange": meta.get("market", "TWSE"), "limit_up_pct": None,
