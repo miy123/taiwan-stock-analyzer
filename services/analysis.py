@@ -32,6 +32,7 @@ from services.recommendation import (
 from services.margin import get_margin_data, get_margin_trend, calculate_margin_signal
 from services.market import get_market_regime
 from services.potential import calculate_potential_score
+from services.scoring import score_single, explain as trend_explain
 
 # Indicators need long history to be valid (MA120, Vol_MA60, 52-week range).
 # Both pages fetch this same period so they also share one cache entry.
@@ -148,6 +149,7 @@ def compute_scores(df, info, financials, stock_id, company_name, as_of_date=None
     risk_plan = calculate_risk_plan(df, target_price=tp.get("recommended_target"))
 
     horizon_tech = calculate_horizon_scores(df)
+    _trend = score_single(df)
 
     # 四週期卡片：**一律用純技術分**，建議動作也由同一個分數推導。
     # 先前卡片顯示的是混合分（含基本面/目標價/新聞），於是同一檔股票會出現
@@ -203,4 +205,8 @@ def compute_scores(df, info, financials, stock_id, company_name, as_of_date=None
         "above_ma120": dist_from_ma120(df),
         "r60": _r60,
         "overheat": overheat,               # 三頁共用的「利多已反映」示警
+        # 連續趨勢結構分：全站排序主訊號。單檔頁面對照「上次全市場掃描的分布」
+        # 打分，這樣同一檔在個股頁／持股頁／選股頁只會有一個數字。
+        "trend": _trend,
+        "trend_why": trend_explain(_trend.get("percentiles") or {}),
     }

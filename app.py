@@ -51,6 +51,10 @@ from services.portfolio import (
 from services.market import get_market_regime, get_index_forward_return
 from services.technical import calculate_risk_plan
 from services.analysis import prepare_frame, compute_scores, PERIOD_ROWS
+
+# 趨勢結構分是「橫斷面百分位」，所以買進線可以直接用百分位解讀：
+# 70 = 只看贏過全市場七成的股票。回測分桶顯示 70 以下的區間超額報酬為負。
+TREND_BUY_BAR = 70.0
 from services.target_price import calculate_target_price
 from services.analyst_targets import get_analyst_targets
 from services.catalyst_impact import get_catalyst_impact
@@ -1768,6 +1772,9 @@ def _analyze_one_stock(stock_id: str, period: str = None, limit_up_info=None,
             "above_ma120": a.get("above_ma120"),
             "r60": a.get("r60"),
             "overheat": a.get("overheat") or {},
+            "trend_score": (a.get("trend") or {}).get("score"),
+            "trend_pcts": (a.get("trend") or {}).get("percentiles") or {},
+            "trend_why": a.get("trend_why") or [],
             # 量價方向（回測顯示：長線分 + 量價未轉弱 是最佳組合）
             "volume_adj": (a["volume_signal"] or {}).get("score_adj", 0),
             # Backtest only: realized forward returns from the as-of date
@@ -1864,7 +1871,8 @@ def render_smart_screener_page():
     # ── Backtest evidence for the chosen strategy ─────────────────────────────
     # Ranking rules are cheap to invent and easy to believe; the 139-period
     # backtest is the only thing that says whether they actually worked.
-    ev = ev_stats_model(sdef["evidence_model"], hold_days=20)
+    ev = ev_stats_model(sdef["evidence_model"], hold_days=20,
+                        run=sdef.get("evidence_run", "main_3y"))
     ev_v = ev_verdict(ev)
     if ev:
         st.markdown(f"""
@@ -2116,7 +2124,8 @@ def render_smart_screener_page():
 
     # 篩選＋排序完全由策略表決定（services/strategies.py），
     # 不再有一長串 if-elif —— 新增策略只要在表裡加一筆。
-    view = strat_select(sdef, results, {"buy_bar": buy_bar, "horizon_key": horizon_key})
+    view = strat_select(sdef, results, {"buy_bar": buy_bar, "horizon_key": horizon_key,
+                                        "trend_bar": TREND_BUY_BAR})
 
     # ── Summary strip (always shows both lenses) ──────────────────────────────
     buy_ct     = sum(1 for r in results if r["total_score"] >= 58)
@@ -2142,18 +2151,14 @@ def render_smart_screener_page():
         )
 
     if not view:
-        if strategy == "sleeper":
-            st.warning("目前股池中沒有完全符合『有題材但尚未起漲』的個股（多數已上漲或題材不足）。"
-                       "可改用『⚖️ 攻守兼備』放寬條件，或稍後再試。")
-        elif strategy == "balanced":
-            st.warning("目前沒有同時滿足『體質不差、尚未過熱且風報比合理』的個股，"
-                       "可改用『🚀 綜合強勢』看排行。")
+        if strategy == "contrarian":
+            st.warning("目前股池中沒有『低基期且有題材』的個股（多頭時本來就稀少）。"
+                       "回測顯示這類逆勢策略在多頭失效、空頭才強，找不到標的是正常的。")
         elif strategy == "limitup":
             st.warning("目前偵測不到近期連日漲停的個股（可能 API 暫時不可用，或市場尚未收盤）。")
         else:
-            st.warning(f"目前沒有綜合評分達買進線（{buy_bar}）的個股——"
-                       f"大盤為「{regime.get('label','')}」，門檻已依環境調整。"
-                       "可改用『⚖️ 攻守兼備』或『🌱 潛力潛伏』尋找其他機會。")
+            st.warning(f"目前沒有達買進線的個股——大盤為「{regime.get('label','')}」，"
+                       "門檻已依環境調整。可改用『🌱 逆勢潛伏』尋找其他機會。")
         return
 
     display = view[:top_n]
@@ -2181,7 +2186,7 @@ def render_smart_screener_page():
             textposition="outside",
             textfont=dict(color="#fafafa"),
         ))
-        if strategy in ("momentum", "limitup", "bestproven", "sectorhot"):
+        if strategy in ("trend", "sectorhot", "limitup"):
             fig_bar.add_hline(y=buy_bar + 10, line_dash="dot", line_color="#4caf50",
                               annotation_text=f"強力買進線 {buy_bar + 10}", annotation_position="right")
             fig_bar.add_hline(y=buy_bar, line_dash="dot", line_color="#a9e34b",
@@ -2204,10 +2209,13 @@ def render_smart_screener_page():
         _render_smart_card(rank, r, strategy, horizon_key)
 
     st.markdown("---")
-    if strategy == "sleeper":
-        st.caption("⚠️ 潛伏股本質是「還沒漲」，可能長期沉潛或題材落空，風險高於強勢股，務必分批並設停損。")
-    elif strategy == "balanced":
-        st.caption("⚠️ 「攻守兼備分」為綜合評分與潛力分的幾何平均，需兩者皆不弱才會高，並已濾除風報比 <1.5 者。仍不代表投資建議。")
+    if strategy == "contrarian":
+        st.caption("⚠️ 逆勢潛伏本質是「還沒漲」，可能長期沉潛或題材落空。"
+                   "回測：多頭 −0.98%、空頭 +2.23% —— 只在空頭有優勢，多頭請避開。")
+    elif strategy == "lowpe":
+        st.caption("⚠️ 139期回測顯示**單純買最低本益比顯著虧錢**"
+                   "（持有3個月超額 −4.48%、t=−3.82；近一年更達 −18.25%）。"
+                   "低本益比多半反映衰退預期而非便宜。此頁供你自行研判，不是推薦。")
     elif strategy == "limitup":
         st.caption("⚠️ 漲停股波動極大、籌碼凌亂，追高風險高。請務必參考卡片上的風報比與停損幅度，嚴格控管部位。")
     else:
@@ -2383,10 +2391,10 @@ def _select_by_strategy(results, strategy, horizon_key, buy_bar, top_n):
             pt = (r.get("potential") or {}).get("total", 0)
             r["combined_score"] = int(round((max(r.get("total_score", 0), 0) * max(pt, 0)) ** 0.5))
         return strat_select(sdef, results,
-                            {"buy_bar": buy_bar, "horizon_key": horizon_key})[:top_n]
-    for r in results:
-        pt = (r.get("potential") or {}).get("total", 0)
-        r["combined_score"] = int(round((max(r["total_score"], 0) * max(pt, 0)) ** 0.5))
+                            {"buy_bar": buy_bar, "horizon_key": horizon_key,
+                             "trend_bar": TREND_BUY_BAR})[:top_n]
+    # 策略表是唯一來源；找不到策略就明講，不要退回一份會與它不一致的舊邏輯
+    raise KeyError(f"未知策略 {strategy}（請在 services/strategies.py 定義）")
 
     def hs(r):
         if not horizon_key:
@@ -2614,10 +2622,12 @@ def _render_smart_card(rank, r, strategy, horizon_key=None):
                      "padding:1px 6px;margin-left:6px;white-space:nowrap;'>🌱 潛伏</span>") if qualifies else ""
 
     # Three always-visible scores; primary highlighted per strategy
-    cell_momentum = _score_cell("綜合", r["total_score"], color,
-                                strategy in ("momentum", "limitup", "bestproven", "sectorhot"))
-    cell_sleeper  = _score_cell("潛力", pot_total, "#7986cb", strategy == "sleeper")
-    cell_balanced = _score_cell("兼備", comb, "#4dd0e1", strategy == "balanced")
+    _ts = r.get("trend_score")
+    cell_momentum = _score_cell("趨勢分" if _ts is not None else "綜合",
+                                f"{_ts:.0f}" if _ts is not None else r["total_score"],
+                                color, strategy in ("trend", "sectorhot", "limitup"))
+    cell_sleeper  = _score_cell("潛力", pot_total, "#7986cb", strategy == "contrarian")
+    cell_balanced = _score_cell("綜合", r["total_score"], "#4dd0e1", False)
 
     # Risk/reward (from the ATR plan) — shows whether the entry is worth the risk
     rr = r.get("rr")
@@ -2731,7 +2741,7 @@ def render_portfolio_page():
     ev_total = ev_stats("momentum", None, 20)
     rank_label = st.radio(
         "排名依據",
-        ["🏆 長線結構分（回測最強）", "綜合評分"],
+        ["🏆 趨勢結構分（回測最強）", "綜合評分"],
         horizontal=True, key="pf_rank_by",
         captions=[
             (f"回測超額 {ev_long['excess_return']:+.2f}%、t={ev_long['t_stat']:+.2f}、"
@@ -2888,6 +2898,10 @@ def render_portfolio_page():
         if not r:
             return -1
         if rank_by_long:
+            # 連續趨勢分優先；沒有（舊快取）才退回離散長線分
+            t = r.get("trend_score")
+            if t is not None:
+                return t
             return (r.get("horizon") or {}).get("long", {}).get("score",
                                                                 r["total_score"])
         return r["total_score"]

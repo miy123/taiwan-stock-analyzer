@@ -179,6 +179,23 @@ MODELS = {
     "A3 全因子(估值加重)": {"dist_ma120": 1, "ma60_vs_ma120": 1, "ma120_slope": 1,
                             "r120": 1, "r60": 1, "vol_trend": 0.5, "vol_price": 0.5,
                             "margin_usage": 0.5, "margin_change": 0.5, "pe_inv": 3},
+
+    # 第一輪發現：純低本益比是災難（近期 -17.8%），但估值當「傾斜」很有用
+    # （P3 動能+估值在 +20/+40 日是全期最佳）。這裡把這個方向做細。
+    "P4 12-1動能+估值": {"mom_12_1": 2, "pe_inv": 1},
+    "P5 趨勢+動能+估值(輕)": {"dist_ma120": 1, "ma60_vs_ma120": 1, "ma120_slope": 1,
+                              "r120": 1, "r60": 1, "pe_inv": 0.5},
+    # 資券單獨看有沒有訊息
+    "S1 純券資比": {"short_ratio": 1},
+    "S2 純融資減少": {"margin_change": 1},
+    "M3 趨勢+資券完整": {"dist_ma120": 1, "ma60_vs_ma120": 1, "ma120_slope": 1,
+                          "margin_usage": 1, "margin_change": 1, "short_ratio": 1},
+    # 綜合候選：走查勝出的趨勢 + 近期最強的 12-1 + 有效的估值傾斜 + 量能
+    "B1 趨勢+12-1+估值+量能": {"dist_ma120": 1.5, "ma60_vs_ma120": 1, "ma120_slope": 1,
+                                "mom_12_1": 1.5, "pe_inv": 1, "vol_trend": 0.5,
+                                "vol_price": 0.5},
+    "B2 趨勢+12-1+估值": {"dist_ma120": 1.5, "ma60_vs_ma120": 1, "ma120_slope": 1,
+                           "mom_12_1": 1.5, "pe_inv": 1},
 }
 
 
@@ -351,22 +368,40 @@ def main():
     print("\n" + "=" * 96)
     print("走查驗證：用**前半段**挑出最佳模型，看它在**後半段**（完全沒看過的資料）表現")
     print("=" * 96)
-    mid = len(dates_used) // 2
-    print(f"訓練段 {dates_used[0].date()} ~ {dates_used[mid-1].date()}（{mid} 期）")
-    print(f"測試段 {dates_used[mid].date()} ~ {dates_used[-1].date()}"
-          f"（{len(dates_used)-mid} 期）\n")
+    # 滾動多折：每一折都「只用之前的資料挑模型」，再看下一段的實際表現。
+    # 單一 50/50 切分只有一次抽樣，很容易挑到運氣好的那個；多折才看得出穩定性。
+    FOLDS = 4
+    n = len(dates_used)
+    step = n // FOLDS
     for h in FWD:
-        train = sorted(((float(np.mean(res[m][h][:mid])), m) for m in MODELS),
-                       reverse=True)
-        best = train[0][1]
-        te = res[best][h][mid:]
-        tr_all = sorted(((float(np.mean(res[m][h][mid:])), m) for m in MODELS),
-                        reverse=True)
-        print(f"  +{h}日：訓練段最佳 = 「{best}」({train[0][0]:+.2f}%)")
-        print(f"        → 測試段實際 {np.mean(te):+.2f}%  t={_t(te):+.2f}  "
-              f"勝率 {100*sum(1 for x in te if x>0)/len(te):.0f}%")
-        print(f"        （測試段真正最佳是「{tr_all[0][1]}」{tr_all[0][0]:+.2f}%，"
-              f"名次落差就是過擬合的代價）")
+        print(f"\n── +{h}日 ─────────────────────────────────────────────")
+        picked, tests = [], []
+        for f in range(1, FOLDS):
+            tr_end, te_end = step * f, min(step * (f + 1), n)
+            train = sorted(((float(np.mean(res[m][h][:tr_end])), m)
+                            for m in MODELS), reverse=True)
+            best = train[0][1]
+            te = res[best][h][tr_end:te_end]
+            if not te:
+                continue
+            picked.append(best)
+            tests.extend(te)
+            truth = sorted(((float(np.mean(res[m][h][tr_end:te_end])), m)
+                            for m in MODELS), reverse=True)[0]
+            print(f"  第{f}折 訓練{tr_end}期→挑「{best}」，"
+                  f"測試{len(te)}期實際 {np.mean(te):+.2f}%"
+                  f"（該段真正最佳「{truth[1]}」{truth[0]:+.2f}%）")
+        if tests:
+            print(f"  ▶ 走查合計：{np.mean(tests):+.2f}%  t={_t(tests):+.2f}  "
+                  f"勝率 {100*sum(1 for x in tests if x>0)/len(tests):.0f}%"
+                  f"（{len(tests)} 期，全部是沒看過的資料）")
+            from collections import Counter
+            print(f"    被挑中的模型：{dict(Counter(picked))}")
+            # 對照：如果從頭到尾固定用某個模型（同樣只算測試段期間）
+            fixed = sorted(((float(np.mean(res[m][h][step:step*FOLDS])), m)
+                            for m in MODELS), reverse=True)[:3]
+            print(f"    同期間固定單押的前三名："
+                  + "、".join(f"{m} {v:+.2f}%" for v, m in fixed))
 
     # ── 近期環境（最後 1/3 期）──
     print("\n" + "=" * 96)

@@ -223,6 +223,9 @@ def scan_universe(min_turnover=1e7, period="2y", progress_cb=None, include_otc=T
         dist_from_ma120, overheat_flag,
         analyze_volume_price, calculate_risk_plan,
     )
+    from services.scoring import (
+        raw_factors as _raw_factors, score_cross_section, save_distribution,
+    )
     from services.fundamental import calculate_fundamental_score
     from services.recommendation import (
         generate_recommendation, generate_timeframe_recommendations,
@@ -339,6 +342,8 @@ def scan_universe(min_turnover=1e7, period="2y", progress_cb=None, include_otc=T
                 "horizon_tech": {k: v["score"] for k, v in horizon_tech.items()},
                 # 平手鍵與過熱示警：與 analysis.compute_scores 共用同一實作
                 "above_ma120": dist_from_ma120(df),
+                # 連續趨勢分的原始因子；分數要等整批掃完才算得出百分位
+                "_factors": _raw_factors(df),
                 "r60": r60,
                 "overheat": overheat_flag(pe=meta.get("pe"), r60=r60,
                                           news_score=None),
@@ -349,5 +354,15 @@ def scan_universe(min_turnover=1e7, period="2y", progress_cb=None, include_otc=T
             })
         except Exception:
             continue
+
+    # ── 連續趨勢結構分：全站排序訊號 ──────────────────────────────────────
+    # 必須等整批掃完才算，因為百分位是「跟當天所有股票比」。
+    # 順便把分布落地，讓個股分析／我的持股用同一把尺打分（見 services/scoring）。
+    facts = [r.get("_factors") or {} for r in rows]
+    for r, sc in zip(rows, score_cross_section(facts)):
+        r["trend_score"] = sc["score"]
+        r["trend_pcts"] = sc["percentiles"]
+        r.pop("_factors", None)
+    save_distribution(facts)
 
     return rows, snap

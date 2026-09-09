@@ -186,47 +186,58 @@ def explain(sdef, r, results, ctx):
     return out
 
 
+def _trend(r):
+    """
+    連續趨勢結構分（0~100 百分位）—— **全站排序的主訊號**。
+
+    139 期回測、+60日超額 +7.18%(t=5.52、勝率66%)，是所有測過的模型裡最高的 t 值。
+    加動能/量能/資券/估值都更差（見 services/scoring 的表）。
+
+    舊列（快取或舊版掃描）沒有 trend_score 時退回離散長線分——會偏差但不至於壞掉。
+    """
+    v = r.get("trend_score")
+    return v if v is not None else _long(r)
+
+
+def _f_trend_bar(r, ctx):
+    bar = ctx.get("trend_bar", 70)
+    return _trend(r) >= bar, f"趨勢結構分 {_trend(r):.0f} ≥ 買進線 {bar:.0f}"
+
+
 STRATEGIES = [
     {
-        "key": "sectorhot", "label": "🏭 強勢族群+長線分",
-        "caption": "熱門族群中的強股　✅回測第一",
-        "bar_note": "門檻：屬於動能前5強族群，依長線結構分排序（回測最佳）",
-        "sort_desc": "**長線結構分**（族群動能前5強之內）",
-        "prelim_key": "prelim_bestproven", "color": "#26a69a",
-        "uses_horizon": False, "evidence_model": "強勢族群+長線分",
-        "metric": _long,
-        "filters": [("屬於前5強族群", _f_hot_sector), ("長線分達買進線", _f_long_bar)],
-        "sort_key": lambda r, c: _long_key(r),
-    },
-    {
-        "key": "bestproven", "label": "🏆 長線+量能確認",
-        "caption": "長線結構強且量價未轉弱　✅次佳",
-        "bar_note": "門檻：長線結構分 ≥ 買進線 且 量價未轉弱",
-        "sort_desc": "**長線結構分**（量價未轉弱者）",
+        "key": "trend", "label": "📈 趨勢結構分（主力）",
+        "caption": "139期回測 t值最高　✅實證最強",
+        "bar_note": "門檻：趨勢結構分 ≥ 70（即贏過全市場 70% 的股票）",
+        "sort_desc": "**連續趨勢結構分**（距季線／均線排列／季線斜率的橫斷面百分位）",
         "prelim_key": "prelim_bestproven", "color": "#66bb6a",
-        "uses_horizon": False, "evidence_model": "長線+量能確認",
-        "metric": _long,
-        "filters": [("長線分達買進線", _f_long_bar), ("量價未轉弱", _f_vol_ok)],
-        "sort_key": lambda r, c: _long_key(r),
+        "uses_horizon": False,
+        "evidence_model": "T1 趨勢(連續)", "evidence_run": "factor_3y",
+        "metric": _trend,
+        "filters": [("趨勢結構分達買進線", _f_trend_bar)],
+        "sort_key": lambda r, c: _trend(r),
     },
     {
-        "key": "momentum", "label": "🚀 綜合強勢",
-        "caption": "趨勢已成、順勢操作　✅回測有效",
-        "bar_note": "門檻：所選週期評分 ≥ 買進線（依大盤環境動態調整）",
-        "sort_desc": "**所選週期的評分**（可用上方選單切換）",
-        "prelim_key": "prelim_momentum", "color": None,
-        "uses_horizon": True, "evidence_model": "綜合強勢(技術)",
-        "metric": lambda r: r.get("total_score", 0),
-        "filters": [("所選週期評分達買進線", _f_hscore_bar)],
-        "sort_key": lambda r, c: _hscore_key(r, c.get("horizon_key")),
+        "key": "sectorhot", "label": "🏭 強勢族群＋趨勢分",
+        "caption": "熱門族群中的強股　✅族群動能有效",
+        "bar_note": "門檻：屬於動能前5強族群，且趨勢結構分達買進線",
+        "sort_desc": "**趨勢結構分**（限動能前5強族群）",
+        "prelim_key": "prelim_bestproven", "color": "#26a69a",
+        "uses_horizon": False,
+        "evidence_model": "強勢族群+長線分", "evidence_run": "main_3y",
+        "metric": _trend,
+        "filters": [("屬於前5強族群", _f_hot_sector),
+                    ("趨勢結構分達買進線", _f_trend_bar)],
+        "sort_key": lambda r, c: _trend(r),
     },
     {
         "key": "lowpe", "label": "💎 超低本益比",
-        "caption": "本益比最低的便宜股　❔未驗證",
+        "caption": "本益比最低的便宜股　⛔回測顯著為負",
         "bar_note": "門檻：本益比 3–12 倍（排除 <3 倍的一次性收益假低估）",
         "sort_desc": "**本益比由低到高**",
         "prelim_key": "prelim_lowpe", "color": "#ffd54f",
-        "uses_horizon": False, "evidence_model": None,
+        "uses_horizon": False,
+        "evidence_model": "P1 純低本益比", "evidence_run": "factor_3y",
         "metric": lambda r: r.get("pe_ratio") or 0,
         "filters": [("本益比 3–12 倍", _f_pe_band)],
         "sort_key": lambda r, c: -(r.get("pe_ratio") or 999),
@@ -235,40 +246,31 @@ STRATEGIES = [
         "key": "limitup", "label": "🔥 漲停動能",
         "caption": "連日漲停高動能　❔未回測",
         "bar_note": "門檻：近期有連日漲停紀錄",
-        "sort_desc": "**連續漲停天數 → 綜合評分**",
+        "sort_desc": "**連續漲停天數 → 趨勢結構分**",
         "prelim_key": "prelim_momentum", "color": None,
-        "uses_horizon": False, "evidence_model": None,
-        "metric": lambda r: r.get("total_score", 0),
+        "uses_horizon": False, "evidence_model": None, "evidence_run": "main_3y",
+        "metric": _trend,
         "filters": [("近期連日漲停", _f_is_limitup)],
-        "sort_key": lambda r, c: (r.get("max_streak", 0), r.get("total_score", 0), _tiebreak(r)),
+        "sort_key": lambda r, c: (r.get("max_streak", 0), _trend(r)),
     },
     {
-        "key": "sleeper", "label": "🌱 潛力潛伏",
-        "caption": "題材浮現但還沒漲　⛔多頭失效",
-        "bar_note": "門檻：通過『有題材且尚未起漲』檢核",
-        "sort_desc": "**潛力分**",
+        "key": "contrarian", "label": "🌱 逆勢潛伏（低基期）",
+        "caption": "題材浮現但還沒漲　⛔多頭失效、空頭才強",
+        "bar_note": "門檻：低基期且潛力分達標，或體質不弱且風報比 ≥1.5",
+        "sort_desc": "**潛力分**（低基期 × 題材）",
         "prelim_key": "prelim_sleeper", "color": "#7986cb",
-        "uses_horizon": False, "evidence_model": "潛力潛伏",
+        "uses_horizon": False,
+        "evidence_model": "潛力潛伏", "evidence_run": "main_3y",
         "metric": lambda r: (r.get("potential") or {}).get("total", 0),
-        "filters": [("通過潛伏股檢核", _f_sleeper_ok)],
-        "sort_key": lambda r, c: ((r.get("potential") or {}).get("total", 0), _tiebreak(r)),
-    },
-    {
-        "key": "balanced", "label": "⚖️ 攻守兼備",
-        "caption": "體質強又有餘裕　⛔多頭失效",
-        "bar_note": "門檻：綜合評分不弱 + 尚未過熱 + 風報比 ≥ 1.5",
-        "sort_desc": "**攻守兼備分**（綜合×潛力幾何平均）",
-        "prelim_key": "prelim_balanced", "color": "#4dd0e1",
-        "uses_horizon": False, "evidence_model": "攻守兼備",
-        "metric": lambda r: _combined(r),
-        "filters": [("綜合評分 ≥48", _f_total_48), ("低基期 ≥45", _f_lowbase_45),
-                    ("潛力分 ≥45", _f_pot_45), ("風報比 ≥1.5", _f_rr_15)],
-        "sort_key": lambda r, c: (_combined(r), _tiebreak(r)),
+        "filters": [("低基期 ≥45", _f_lowbase_45), ("潛力分 ≥45", _f_pot_45)],
+        "sort_key": lambda r, c: ((r.get("potential") or {}).get("total", 0),
+                                  _tiebreak(r)),
     },
 ]
 
 _REQUIRED = ("key", "label", "caption", "bar_note", "sort_desc", "prelim_key",
-             "color", "uses_horizon", "evidence_model", "metric", "filters", "sort_key")
+             "color", "uses_horizon", "evidence_model", "evidence_run",
+             "metric", "filters", "sort_key")
 
 
 def validate():
