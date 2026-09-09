@@ -313,6 +313,11 @@ def _pct_return(close: pd.Series, n: int):
     return (close.iloc[-1] / past - 1) * 100
 
 
+# 單筆交易願意承受的總資金虧損比例（部位大小的推導基礎）。
+# 畫面文字一律引用它，不要另外寫死數字。
+RISK_PER_TRADE_PCT = 2.0
+
+
 def calculate_risk_plan(df: pd.DataFrame, target_price=None) -> dict:
     """
     把「買進」變成可執行的計畫：用 ATR（真實波動幅度）推導停損、停利與風險報酬比。
@@ -380,8 +385,15 @@ def calculate_risk_plan(df: pd.DataFrame, target_price=None) -> dict:
         "rr": rr,
         "verdict": verdict,
         "verdict_color": v_color,
-        # Position sizing: risking 2% of capital on this trade
-        "suggested_position_pct": min(100.0, (2.0 / (risk / close * 100)) ) if risk > 0 else None,
+        # Position sizing: risking RISK_PER_TRADE_PCT of capital on this trade.
+        # 部位% × 停損% = 可承受虧損%  →  部位% = 可承受虧損% / 停損%
+        # ⚠️ 先前寫成 `2.0 / (risk / close * 100)`，分母已經是百分比又再除一次，
+        #    結果小 100 倍：停損 6% 的股票算出 0.33%，畫面 `{pos:.0f}%` 印成
+        #    「建議部位上限約 0%」。正確答案是 33%。
+        "suggested_position_pct": (
+            min(100.0, RISK_PER_TRADE_PCT / (risk / close * 100) * 100)
+            if risk > 0 else None
+        ),
     }
 
 

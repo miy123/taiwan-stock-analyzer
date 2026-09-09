@@ -343,6 +343,138 @@ UI 一律用 `ui.strategy_caption()` / `ui.strategy_table()` 產生說明，
 7. `evidence.py` 殘留已刪策略鍵、`universe.py` 仍算沒人用的 `prelim_balanced`、
    `limitup` 初篩鍵用不相干的 `total_score` —— 都已清理。
 
+## 🧹 第二輪稽核修正（2026-09-09）
+上一輪修完後再掃一遍，又抓到 **一整類同樣的錯：同一件事在畫面上有兩個數字**。
+都已修，並且**把能自動抓的那幾類寫進 `check_consistency.py`**（見下節檢查 2）。
+
+### 🔴 買進線曾經同時有 40 / 50 / 58 三個值
+- `ui.long_threshold()` 回傳的是分桶表的**轉正點 40**，而不是買進線 50。
+  個股頁儀表板與持股頁「實證門檻檢視」用它 → 一檔 45 分的股票在個股頁顯示
+  「✅ 已達實證門檻」，在選股頁卻根本不會出現（選股按 50 篩）。
+  `services/scoring.py` 本來就寫明**刻意不用轉正點**（40–50 那格 t=0.2~1.2，
+  與 0 無異）。已改名為 **`ui.buy_bar()`** 並直接回傳 `scoring.BUY_BAR`。
+- 選股頁長條圖畫「買進線 58／強力買進線 68／觀望線 48」，但 y 軸是**趨勢結構分**。
+  已改成畫 `TREND_BUY_BAR` + 由 `trend_bucket_rows()` 生成的「優勢集中線」。
+- 持股頁配置圖同樣寫死 58／48；摘要條標籤寫 `≥{buy_bar}` 但**計數用寫死的 58**
+  （多頭 adj=−2 時標籤說 56、實際數 58）。
+- 綜合評分的門檻 68/58/48/38 現在只定義在
+  **`services/recommendation.BASE_THRESHOLDS`**，用 `buy_threshold(adj)` 取。
+  **兩個量表不要混用**：趨勢分用 `scoring.BUY_BAR`、綜合評分用 `recommendation`。
+
+### 🔴 `horizon["long"]` 已經不存在了，但還有三處在讀
+`compute_scores()` 的 `horizon_cards` 移除「長」之後，**深度分析過的 row 就沒有
+`horizon["long"]`**（掃描 row 還有）。於是三處 `.get("long", {}).get("score", 0)`
+一律拿到 **0**，而且拿去比**趨勢分量表**的門檻：
+1. 持股頁「替換候選」→ 最該出現的那幾檔（深度分析過的）永遠被排除
+2. 族群頁「族群中最強個股」→ 深度分析過的全部墊底，且與 `sectorhot` 策略
+   自己用的 `_trend()` 不是同一個指標，同一頁兩份名單互相矛盾
+3. `sector.analyse_sectors()` 的 `median_long` → 中位數只算了沒被深度分析的那些
+全部改用 `trend_score`（欄位改名 `median_trend`，表頭改「趨勢分(中位)」）。
+
+### 🔴 持股頁的實證徽章餵錯量表
+`ui.evidence_badge()` 查的是趨勢分分桶表，持股頁卻餵 `horizon_tech["long"]`（例 94）
+→ 同一張卡片左邊「趨勢結構分 57」、右邊「趨勢分 94 落在 90-100 區間」。
+個股頁上一輪已修，持股頁漏了——因為 `check_consistency.py` 的頁面比對
+**只渲染個股分析與智能選股兩頁**，docstring 卻寫「三頁」。已把持股頁加進去。
+
+### 🔴 全市場掃描後，單檔頁面仍說「尚未掃描」
+`scoring.save_distribution()` 只寫檔案，**沒有更新 `_dist_cache`**。
+若使用者先開個股分析（把 `{}` 快取起來）再去掃描，回來仍是 stale=True，
+要重啟服務才會好。已在存檔時同步更新記憶體快取。
+
+### 🔴 事後驗證表少了「長期」那一列
+`render_backtest_verification()` 吃的是 `horizon_cards`，而 horizon_cards 移除
+「長」之後 `rec_by_key.get("long")` 永遠是 None → **那一列被靜靜跳過**，
+少的偏偏是唯一有實證背書的週期。已由趨勢結構分補上，判定門檻同時改成
+趨勢分的買進線（`_verdict()` 原本寫死 58/48，那是綜合評分的量表）。
+
+### 🟡 其他
+- `scoring._pct_of()` 差一位：`searchsorted` 回的是插入位置（1~101），
+  導致單檔分數系統性比掃描路徑高約 1 分，還會出現「贏過全市場 101%」。
+- `ui.score_legend()` 的綜合評分權重寫「技術40%＋基本面30%」，
+  **實際是 35/35/15/15**。已改成從 `recommendation.weight_note_str()` 生成。
+- 個股頁「買進門檻 {58:+d}」印出來是「買進門檻 **+58** → 60」。
+- `contrarian` 的 `bar_note` 寫「…**或**體質不弱且風報比 ≥1.5」，
+  但那條 filter 在整併時就刪了。**`bar_note` 已改為由 filters 自動生成**
+  （`strategies.bar_note(sdef)`），說明與實際條件不可能再不一致；
+  額外補充放選填的 `note` 欄位。
+- 選股頁開頭還寫「三種策略：強勢順勢／潛力潛伏／攻守兼備」——三個名稱都不存在了。
+- 側邊欄「分析期間」在選股／交叉／持股三頁完全無作用，已改成只在個股分析頁顯示。
+- 死碼：`strategies` 的 `_hscore/_hscore_key/_long_key/_combined/_hz_tech` 與
+  5 個沒人用的 filter、`evidence` 的 `STRATEGY_TO_MODEL/MODEL_TO_STRATEGY/
+  model_for/get_stats/regime_stats/best_strategies_for_regime/score_bucket_stats/
+  buy_threshold/load_thresholds`（鍵名都是已刪策略；且後三個讀的是**舊離散分**的
+  `score_thresholds.json`）、`sector.find_laggards`（補漲，實測 −0.25% 已否定）、
+  卡片裡算完就被覆蓋的第一份 `rr_html`、`STRATEGIES` 的 `uses_horizon` 欄位、
+  app.py 的 23 個沒用到的匯入（一整串計分函式，看起來像 app.py 還自己算分）。
+- `recommendation._action_for()` 也自己寫了一次 68/58/48/38，已改讀 BASE_THRESHOLDS。
+- `check_consistency.py` 的 ALLOW 是**子字串**比對，裡面放了 `"0.3"`（證交稅），
+  於是「超額 **+0.35%**」這種真正該抓的數字也被放行。已改成正規化後精確比對。
+
+## 🧹 第三輪稽核修正（2026-09-09）
+
+### 🔴 選股頁的「回測實證」面板顯示的是**別的模型**的成績
+面板原本用 `evidence_model` 去 `backtest_results.json` 查名字相近的舊模型，
+5 個策略有 4 個對不上自己的定義：
+| 策略 | 面板顯示的模型 | 為什麼不對 |
+|---|---|---|
+| `sectorhot` | 強勢族群+**長線分** | 排序早已改成趨勢結構分 |
+| `contrarian` | 潛力潛伏 | 整併 sleeper+balanced 後篩選條件已不同 |
+| `lowpe` | P1 純低本益比 | 沒有本策略的 3–12 倍區間限制 |
+| `limitup` | （查不到→「尚未回測」） | 其實有 139 期同場比較資料 |
+
+**改為一律讀 `strategy_comparison.json`** —— 那份是直接呼叫 `strategies.select()`
+量出來的，測的就是 App 實跑的定義。修正後五個策略的數字（持有1個月）：
+趨勢 +1.62%(t=2.20)／漲停 +2.86%(t=3.94)／族群 +1.24%(t=1.87，**不顯著**)／
+低本益比 −1.88%／逆勢 −1.74%。並加上走查前後半段，前後變號會直接示警。
+分環境那塊保留但**明確標示「量的是舊模型 X，不是本策略定義」**。
+（順帶：`elif strategy == "lowpe"` 那段「我無法給你實證數據」是不可達的死碼——
+lowpe 一直都查得到 `ev`，那段永遠不會顯示。已刪。）
+
+### 🔴 流動性滑桿是死 UI
+`scan_universe()` 在**評分迴圈裡**就用 `min_turnover` 濾掉股票，但 session 快取鍵
+刻意不含門檻 → 掃完之後拖滑桿**完全沒有反應**，畫面卻寫著「調整門檻不會重抓，
+只重新排序」。連帶第二個問題：**趨勢分的百分位分母會跟著滑桿變**——
+分數號稱「贏過全市場 X%」，其實只贏過「流動性達標的那幾百檔」（0.5億時只有 398/1095）。
+現改為一律評分到 `SCAN_FLOOR_TURNOVER`，門檻在 app.py 做記憶體過濾
+（實測每檔評分僅 **3ms**，多評幾百檔只多 1~2 秒，遠比重抓便宜）。
+交叉篩選頁也套用同一個門檻，否則兩頁都說「沿用同一批結果」卻不是同一批。
+
+### 🔴 「建議部位上限」永遠顯示 0%
+`calculate_risk_plan()` 的 `suggested_position_pct` 寫成
+`2.0 / (risk / close * 100)`，分母已是百分比又再除一次 → **小 100 倍**。
+停損 6% 的股票算出 0.33%，`{pos:.0f}%` 印成「建議部位上限約 **0%**」（正解 33%）。
+承受度改用 `technical.RISK_PER_TRADE_PCT` 常數，畫面文字引用它。
+
+### 🔴 漲停偵測完全看不到上櫃股
+`limit_up.py` 用 `sid in OTC_STOCKS` 判斷上櫃——那是**只有 4 筆的離線 fallback 表**
+（官方判斷在 `stock_data._is_otc()`）。而且今日漲停只抓證交所，櫃買完全沒抓。
+於是「漲停動能」看不到任何上櫃股，**而連日漲停最常發生在上櫃小型股**。
+已新增 `_fetch_tpex_today()`（沿用 universe 的櫃買快照，已快取），
+`_compute_streaks` 與交易所標籤都改用 `_is_otc()`。
+實測當日：上市 12 檔 + **上櫃 11 檔**，最強的是上櫃 5314 世紀* **連 10 日漲停**
+（修正前完全掃不到）。
+
+### 🔴 事後驗證表少了「長期」那一列
+`render_backtest_verification()` 吃 `horizon_cards`，而 horizon_cards 移除「長」之後
+`rec_by_key.get("long")` 永遠是 None → 那一列被靜靜跳過，少的偏偏是唯一有實證背書的
+週期。已由趨勢結構分補上；`_verdict()` 原本寫死 58/48（綜合評分量表），
+現在可指定門檻，趨勢分那列用趨勢分的買進線。
+
+### 🟡 融資「去槓桿」的加分從來沒加上去
+`margin.calculate_margin_signal()` 的 `penalty` 是**帶正負號**的（負值＝去槓桿），
+理由字串也寫著「散戶去槓桿、籌碼趨安定 **(+6)**」——但 `generate_recommendation()`
+只在 `> 0` 時套用，所以那 6 分一分都沒加；而
+`generate_timeframe_recommendations()` 卻是不分正負都套用。
+**同一個訊號在兩條計分路徑上行為不一致**。兩邊都改成套用帶號值。
+
+### 🟡 其他
+- `recommendation._action_for()` 又自己寫了一次 68/58/48/38 → 改讀 `BASE_THRESHOLDS`。
+- `check_consistency.py` 檢查 3 的順序錯了：先算 core 再掃描，
+  但掃描會**重寫**趨勢分的分布基準，於是比出來的差異是測試自己造成的
+  （55 vs 66）。這個問題先前被 `save_distribution` 沒清快取的 bug 掩蓋住
+  （新分布根本不生效，兩邊剛好都用舊的）。已改成**先掃描再算單檔**。
+
 ## ✅ 改完一定要跑 `check_consistency.py`（2026-09-09）
 `AppTest` 只驗「頁面不拋例外」——頁面顯示**錯的數字**時它一樣是綠燈，
 所以這個專案最常犯的兩類錯它一個都抓不到。`check_consistency.py` 補上：
@@ -352,9 +484,16 @@ UI 一律用 `ui.strategy_caption()` / `ui.strategy_table()` 產生說明，
 2. **同一檔股票在各頁必須顯示同一個趨勢結構分**（真的把頁面渲染出來、
    從畫面文字挖數字比對，而不是比對內部變數——使用者看到的是畫面）。
 
+**現在有三項檢查**（第 2 項是這輪新增的）：
+1. UI 字串不得寫死回測數字
+2. **UI 字串不得寫死門檻數字** —— 買進線／觀望線／買進門檻旁邊出現字面數字就算失敗
+   （連 `f"買進門檻 {58:+d}"` 這種把數字塞進插值的寫法也抓）。
+   一律引用 `scoring.BUY_BAR`（趨勢分）或 `recommendation.buy_threshold()`（綜合評分）。
+3. 同一檔股票在**三頁**顯示同一個趨勢結構分（我的持股已補上，先前只驗兩頁）
+
 ```bash
-python3 check_consistency.py            # 兩項都跑
-python3 check_consistency.py --numbers  # 只掃寫死數字（快）
+python3 check_consistency.py            # 三項都跑（會跑一次全市場掃描，數分鐘）
+python3 check_consistency.py --numbers  # 只跑靜態掃描（快，1 秒）
 ```
 它已經抓到一次真的回歸：改 `score_legend` 時用字串切片，
 連帶把 `ui.bucket_table` 整個刪掉，`app.py` 因此 ImportError。

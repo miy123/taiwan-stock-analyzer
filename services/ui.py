@@ -14,7 +14,7 @@
 """
 
 from services.evidence import (
-    horizon_efficacy, score_bucket_stats, buy_threshold,
+    horizon_efficacy,
     trend_bucket_stats, trend_threshold, trend_monotonicity, trend_bucket_rows,
 )
 
@@ -55,9 +55,12 @@ def pe_inline(pe, dividend_yield=None) -> str:
 def horizon_cells(horizon: dict, selected_key=None, show_legend=True,
                   min_width=126) -> str:
     """
-    四格週期分數，附實證效力標記（✅有效／🟡偏弱／🔴雜訊）。
+    週期分數格（極短／短／中，共三格），附實證效力標記（✅有效／🟡偏弱／🔴雜訊）。
 
-    selected_key: 目前排序依據的週期會加框，讓使用者知道該看哪一格。
+    「長」那一格已移除——長期由趨勢結構分負責，全站只留一個長期數字。
+
+    selected_key: 目前排序依據的週期會加框。整併成 5 個策略後沒有任何策略
+                  會讀週期選單，所以實際上一律傳 None。
     """
     hz = horizon or {}
     cells = []
@@ -158,10 +161,19 @@ def threshold_note(hold_days=20) -> str:
     )
 
 
-def long_threshold(hold_days=20, default=None) -> float:
-    """三頁共用的買進門檻分數（趨勢分量表）。"""
+def buy_bar() -> float:
+    """
+    三頁共用的買進門檻（趨勢分量表）—— 就是 `services.scoring.BUY_BAR`。
+
+    ⚠️ 這裡曾經回傳 `trend_threshold()`（分桶表的「超額轉正點」＝40 分），
+    於是同一件事在畫面上有兩個數字：智能選股按 50 分篩選、說明也寫 50，
+    但個股分析的儀表板與我的持股的「實證門檻檢視」卻寫 40——
+    一檔 45 分的股票在個股頁顯示「✅ 已達實證門檻」，在選股頁卻根本不會出現。
+    `services/scoring.py` 已說明為何**刻意不採用轉正點**：40–50 那一格
+    t 值只有 0.2~1.2，與 0 沒有統計差異，拿它當門檻是把雜訊當訊號。
+    """
     from services.scoring import BUY_BAR
-    return trend_threshold(hold_days) or default or BUY_BAR
+    return BUY_BAR
 
 
 def overheat_badge(overheat: dict, compact: bool = True) -> str:
@@ -222,6 +234,10 @@ def score_legend() -> str:
     from services.evidence import (
         strategy_stats, get_stats_for_model, trend_bucket_rows,
     )
+    from services.recommendation import weight_note_str
+    # 權重一律引用 recommendation 的定義。手寫的那份原本寫成
+    # 「技術40%＋基本面30%」，與實際的 35/35 不符，而且沒有任何測試會抓到。
+    _wnote = weight_note_str(True).replace(" + ", "＋").replace(" ", "")
     tr = strategy_stats("trend", 60) or {}
     lp = strategy_stats("lowpe", 60) or {}
     ct = strategy_stats("contrarian", 60) or {}
@@ -252,7 +268,7 @@ def score_legend() -> str:
 | 卡片上的數字 | 代表什麼 | 能當選股指標嗎 |
 |---|---|---|
 | **趨勢結構分** ★ | 距季線／均線排列／季線斜率在**當日全市場的百分位**。80 分＝趨勢強度贏過八成股票 | {trend_line} |
-| 綜合評分 | 技術40%＋基本面30%＋消息15%＋目標價15% 的體質總覽 | {total_line} |
+| 綜合評分 | {_wnote} 的體質總覽 | {total_line} |
 | 潛力分 | 低基期×題材，找「還沒漲的」 | ⛔ 持有3個月{fmt(ct)} |
 | 極短／短／中 週期評分 | 各持有期的技術強弱（1–3天／1週／1個月） | 🟡 越短週期越弱，僅供參考 |
 | 本益比 | 估值 | ⛔ **單獨用會虧錢**：持有3個月{fmt(lp)} |

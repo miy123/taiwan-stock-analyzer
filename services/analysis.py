@@ -12,11 +12,7 @@
 都有效），統一融資視窗，統一盤中價處理。顯示用的期間只影響「圖表切片」，不影響評分。
 """
 
-import pandas as pd
-
-from services.stock_data import (
-    get_stock_data, get_intraday_price, POPULAR_STOCKS,
-)
+from services.stock_data import get_stock_data, get_intraday_price
 from services.technical import (
     calculate_indicators, calculate_technical_score, calculate_horizon_scores,
     analyze_volume_price, calculate_risk_plan, dist_from_ma120, overheat_flag,

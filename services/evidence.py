@@ -16,25 +16,19 @@ _FILE = os.path.normpath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "backtest_results.json")
 )
 
-# App 策略／週期 → 回測模型名稱
-STRATEGY_TO_MODEL = {
-    ("momentum", None): "綜合強勢(技術)",
-    ("momentum", "ultra_short"): "極短線",
-    ("momentum", "short"): "短線",
-    ("momentum", "medium"): "中線",
-    ("momentum", "long"): "長線",
-    ("sectorhot", None): "強勢族群+長線分",   # 回測第一：前5強族群 + 長線分
-    ("sectorhot", "long"): "強勢族群+長線分",
-    ("bestproven", None): "長線+量能確認",   # 回測次佳：長線分 + 量價未轉弱
-    ("bestproven", "long"): "長線+量能確認",
-    ("limitup", None): None,          # 漲停股未單獨回測
-    # 舊策略鍵（bestproven/momentum/sleeper/balanced）已整併，保留對照只為
-    # 讀得懂舊的 backtest_results.json；**新程式不要再用這些鍵查資料**，
-    # 策略強弱一律看 strategy_comparison.json（同一次回測才可比）。
-    ("contrarian", None): "潛力潛伏",
-}
 
-HORIZON_DAYS = {"1週": 5, "1個月": 20, "3個月": 60}
+# ⚠️ 這裡曾有一份「App 策略鍵 → 回測模型名稱」對照表（STRATEGY_TO_MODEL /
+# MODEL_TO_STRATEGY）以及依賴它的 model_for / get_stats / regime_stats /
+# best_strategies_for_regime。策略整併為 5 個之後它們全部沒有呼叫端，
+# 鍵名（momentum / bestproven / sleeper / balanced）也都是已刪除的策略——
+# 留著就是第二份會與策略表不一致的對照關係。
+# 現在策略表自己帶 `evidence_model` + `evidence_run`，一律用
+# get_stats_for_model() / regime_stats_for_model() 直接查。
+#
+# 同時移除了 score_bucket_stats / buy_threshold / load_thresholds：它們讀的是
+# `score_thresholds.json`（**舊離散長線分**的分桶表）。分數換成連續趨勢分之後
+# 那張表就不是同一個量表，UI 一律改讀 trend_score_thresholds.json
+# （trend_bucket_stats / trend_threshold / trend_bucket_rows）。
 
 
 def load_evidence() -> dict:
@@ -43,14 +37,6 @@ def load_evidence() -> dict:
             return json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
         return {}
-
-
-def model_for(strategy: str, horizon_key=None):
-    """Map an app strategy (+ optional horizon) to a backtested model name."""
-    if (strategy, horizon_key) in STRATEGY_TO_MODEL:
-        return STRATEGY_TO_MODEL[(strategy, horizon_key)]
-    # sleeper/balanced ignore the horizon selector for evidence purposes
-    return STRATEGY_TO_MODEL.get((strategy, None))
 
 
 def get_stats_for_model(model_name, hold_days: int = 20, run: str = "main_3y"):
@@ -72,17 +58,6 @@ def regime_stats_for_model(model_name, app_regime: str = "neutral") -> dict:
     bucket = _REGIME_MAP.get(app_regime, "震盪")
     d = (table.get(model_name) or {}).get(bucket)
     return dict(d, regime_label=bucket) if d else {}
-
-
-def get_stats(strategy: str, horizon_key=None, hold_days: int = 20, run: str = "main_3y"):
-    """Backtest stats for one strategy/horizon at a holding period, or {}."""
-    ev = load_evidence()
-    name = model_for(strategy, horizon_key)
-    if not ev or not name:
-        return {}
-    models = ev.get("runs", {}).get(run, {}).get("models", {})
-    return dict(models.get(name, {}).get(str(hold_days), {}) or
-                models.get(name, {}).get(hold_days, {}) or {})
 
 
 def verdict(stats: dict) -> dict:
@@ -142,79 +117,6 @@ _REGIME_MAP = {
 }
 
 
-def regime_stats(strategy: str, horizon_key=None, app_regime: str = "neutral") -> dict:
-    """該策略在『目前這種大盤環境』下的歷史超額報酬。"""
-    ev = load_evidence()
-    name = model_for(strategy, horizon_key)
-    if not ev or not name:
-        return {}
-    table = ev.get("runs", {}).get("main_3y", {}).get("by_regime_1m", {})
-    bucket = _REGIME_MAP.get(app_regime, "震盪")
-    d = (table.get(name) or {}).get(bucket)
-    return dict(d, regime_label=bucket) if d else {}
-
-
-def best_strategies_for_regime(app_regime: str = "neutral", top: int = 3) -> list:
-    """在目前大盤環境下，歷史超額報酬最高的模型。"""
-    ev = load_evidence()
-    table = ev.get("runs", {}).get("main_3y", {}).get("by_regime_1m", {})
-    bucket = _REGIME_MAP.get(app_regime, "震盪")
-    rows = [{"name": n, **v[bucket]} for n, v in table.items() if bucket in v]
-    rows.sort(key=lambda r: -r["excess_return"])
-    return rows[:top]
-
-
-# 回測模型名稱 → App 策略（用於把「該用哪個模型」翻譯成使用者可點的策略）
-# ── 分數門檻實證（score_threshold_analysis.py 產出）──────────────────────────
-# 「幾分以上才值得買」的直接答案。長線+量能確認的 1個月超額報酬：
-#   <70分 全為負；70-75 +1.30%；80+ +0.92%  → 門檻約 70 分
-# 低基期分則是**反向**：0-35分(已漲) +1.90%，80-100分(全沒漲) -1.08%
-_THRESH_FILE = os.path.normpath(
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..",
-                 "score_thresholds.json")
-)
-
-
-def load_thresholds() -> dict:
-    try:
-        with open(_THRESH_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {}
-
-
-def score_bucket_stats(score_type: str, score: float, hold_days: int = 20) -> dict:
-    """該分數落在哪個區間、歷史勝率與超額報酬多少。"""
-    data = load_thresholds().get("scores", {}).get(score_type)
-    if not data or score is None:
-        return {}
-    for rec in data:
-        try:
-            lo, hi = rec["range"].split("-")
-            if float(lo) <= score < float(hi) + (1 if hi == "100" else 0):
-                d = rec.get(str(hold_days)) or rec.get(hold_days)
-                if d:
-                    return dict(d, range=rec["range"])
-        except (ValueError, KeyError):
-            continue
-    return {}
-
-
-def buy_threshold(score_type: str, hold_days: int = 20):
-    """歷史上超額報酬由負轉正的分數門檻；找不到回 None。"""
-    data = load_thresholds().get("scores", {}).get(score_type)
-    if not data:
-        return None
-    for rec in data:
-        d = rec.get(str(hold_days)) or rec.get(hold_days)
-        if d and d.get("excess", 0) > 0:
-            try:
-                return float(rec["range"].split("-")[0])
-            except ValueError:
-                return None
-    return None
-
-
 # ── 四個週期分數的實證效力 ──────────────────────────────────────────────────
 # ⚠️ 命名澄清：這些分數的差別是「**用多長的指標計算**」，不是「**建議抱多久**」。
 # 兩者是獨立的：你可以用長線分選股、然後只抱一週（實測這樣也最好）。
@@ -251,16 +153,6 @@ HORIZON_EFFICACY = {
 
 def horizon_efficacy(key: str) -> dict:
     return HORIZON_EFFICACY.get(key, {})
-
-
-MODEL_TO_STRATEGY = {
-    "長線+量能確認": ("bestproven", "🏆 長線+量能確認"),
-    "長線": ("momentum", "🚀 綜合強勢（持有週期選長線）"),
-    "中線": ("momentum", "🚀 綜合強勢（持有週期選中線）"),
-    "潛力潛伏": ("sleeper", "🌱 潛力潛伏"),
-    "攻守兼備": ("balanced", "⚖️ 攻守兼備"),
-    "綜合強勢(技術)": ("momentum", "🚀 綜合強勢"),
-}
 
 
 # ── 連續趨勢分的分桶實證（trend_score_buckets.py 產生）─────────────────────

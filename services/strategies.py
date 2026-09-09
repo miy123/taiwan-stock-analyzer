@@ -10,32 +10,18 @@
   改成宣告式之後，漏填欄位會在載入時就被 validate() 抓到，而不是等使用者點到才炸。
 
 每個策略必須提供：
-  key / label / caption / bar_note / sort_desc / prelim_key / color
-  uses_horizon   — 排序是否真的會讀「週期評分」選單（決定該選單是否停用）
+  key / label / caption / sort_desc / prelim_key / color
   evidence_model — 對應 backtest_results.json 裡的模型名稱（None = 未回測）
+  evidence_run   — 該模型出自哪一次回測 run
   metric(r)      — 卡片與長條圖顯示的主要數字
-  select(results, ctx) — 篩選 + 排序，回傳依序排好的清單
-                          ctx = {"buy_bar": float, "horizon_key": str|None}
+  filters        — [(說明, fn(r, ctx) -> (bool, 細節字串))]，**唯一的條件來源**：
+                   select() 篩選、explain() 解釋、bar_note() 產生說明文字都讀它
+  sort_key(r, ctx) — 排序鍵
+選填：
+  note           — bar_note 括號裡的補充說明
+
+`select(results, ctx)` 的 ctx = {"buy_bar": float, "trend_bar": float}。
 """
-
-
-def _hscore(r, horizon_key):
-    """依選定週期取分數；未選則用綜合評分。"""
-    if not horizon_key:
-        return r.get("total_score", 0)
-    return _hz_tech(r, horizon_key)
-
-
-def _hscore_key(r, horizon_key):
-    """
-    週期評分的排序鍵 —— **一律附上距季線幅度破平手**。
-
-    週期分和長線分一樣是離散跳點疊出來的，實測「綜合強勢」用長線排序時
-    有 156 檔並列 94，前 10 名等於按股號由小到大取（1102、1216、1301…），
-    完全不是「最強的 10 檔」。凡是用分數排序的地方都要破平手，
-    這裡與 _long_key 用同一個連續指標。
-    """
-    return (_hscore(r, horizon_key), _tiebreak(r))
 
 
 def _long(r):
@@ -54,43 +40,10 @@ def _long(r):
     return (r.get("horizon") or {}).get("long", {}).get("score", 0)
 
 
-def _long_key(r):
-    """
-    排序鍵＝(長線分, 距季線幅度)。
-
-    長線分是 50 加減幾個離散跳點疊出來的，全市場只有 18 種值，且 156/566 檔
-    並列滿分 94——只用它排序等於在同分群裡亂數挑。回測（兩次獨立執行一致）：
-      不破平手  1個月 +0.52%(t=1.42 不顯著) / 3個月 -1.08%
-      距季線破  1個月 +2.51%(t=5.17)        / 3個月 +5.05%
-    """
-    return (_long(r), _tiebreak(r))
-
-
 def _tiebreak(r):
     """破平手用的連續值：距季線幅度。缺值排最後，不要讓 None 參與比較。"""
     v = r.get("above_ma120")
     return v if v is not None else -999
-
-
-def _combined(r):
-    """
-    攻守兼備分＝綜合評分與潛力分的幾何平均。
-
-    以前只在 app.py 算好塞進 row，strategies 直接讀 r["combined_score"]——
-    呼叫者忘記塞就整個策略沉默地按股號排序。改成這裡自己算，讀不到才回退。
-    """
-    v = r.get("combined_score")
-    if v is not None:
-        return v
-    pt = (r.get("potential") or {}).get("total", 0)
-    return int(round((max(r.get("total_score", 0), 0) * max(pt, 0)) ** 0.5))
-
-
-def _hz_tech(r, key):
-    ht = r.get("horizon_tech")
-    if isinstance(ht, dict) and key in ht:
-        return ht[key]
-    return (r.get("horizon") or {}).get(key, {}).get("score", 0)
 
 
 # ── 篩選條件（單一來源）──────────────────────────────────────────────────────
@@ -99,25 +52,11 @@ def _hz_tech(r, key):
 # 先前只有 select()，使用者看到自己持股沒出現在選股結果時完全無從得知原因
 # （例：萬海長線分 94 很高，卻因量價轉弱被「長線+量能確認」濾掉）。
 
-def _f_long_bar(r, ctx):
-    return _long(r) >= ctx["buy_bar"], f"長線分 {_long(r)} ≥ 買進線 {ctx['buy_bar']:.0f}"
-
-
-def _f_vol_ok(r, ctx):
-    v = r.get("volume_adj", 0) or 0
-    return v >= 0, f"量價未轉弱（量價分 {v:+d}）"
-
-
 def _f_hot_sector(r, ctx):
     hot = ctx.get("hot_sectors") or set()
     ind = ctx.get("industry_of") or {}
     name = (ind.get(r.get("stock_id")) or {}).get("name")
     return name in hot, f"屬於動能前5強族群（本檔：{name or '未分類'}）"
-
-
-def _f_hscore_bar(r, ctx):
-    v = _hscore(r, ctx.get("horizon_key"))
-    return v >= ctx["buy_bar"], f"所選週期評分 {v} ≥ 買進線 {ctx['buy_bar']:.0f}"
 
 
 def _f_pe_band(r, ctx):
@@ -130,14 +69,6 @@ def _f_is_limitup(r, ctx):
     return bool(r.get("is_limit_up")), "近期有連日漲停紀錄"
 
 
-def _f_sleeper_ok(r, ctx):
-    return bool((r.get("potential") or {}).get("qualifies")), "通過『有題材且尚未起漲』檢核"
-
-
-def _f_total_48(r, ctx):
-    return r.get("total_score", 0) >= 48, f"綜合評分 {r.get('total_score', 0)} ≥ 48"
-
-
 def _f_lowbase_45(r, ctx):
     v = (r.get("potential") or {}).get("low_base", 0)
     return v >= 45, f"低基期分 {v} ≥ 45（尚未過熱）"
@@ -146,11 +77,6 @@ def _f_lowbase_45(r, ctx):
 def _f_pot_45(r, ctx):
     v = (r.get("potential") or {}).get("total", 0)
     return v >= 45, f"潛力分 {v} ≥ 45"
-
-
-def _f_rr_15(r, ctx):
-    rr = r.get("rr")
-    return (rr is None or rr >= 1.5), f"風報比 ≥ 1.5（本檔：{rr if rr else '無'}）"
 
 
 def prepare_ctx(results, ctx):
@@ -165,6 +91,22 @@ def prepare_ctx(results, ctx):
         except Exception:
             ctx["hot_sectors"], ctx["industry_of"] = set(), {}
     return ctx
+
+
+def bar_note(sdef) -> str:
+    """
+    「門檻：…」說明文字 —— **由 filters 的標籤生成**，不是另外手寫一份。
+
+    ⚠️ 手寫版本已經出過錯：`contrarian` 的 bar_note 寫「低基期且潛力分達標，
+    **或**體質不弱且風報比 ≥1.5」，但它的 filters 只有低基期與潛力分兩條，
+    那個「或…」的分支在整併時就被刪了，說明卻留著。本專案的規矩是
+    「篩選條件即說明」（select 與 explain 共用同一份），bar_note 也該進來。
+
+    `note` 是可選的補充說明（例如買進線的意義、為什麼排除某個區間）。
+    """
+    labels = "，且".join(label for label, _ in sdef["filters"])
+    extra = sdef.get("note")
+    return f"門檻：{labels}" + (f"（{extra}）" if extra else "")
 
 
 def select(sdef, results, ctx):
@@ -211,11 +153,12 @@ STRATEGIES = [
     {
         "key": "trend", "label": "📈 趨勢結構分（主力）",
         "caption": "趨勢結構分最高者　（強弱見策略對照表）",
-        "bar_note": (f"門檻：趨勢結構分 ≥ {BUY_BAR:.0f}"
-                     f"（即贏過全市場 {BUY_BAR:.0f}% 的股票；實測 40 分以下超額為負）"),
+        # 措辭刻意避開「贏過全市場 N%」這個句型——`check_consistency.py` 就是靠它
+        # 從畫面文字挖出各頁的趨勢分來比對，說明文字裡再出現一次會混進去。
+        "note": (f"分數就是百分位，{BUY_BAR:.0f} 分代表趨勢強度"
+                 f"排在全市場前 {100 - BUY_BAR:.0f}%"),
         "sort_desc": "**連續趨勢結構分**（距季線／均線排列／季線斜率的橫斷面百分位）",
         "prelim_key": "prelim_bestproven", "color": "#66bb6a",
-        "uses_horizon": False,
         "evidence_model": "T1 趨勢(連續)", "evidence_run": "factor_3y",
         "metric": _trend,
         "filters": [("趨勢結構分達買進線", _f_trend_bar)],
@@ -224,10 +167,8 @@ STRATEGIES = [
     {
         "key": "sectorhot", "label": "🏭 強勢族群＋趨勢分",
         "caption": "限動能前5強族群　（同次回測不如純趨勢分）",
-        "bar_note": f"門檻：屬於動能前5強族群，且趨勢結構分 ≥ {BUY_BAR:.0f}",
         "sort_desc": "**趨勢結構分**（限動能前5強族群）",
         "prelim_key": "prelim_bestproven", "color": "#26a69a",
-        "uses_horizon": False,
         "evidence_model": "強勢族群+長線分", "evidence_run": "main_3y",
         "metric": _trend,
         "filters": [("屬於前5強族群", _f_hot_sector),
@@ -237,10 +178,9 @@ STRATEGIES = [
     {
         "key": "lowpe", "label": "💎 超低本益比",
         "caption": "本益比最低的便宜股　⛔回測為負且不穩定",
-        "bar_note": "門檻：本益比 3–12 倍（排除 <3 倍的一次性收益假低估）",
+        "note": "排除 <3 倍者——多半是業外一次性收益灌大 EPS 的假低估",
         "sort_desc": "**本益比由低到高**",
         "prelim_key": "prelim_lowpe", "color": "#ffd54f",
-        "uses_horizon": False,
         "evidence_model": "P1 純低本益比", "evidence_run": "factor_3y",
         "metric": lambda r: r.get("pe_ratio") or 0,
         "filters": [("本益比 3–12 倍", _f_pe_band)],
@@ -249,12 +189,11 @@ STRATEGIES = [
     {
         "key": "limitup", "label": "🔥 漲停動能",
         "caption": "近期連日漲停　（1個月最強，但波動極大）",
-        "bar_note": "門檻：近期有連日漲停紀錄",
         "sort_desc": "**連續漲停天數 → 趨勢結構分**",
         # 初篩鍵決定「哪些股票會被補齊新聞/財報」。用 total_score 與漲停毫無關係，
         # 改用趨勢分初篩鍵，至少讓被深度分析的是趨勢也不差的漲停股。
         "prelim_key": "prelim_bestproven", "color": None,
-        "uses_horizon": False, "evidence_model": None, "evidence_run": "main_3y",
+        "evidence_model": None, "evidence_run": "main_3y",
         "metric": _trend,
         "filters": [("近期連日漲停", _f_is_limitup)],
         "sort_key": lambda r, c: (r.get("max_streak", 0), _trend(r)),
@@ -262,10 +201,8 @@ STRATEGIES = [
     {
         "key": "contrarian", "label": "🌱 逆勢潛伏（低基期）",
         "caption": "低基期且有題材　⛔前後半段皆為負",
-        "bar_note": "門檻：低基期且潛力分達標，或體質不弱且風報比 ≥1.5",
         "sort_desc": "**潛力分**（低基期 × 題材）",
         "prelim_key": "prelim_sleeper", "color": "#7986cb",
-        "uses_horizon": False,
         "evidence_model": "潛力潛伏", "evidence_run": "main_3y",
         "metric": lambda r: (r.get("potential") or {}).get("total", 0),
         "filters": [("低基期 ≥45", _f_lowbase_45), ("潛力分 ≥45", _f_pot_45)],
@@ -274,8 +211,10 @@ STRATEGIES = [
     },
 ]
 
-_REQUIRED = ("key", "label", "caption", "bar_note", "sort_desc", "prelim_key",
-             "color", "uses_horizon", "evidence_model", "evidence_run",
+# `bar_note` 已改為由 filters 生成（見 bar_note()），`uses_horizon` 在策略
+# 整併為 5 個之後全為 False、選單也移除了，兩個欄位都不再是必填。
+_REQUIRED = ("key", "label", "caption", "sort_desc", "prelim_key",
+             "color", "evidence_model", "evidence_run",
              "metric", "filters", "sort_key")
 
 

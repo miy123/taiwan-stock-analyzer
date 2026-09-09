@@ -138,7 +138,15 @@ def score_cross_section(rows_factors):
 # 因此固定對照一份**全市場分布快照**，三頁共用同一把尺。
 
 def save_distribution(rows_factors):
-    """全市場掃描完呼叫，把各因子的分布落地，供單檔頁面對照。"""
+    """
+    全市場掃描完呼叫，把各因子的分布落地，供單檔頁面對照。
+
+    ⚠️ **必須同時更新 `_dist_cache`。** 先前只寫檔案，於是同一個 Streamlit
+    行程裡：使用者先開個股分析（此時還沒有分布 → `load_distribution()` 把 `{}`
+    快取起來）→ 去跑全市場掃描 → 回個股分析，仍然顯示「尚未跑過全市場掃描」，
+    要重啟服務才會好。檔案已經寫了，但記憶體裡那份 `{}` 永遠不會失效。
+    """
+    global _dist_cache
     dist = {}
     for f in FACTOR_WEIGHTS:
         vals = sorted(v for v in (r.get(f) for r in rows_factors) if v is not None)
@@ -146,9 +154,10 @@ def save_distribution(rows_factors):
             # 存 101 個分位點就夠還原百分位，不必存整份原始資料
             dist[f] = [float(np.percentile(vals, p)) for p in range(101)]
     if dist:
+        payload = {"factors": dist, "n": len(rows_factors)}
+        _dist_cache = payload          # 同一行程內立即生效，不必等重啟
         try:
-            DIST_PATH.write_text(json.dumps(
-                {"factors": dist, "n": len(rows_factors)}))
+            DIST_PATH.write_text(json.dumps(payload))
         except Exception:
             pass
     return dist
@@ -168,10 +177,17 @@ def load_distribution():
 
 
 def _pct_of(breaks, v):
-    """v 落在分位點陣列的第幾百分位。"""
+    """
+    v 落在分位點陣列的第幾百分位（0~100）。
+
+    ⚠️ `searchsorted` 回傳的是**插入位置**（1~101），不是百分位：
+    等於最小值時會得到 1、等於最大值時會得到 101。先前直接回傳它，
+    於是單檔路徑的分數比掃描路徑系統性高約 1 分，還會出現「贏過全市場 101%」。
+    """
     if v is None or not breaks:
         return 50.0
-    return float(np.searchsorted(breaks, v, side="right"))
+    idx = int(np.searchsorted(breaks, v, side="right")) - 1
+    return float(min(max(idx, 0), 100))
 
 
 def score_single(df):

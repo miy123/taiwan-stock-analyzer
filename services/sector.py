@@ -1,12 +1,16 @@
 """
-產業族群（題材）分析 —— 找「強勢族群裡還沒跟上的落後股」。
+產業族群（題材）分析 —— 以官方產業別分群，算各族群的動能排名。
 
 為什麼要有這個：
-  原本的「潛力潛伏」是**個股層級**的低基期，回測顯示它在多頭失效（買還沒漲的會輸）。
-  但「題材股」的真正邏輯不同：**族群動能 + 個股落後**。
-  同族群基本面連動（同樣的下游需求、同樣的漲價循環），龍頭先漲、落後股補漲，
-  是台股常見的資金輪動型態。這是「族群層面的動能」，不是「個股層面的抄底」——
-  兩者可能一好一壞，必須分別驗證，不能拿個股低基期的結論套用。
+  動能在**族群層級**也有效：以官方產業別分群、取 60 日報酬中位數排名，
+  「前 5 強族群 + 個股趨勢分最高」是一個可用的選股濾網（策略 `sectorhot`）。
+
+⚠️ 但兩件事已被實測否定，不要重做：
+  1. **補漲無效**：「強勢族群裡的落後股」超額 −0.25%、贏基準率僅 39.7%。
+     均值回歸在族群與個股兩個層級都無效。原本的 `find_laggards()` 就是做這件事，
+     已無呼叫端且與結論相反，已刪除。
+  2. **族群濾網本身也輸給不加濾網**：同一次回測裡 `sectorhot` 輸給純趨勢分
+     （見 strategy_comparison.json）。這是本專案第三次量到「多加一層過濾更差」。
 
 資料來源：證交所／櫃買中心公司基本資料的「產業別」代碼（官方分類，非自行猜測）。
 """
@@ -71,7 +75,7 @@ def analyse_sectors(rows, min_members=4):
 
     回傳 list，每個族群一筆：
       name / n / mom（族群中位數 60 日報酬）/ mom_20 / breadth（上漲比率）
-      / median_long（族群長線分中位數）/ members（成員 rows）
+      / median_trend（族群趨勢結構分中位數）/ members（成員 rows）
     依 mom 由高到低排序 —— 越前面代表族群越強勢。
     """
     ind = get_industry_map()
@@ -90,9 +94,11 @@ def analyse_sectors(rows, min_members=4):
         r60 = [x for x in r60 if x is not None]
         r20 = [(m.get("potential") or {}).get("r20") for m in members]
         r20 = [x for x in r20 if x is not None]
-        longs = [(m.get("horizon") or {}).get("long", {}).get("score")
-                 for m in members]
-        longs = [x for x in longs if x is not None]
+        # ⚠️ 用趨勢結構分，不要用 `horizon["long"]`（舊的離散長線分）：
+        #    深度分析過的 row 已經沒有那個鍵，會被整批濾掉，
+        #    於是這個「中位數」實際上只算了沒被深度分析的那些股票。
+        trends = [m.get("trend_score") for m in members]
+        trends = [x for x in trends if x is not None]
         if not r60:
             continue
         out.append({
@@ -101,41 +107,8 @@ def analyse_sectors(rows, min_members=4):
             "mom": stat.median(r60),
             "mom_20": stat.median(r20) if r20 else None,
             "breadth": sum(1 for x in r60 if x > 0) / len(r60) * 100,
-            "median_long": stat.median(longs) if longs else None,
+            "median_trend": stat.median(trends) if trends else None,
             "members": members,
         })
     out.sort(key=lambda s: -s["mom"])
     return out
-
-
-def find_laggards(sectors, top_sectors=5, max_pos=60, min_long=55):
-    """
-    在最強勢的幾個族群裡，挑出「自己還沒跟上」的個股（補漲候選）。
-
-    條件：
-      · 屬於動能前 top_sectors 名的族群（族群要熱）
-      · 個股 52 週位階 <= max_pos（自己還在低檔 = 還沒跟上）
-      · 長線結構分 >= min_long（排除純粹爛股，落後要是「還沒動」而非「壞掉」）
-
-    回傳 list of dict，含 gap（族群動能 − 個股動能，越大代表落後越多）。
-    """
-    picks = []
-    for s in sectors[:top_sectors]:
-        for m in s["members"]:
-            p = m.get("potential") or {}
-            pos = p.get("position_pct")
-            r60 = p.get("r60")
-            lg = (m.get("horizon") or {}).get("long", {}).get("score", 0)
-            if pos is None or r60 is None:
-                continue
-            if pos <= max_pos and lg >= min_long:
-                picks.append({
-                    **m,
-                    "sector": s["name"],
-                    "sector_mom": s["mom"],
-                    "sector_breadth": s["breadth"],
-                    "own_mom": r60,
-                    "gap": s["mom"] - r60,
-                })
-    picks.sort(key=lambda x: -x["gap"])
-    return picks

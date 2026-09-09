@@ -2,8 +2,8 @@
 Find Taiwan stocks with consecutive limit-up (連日漲停) momentum.
 
 Strategy:
-  1. TWSE STOCK_DAY_ALL CSV → confirmed today's limit-up stocks (fast, accurate)
-  2. Candidate pool: today_lu + POPULAR_STOCKS + OTC_STOCKS (~80 stocks)
+  1. TWSE STOCK_DAY_ALL CSV + 櫃買日收盤 → 今日確認漲停股（上市＋上櫃）
+  2. Candidate pool: today_lu + POPULAR_STOCKS + OTC_STOCKS
   3. yfinance batch-fetch 15-day history → compute streak metrics for every candidate
   4. Rank by (max_streak DESC, last_days_ago ASC, volume DESC)
 
@@ -99,6 +99,65 @@ def _fetch_twse_today() -> list:
         return []
 
 
+@st.cache_data(ttl=900, show_spinner=False)
+def _fetch_tpex_today() -> list:
+    """
+    今日**上櫃**漲停股。
+
+    為什麼需要：`_fetch_twse_today()` 只涵蓋上市。全市場掃描早就納入上櫃
+    （services/universe.get_otc_snapshot），但漲停偵測沒跟上，於是
+    「漲停動能」策略看不到任何上櫃股——而連日漲停最常發生在上櫃小型股。
+
+    直接沿用 universe 的櫃買快照（已快取），用「收盤 vs 前一日收盤」算漲幅。
+    """
+    try:
+        from services.universe import get_otc_snapshot, _TPEX_DAY, _HEADERS
+        import requests
+        snap = get_otc_snapshot()
+        if not snap:
+            return []
+        rows = requests.get(_TPEX_DAY, timeout=40, headers=_HEADERS).json()
+    except Exception:
+        return []
+    if not rows:
+        return []
+
+    # 櫃買日收盤 API 一次回多個日期，取最新一天；漲跌價差欄位為 "Change"
+    try:
+        latest = max(str(r.get("Date", "")) for r in rows)
+    except ValueError:
+        return []
+    out = []
+    for d in rows:
+        if str(d.get("Date", "")) != latest:
+            continue
+        code = str(d.get("SecuritiesCompanyCode", "")).strip()
+        if not re.match(r"^\d{4}$", code):
+            continue
+        try:
+            close = float(str(d.get("Close", "")).replace(",", ""))
+            chg = float(str(d.get("Change", "")).replace(",", ""))
+        except (TypeError, ValueError):
+            continue
+        prev = close - chg
+        if prev <= 0:
+            continue
+        chg_pct = chg / prev * 100
+        if chg_pct < _LIMIT_THRESHOLD:
+            continue
+        vol = snap.get(code, {}).get("volume") or 0
+        if vol < _MIN_VOLUME:
+            continue
+        out.append({
+            "stock_id": code,
+            "name": snap.get(code, {}).get("name", ""),
+            "change_pct": round(chg_pct, 2),
+            "volume": vol,
+            "exchange": "TPEX",
+        })
+    return out
+
+
 # ── 2. Streak computation via yfinance ────────────────────────────────────────
 
 @st.cache_data(ttl=1800, show_spinner=False)
@@ -114,13 +173,16 @@ def _compute_streaks(stock_ids_tuple: tuple, lookback: int = 15) -> dict:
         {stock_id: {"max_streak": int, "trailing_streak": int, "last_days_ago": int}}
     """
     import yfinance as yf
-    from services.stock_data import OTC_STOCKS
+    from services.stock_data import _is_otc
 
     stock_ids = list(stock_ids_tuple)
     if not stock_ids:
         return {}
 
-    tickers      = [f"{sid}.TWO" if sid in OTC_STOCKS else f"{sid}.TW" for sid in stock_ids]
+    # ⚠️ 這裡原本用 `sid in OTC_STOCKS`——那是只有 4 筆的**離線 fallback 表**，
+    #    上櫃股會被要成 `.TW` 而拿不到資料。上櫃判斷的唯一來源是
+    #    `stock_data._is_otc()`（櫃買中心官方清單），與其他模組一致。
+    tickers      = [f"{sid}.TWO" if _is_otc(sid) else f"{sid}.TW" for sid in stock_ids]
     id_by_ticker = dict(zip(tickers, stock_ids))
 
     try:
@@ -198,9 +260,9 @@ def get_limit_up_stocks(top_n: int = 30, min_streak: int = 2) -> list:
         {"stock_id", "name", "change_pct", "volume", "exchange",
          "max_streak", "trailing_streak", "last_days_ago", "is_today_lu"}
     """
-    from services.stock_data import POPULAR_STOCKS, OTC_STOCKS
+    from services.stock_data import POPULAR_STOCKS, OTC_STOCKS, _is_otc
 
-    today_lu    = _fetch_twse_today()
+    today_lu    = _fetch_twse_today() + _fetch_tpex_today()
     today_by_id = {s["stock_id"]: s for s in today_lu}
     today_ids   = set(today_by_id)
 
@@ -237,7 +299,9 @@ def get_limit_up_stocks(top_n: int = 30, min_streak: int = 2) -> list:
         name     = lu_today.get("name") or POPULAR_STOCKS.get(sid, "")
         volume   = lu_today.get("volume", 0)
         change   = lu_today.get("change_pct", 0.0)
-        exchange = "TPEX" if sid in OTC_STOCKS else "TWSE"
+        # 交易所標籤也要用官方清單判斷（先前同樣只看 4 筆的 fallback 表，
+        # 於是上櫃漲停股在卡片上被標成 TWSE）
+        exchange = lu_today.get("exchange") or ("TPEX" if _is_otc(sid) else "TWSE")
 
         results.append({
             "stock_id":        sid,

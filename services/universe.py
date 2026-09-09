@@ -21,9 +21,6 @@
 粗掃階段這兩項對所有股票給相同的中性值，因此**不影響彼此排名**，入圍者再補齊。
 """
 
-import math
-
-import pandas as pd
 import requests
 import streamlit as st
 import yfinance as yf
@@ -211,6 +208,10 @@ def scan_universe(min_turnover=1e7, period="2y", progress_cb=None, include_otc=T
     """
     Score EVERY liquid listed stock on the bulk-available dimensions.
 
+    min_turnover 只決定**下載與評分的下限**（會再與 SCAN_FLOOR_TURNOVER 取較寬者）。
+    使用者在 UI 選的流動性門檻**不在這裡套用**——每一列都帶 `turnover`，
+    由畫面端過濾，這樣拖滑桿不必重掃，趨勢分的百分位分母也不會跟著變。
+
     Deliberately neutral placeholders are used for the two things that can't be
     fetched in bulk (news sentiment → 50, target-price upside → None). They are
     identical for every stock, so they don't distort the relative ranking; the
@@ -234,9 +235,17 @@ def scan_universe(min_turnover=1e7, period="2y", progress_cb=None, include_otc=T
     from services.margin import get_latest_margin_table, calculate_margin_signal
     from services.market import get_market_regime
 
-    # ⚠️ 一律以「最寬的門檻」下載，之後在記憶體裡過濾。
-    # 若把 min_turnover 併進下載範圍，使用者每動一次流動性滑桿就得重抓全市場——
-    # 但實際上高門檻的股票是低門檻的子集合，重抓毫無必要。
+    # ⚠️ 一律以「最寬的門檻」下載**並評分**，使用者選的門檻在畫面端過濾。
+    #
+    # 先前這裡在評分迴圈裡就用 min_turnover 把股票濾掉，於是：
+    #   1. **流動性滑桿變成死 UI** —— 掃完之後拖滑桿完全沒有反應（結果來自
+    #      session 快取，而快取鍵刻意不含門檻），但畫面上還寫著「調整門檻不會重抓，
+    #      只重新排序」。實際上它連重新排序都沒有。
+    #   2. **趨勢結構分的百分位分母會跟著滑桿變** —— 分數號稱「贏過全市場 X%」，
+    #      其實只贏過「流動性達標的那幾百檔」；滑桿一動，同一檔的分數就變了。
+    # 改成一律評分到 SCAN_FLOOR_TURNOVER：百分位分母固定且真的接近全市場，
+    # 滑桿則在 app.py 對快取結果做記憶體過濾（實測每檔評分僅約 3ms，
+    # 多評幾百檔只多 1~2 秒，遠比重抓幾百 MB 便宜）。
     snap = get_full_market_snapshot(include_otc=include_otc)
     scan_floor = min(min_turnover, SCAN_FLOOR_TURNOVER)
     codes = sorted(c for c, v in snap.items() if (v.get("turnover") or 0) >= scan_floor)
@@ -252,9 +261,6 @@ def scan_universe(min_turnover=1e7, period="2y", progress_cb=None, include_otc=T
     for code, raw in frames.items():
         try:
             meta = snap.get(code, {})
-            # 實際門檻在此套用（下載用的是更寬的 scan_floor）
-            if (meta.get("turnover") or 0) < min_turnover:
-                continue
             df = calculate_indicators(raw)
             if len(df) < 150:
                 continue

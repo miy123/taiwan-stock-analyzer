@@ -1,7 +1,5 @@
 import math
 
-import pandas as pd
-import numpy as np
 
 
 def _normalize_dividend_yield(info: dict):

@@ -7,15 +7,27 @@ _WATCHLIST_FILE = os.path.normpath(
 
 
 def load_watchlist() -> list:
-    """Return watchlist as [{"stock_id": "2330", "name": "台積電"}, ...], oldest-added first."""
+    """
+    Return watchlist as [{"stock_id": "2330", "name": "台積電"}, ...], oldest-added first.
+
+    ⚠️ 這個檔案是使用者可以手動編輯的，所以要跟 portfolio.load_holdings() 一樣
+    先過濾格式：先前直接回傳整份 list，一筆缺 `name` 或不是 dict 的資料
+    就會讓 `is_in_watchlist()` / `update_watchlist_name()` 拋 KeyError，
+    而它們是在**側邊欄**呼叫的——整個 App 每一頁都會掛。
+    """
     try:
         with open(_WATCHLIST_FILE, "r", encoding="utf-8") as f:
             data = json.load(f)
-            if isinstance(data, list):
-                return data
     except (FileNotFoundError, json.JSONDecodeError):
-        pass
-    return []
+        return []
+    if not isinstance(data, list):
+        return []
+    out = []
+    for item in data:
+        if isinstance(item, dict) and item.get("stock_id"):
+            out.append({"stock_id": str(item["stock_id"]),
+                        "name": item.get("name") or str(item["stock_id"])})
+    return out
 
 
 def _save_watchlist(items: list) -> None:

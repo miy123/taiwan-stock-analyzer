@@ -8,64 +8,58 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+# ⚠️ app.py 只負責畫面：計分一律走 services/analysis.py 的 compute_scores()。
+# 這裡刻意**不**匯入 calculate_technical_score / generate_recommendation 之類的
+# 計分函式——先前匯了一大串卻一個都沒用到，看起來像是 app.py 還自己算一套分數。
 from services.stock_data import (
-    get_stock_data, get_ticker_info, get_financials, get_news, POPULAR_STOCKS,
-    get_intraday_price,
+    get_ticker_info, get_financials, get_news, POPULAR_STOCKS,
 )
-from services.technical import (
-    calculate_indicators, get_technical_signals, calculate_technical_score,
-    calculate_horizon_scores, analyze_volume_price,
-)
-from services.fundamental import analyze_fundamentals, calculate_fundamental_score
+from services.technical import get_technical_signals
+from services.fundamental import analyze_fundamentals
 from services.news import get_all_news, calculate_news_sentiment_score, get_catalysts
-from services.recommendation import (
-    generate_recommendation, generate_timeframe_recommendations, build_rationale,
-    _action_for as _action_for_score,
-)
-from services.margin import get_margin_data, get_margin_trend, calculate_margin_signal
+from services.recommendation import _action_for as _action_for_score
 from services.stock_lookup import resolve_query, display_name, resolve_company_name
-from services.potential import calculate_potential_score
-from services.universe import scan_universe, get_listed_snapshot
+from services.universe import scan_universe
 from services.evidence import (
     meta as ev_meta,
     run_periods as ev_run_periods,
-    trend_bucket_stats as ev_trend_bucket,
+    trend_bucket_stats as ev_trend_bucket, trend_bucket_rows as ev_trend_rows,
     strategy_stats as ev_strategy_stats,
     strategy_walk_forward as ev_strategy_wf,
-    get_stats as ev_stats, verdict as ev_verdict, all_model_rows as ev_rows,
-    benchmark_return as ev_bench, meta as ev_meta,
-    regime_stats as ev_regime_stats, best_strategies_for_regime as ev_best_for_regime,
+    verdict as ev_verdict, all_model_rows as ev_rows,
+    benchmark_return as ev_bench,
     get_stats_for_model as ev_stats_model, regime_stats_for_model as ev_regime_model,
-    score_bucket_stats as ev_bucket, buy_threshold as ev_threshold,
     horizon_efficacy as ev_horizon_efficacy,
-    MODEL_TO_STRATEGY,
 )
-from services.sector import analyse_sectors, get_industry_map, industry_name
+from services.sector import analyse_sectors, get_industry_map
 from services.trend_history import (
     record as th_record, previous as th_previous, delta_for as th_delta,
 )
 from services.strategies import STRATEGIES, LABELS as STRAT_LABELS, \
-    CAPTIONS as STRAT_CAPTIONS, get as get_strategy, \
-    select as strat_select, explain as strat_explain
+    get as get_strategy, select as strat_select, explain as strat_explain, \
+    bar_note as strat_bar_note
 from services.ui import (
     overheat_badge, trend_cell, score_legend, bucket_table,
     strategy_caption, strategy_table, cross_evidence,
     hold_longer_note as _hold_longer_note, cmp_periods as _cmp_periods,
     trend_delta_badge,
     pe_badge, pe_inline, horizon_cells, evidence_badge, rr_cell,
-    threshold_note, long_threshold,
+    threshold_note, buy_bar as trend_buy_bar,
 )
 from services.portfolio import (
     load_holdings, upsert_holding, remove_holding, update_holding_name,
     get_holding, compute_position, portfolio_totals,
 )
+from services.technical import RISK_PER_TRADE_PCT as _RISK_PER_TRADE
 from services.market import get_market_regime, get_index_forward_return
-from services.technical import calculate_risk_plan
 from services.analysis import prepare_frame, compute_scores, PERIOD_ROWS
 
 # 買進線的唯一定義在 services/scoring.BUY_BAR，這裡只是取用。
 # 別在任何地方另外寫死數字——說明文字與實際門檻不一致的錯誤已經發生過。
 from services.scoring import BUY_BAR as TREND_BUY_BAR
+# 綜合評分的買進／觀望線也只有一個定義（services/recommendation.py），
+# 先前 app.py 三處各自寫死 58／48，改了模型就對不上。
+from services.recommendation import buy_threshold as total_buy_threshold
 from services.target_price import calculate_target_price
 from services.analyst_targets import get_analyst_targets
 from services.catalyst_impact import get_catalyst_impact
@@ -173,12 +167,21 @@ def render_sidebar():
         else:
             stock_id = st.session_state.get("stock_id", "2330")
 
+        # 「分析期間」只切個股分析頁的**圖表範圍**（評分一律用 SCORING_PERIOD），
+        # 在選股／交叉／持股三頁完全沒有作用。整併週期選單時已經學到一次：
+        # 掛著一個按了沒反應的控制項，比沒有它更糟。
         period_map = {
             "3 個月": "3mo", "6 個月": "6mo",
             "1 年": "1y", "2 年": "2y", "3 年": "3y",
         }
-        period_label = st.selectbox("分析期間", list(period_map.keys()), index=2)
-        period = period_map[period_label]
+        if page == "📊 個股分析":
+            period_label = st.selectbox(
+                "分析期間", list(period_map.keys()), index=2,
+                help="只影響下方 K 線圖顯示的範圍；評分一律以 2 年歷史計算。",
+            )
+            period = period_map[period_label]
+        else:
+            period = "1y"
 
         # ── Backtest: analysis as-of a past date ──────────────────────────────
         today = datetime.date.today()
@@ -1008,18 +1011,28 @@ _HORIZON_WINDOWS = [
 ]
 
 
-def _verdict(score: int, fwd: float):
-    """Judge a horizon's call (by score→direction) against the realized forward
-    return. Returns (icon, label, color)."""
+def _verdict(score: int, fwd: float, bull_bar=None, bear_bar=None):
+    """
+    Judge a horizon's call (by score→direction) against the realized forward
+    return. Returns (icon, label, color).
+
+    bull_bar / bear_bar: 判定「偏多／偏空」的門檻。預設用綜合評分量表
+    （BASE_THRESHOLDS 的買進線與觀望線），趨勢結構分那一列要傳自己的買進線
+    ——兩個量表不同，先前這裡寫死 58/48。
+    """
+    if bull_bar is None:
+        bull_bar = total_buy_threshold(0)
+    if bear_bar is None:
+        bear_bar = bull_bar - 10
     if fwd is None:
         return "⏳", "尚無足夠後續資料", "#78909c"
-    if score >= 58:          # bullish call
+    if score >= bull_bar:    # bullish call
         if fwd > 1:
             return "✅", "準確（建議偏多，之後上漲）", "#4caf50"
         if fwd < -1:
             return "❌", "失準（建議偏多，之後下跌）", "#f44336"
         return "➖", "大致持平", "#ff9800"
-    if score < 48:           # bearish call
+    if score < bear_bar:     # bearish call
         if fwd < -1:
             return "✅", "準確（建議偏空，之後下跌）", "#4caf50"
         if fwd > 1:
@@ -1031,7 +1044,7 @@ def _verdict(score: int, fwd: float):
     return "➖", "觀望但後續有明顯波動", "#ff9800"
 
 
-def render_backtest_verification(df, df_full, timeframe_recs, rec):
+def render_backtest_verification(df, df_full, timeframe_recs, rec, trend_score=None):
     st.markdown("---")
     st.markdown("#### 📅 事後驗證：當時的建議準不準？")
 
@@ -1057,6 +1070,16 @@ def render_backtest_verification(df, df_full, timeframe_recs, rec):
     )
 
     rec_by_key = {h["key"]: h for h in timeframe_recs}
+    # 「長」不在 horizon_cards 裡（全站的長期分數只有趨勢結構分一個），
+    # 補一筆進來，否則整張表看不到最重要的那個週期。
+    if trend_score is not None and "long" not in rec_by_key:
+        _act = _action_for_score(trend_score)
+        rec_by_key["long"] = {
+            "key": "long", "name": "長期", "span": "趨勢結構分（全市場百分位）",
+            "score": round(trend_score), "action": _act["action"],
+            "icon": _act["icon"], "color": _act["color"],
+            "bull_bar": TREND_BUY_BAR,
+        }
     correct = 0
     judged = 0
     rows_html = []
@@ -1072,7 +1095,8 @@ def render_backtest_verification(df, df_full, timeframe_recs, rec):
         else:
             fwd = None
             fwd_date = None
-        icon, label, vcolor = _verdict(h["score"], fwd)
+        icon, label, vcolor = _verdict(h["score"], fwd,
+                                       bull_bar=h.get("bull_bar"))
         if fwd is not None:
             judged += 1
             if icon == "✅":
@@ -1155,7 +1179,7 @@ def render_recommendation_tab(
     if _stale:
         _long_sc = 0
     _long_act = _action_for_score(_long_sc)
-    _pf_thr = long_threshold()
+    _pf_thr = trend_buy_bar()
 
     col_gauge, col_details = st.columns([1, 2])
 
@@ -1163,7 +1187,7 @@ def render_recommendation_tab(
         fig_gauge = go.Figure(go.Indicator(
             mode="gauge+number",
             value=_long_sc,
-            title={"text": "趨勢結構分（全市場百分位）✅實證最強",
+            title={"text": "趨勢結構分（全市場百分位）",
                    "font": {"size": 15, "color": "#fafafa"}},
             number={"font": {"size": 52, "color": _long_act["color"]}},
             gauge={
@@ -1281,8 +1305,10 @@ def render_recommendation_tab(
     if market_regime and market_regime.get("regime") != "unknown":
         mr_color = market_regime["color"]
         adj = rec.get("regime_adj", 0)
-        adj_txt = (f"買進門檻 {58:+d} → <b>{rec.get('buy_threshold', 58)}</b>"
-                   if adj else "買進門檻維持 58")
+        _base_bar = total_buy_threshold(0)
+        adj_txt = (f"買進門檻 {_base_bar} {adj:+d} → "
+                   f"<b>{rec.get('buy_threshold', _base_bar)}</b>"
+                   if adj else f"買進門檻維持 {_base_bar}")
         st.markdown(f"""
 <div style="background:#161b26;border-left:4px solid {mr_color};border-radius:6px;
             padding:8px 14px;margin:0 0 10px 0;">
@@ -1456,7 +1482,8 @@ def render_recommendation_tab(
         with k4:
             st.metric("波動度 (ATR)", f"{rp['atr_pct']:.1f}%", rp["vol_label"])
         pos = rp.get("suggested_position_pct")
-        pos_txt = (f"若單筆最多虧損總資金 2%，此標的建議部位上限約 "
+        pos_txt = (f"若單筆最多虧損總資金 {_RISK_PER_TRADE:.0f}%，"
+                   f"此標的建議部位上限約 "
                    f"**{pos:.0f}%**（停損幅度 {abs(rp['stop_pct']):.1f}%）。") if pos else ""
         st.markdown(f"""
 <div style="background:#161b26;border-left:4px solid {rp['verdict_color']};
@@ -1493,7 +1520,8 @@ def render_recommendation_tab(
 
     # ── Backtest verification: did the as-of recommendation pan out? ───────────
     if is_backtest and df_full is not None:
-        render_backtest_verification(df, df_full, timeframe_recs, rec)
+        render_backtest_verification(df, df_full, timeframe_recs, rec,
+                                     trend_score=_long_sc if not _stale else None)
 
     # ── Volume (量價關係) section ──────────────────────────────────────────────
     st.markdown("---")
@@ -1818,8 +1846,9 @@ def _analyze_one_stock(stock_id: str, period: str = None, limit_up_info=None,
 def render_smart_screener_page():
     st.title("🎯 智能選股")
     st.markdown(
-        "一次掃描、三種策略：**強勢順勢**、**潛力潛伏**、**攻守兼備**。"
-        "每檔都同時顯示『綜合評分』（趨勢強弱）與『潛力分』（題材＋尚未起漲），兩種視角並列。"
+        "一次掃描、多種策略：換策略只是把**同一批掃描結果**重新排序，不會重抓資料。"
+        "每張卡片都同時顯示『趨勢結構分』（選股訊號）、『綜合評分』（體質總覽）"
+        "與『潛力分』，並標明哪一個才是該策略的排序依據。"
     )
 
     # 說明文字用**同一次回測**的可比數字，不用形容詞（「實證最強」看不出誰比誰強）
@@ -1878,40 +1907,67 @@ def render_smart_screener_page():
             st.markdown(
                 f"<div style='padding-top:26px;font-size:13px;'>大盤環境："
                 f"<span style='color:{regime['color']};font-weight:700;'>{regime['label']}</span>"
-                f"<span style='color:#78909c;'>　買進門檻 {58 + regime['threshold_adj']}</span></div>",
+                f"<span style='color:#78909c;'>　綜合評分買進線 "
+                f"{total_buy_threshold(regime['threshold_adj'])}</span></div>",
                 unsafe_allow_html=True,
             )
 
     # ── Backtest evidence for the chosen strategy ─────────────────────────────
-    # Ranking rules are cheap to invent and easy to believe; the 139-period
-    # backtest is the only thing that says whether they actually worked.
-    ev = ev_stats_model(sdef["evidence_model"], hold_days=20,
-                        run=sdef.get("evidence_run", "main_3y"))
-    ev_v = ev_verdict(ev)
-    if ev:
-        # ⚠️ 一律用 .get()：不同回測 run 的欄位不完全一樣（新的因子模型沒有
-        # 「組合報酬」這一欄），用 ev['x'] 直接取值會讓整頁 KeyError 掛掉——
-        # 已經發生過一次。有什麼就顯示什麼，缺的就不顯示。
-        _pr = ev.get("portfolio_return")
-        _nr = ev.get("net_return")
-        _periods = ev.get("periods", "—")
-        _abs = (f"組合報酬 <b>{_pr:+.2f}%</b>（扣成本 {_nr:+.2f}%）、"
-                if _pr is not None and _nr is not None else "")
+    # ⚠️ 這裡以前是用 `evidence_model` 去 backtest_results.json 查「名字相近的舊模型」，
+    #    結果 5 個策略有 4 個顯示的是**別的模型**的成績：
+    #      · sectorhot 顯示「強勢族群+長線分」——但本策略排序早已改成趨勢結構分
+    #      · contrarian 顯示「潛力潛伏」——整併後的篩選條件已不同
+    #      · lowpe 顯示「P1 純低本益比」——沒有本策略的 3–12 倍區間限制
+    #      · limitup 因為查不到模型而顯示「尚未回測」，其實有 139 期的同場比較資料
+    #    這正是本專案再三犯的「名字是新的、數字是舊的」。
+    #    改為一律讀 strategy_comparison.json：那份是**直接呼叫 strategies.select()**
+    #    量出來的，測的就是 App 實跑的定義，也是唯一可跨策略比較的來源。
+    _cmp20 = ev_strategy_stats(strategy, 20)
+    _cmp60 = ev_strategy_stats(strategy, 60)
+    _wf20 = ev_strategy_wf(strategy, 20)
+    ev_v = ev_verdict({"excess_return": _cmp20.get("excess"),
+                       "significant": abs(_cmp20.get("t") or 0) >= 1.96}
+                      if _cmp20 else {})
+    if _cmp20:
+        _net = _cmp20.get("net_excess")
+        _net_txt = (f"（扣成本 {_net:+.2f}%）" if _net is not None else "")
+        _h60_txt = (f"　持有3個月：<b>{_cmp60['excess']:+.2f}%</b>"
+                    f"（t={_cmp60['t']:+.2f}）" if _cmp60 else "")
         st.markdown(f"""
 <div style="background:#161b26;border-left:4px solid {ev_v['color']};border-radius:6px;
             padding:10px 14px;margin:6px 0 10px 0;">
   <span style="color:{ev_v['color']};font-weight:700;">{ev_v['icon']} 回測實證：{ev_v['label']}</span>
   <span style="color:#cfd8dc;font-size:13px;">
-    — {_periods} 期、持有1個月：{_abs}
-    <b style="color:{ev_v['color']};">超額報酬 {ev.get('excess_return', 0):+.2f}%</b>、
-    贏過「隨便買」的期數比率 {ev.get('beat_benchmark_rate', 0):.0f}%、
-    t={ev.get('t_stat', 0):+.2f}
-    {'（統計顯著）' if ev.get('significant') else '（不顯著）'}
+    — {_cmp20.get('periods', '—')} 期、持有1個月：
+    <b style="color:{ev_v['color']};">超額報酬 {_cmp20['excess']:+.2f}%</b>{_net_txt}、
+    贏過「隨便買」的期數比率 {_cmp20.get('beat_rate', 0):.0f}%、
+    t={_cmp20.get('t', 0):+.2f}
+    {'（統計顯著）' if abs(_cmp20.get('t') or 0) >= 1.96 else '（不顯著）'}
+    {_h60_txt}
   </span>
 </div>""", unsafe_allow_html=True)
-        # ── 依「目前大盤環境」給建議（分環境回測推翻了一刀切的結論）──────────
+        st.caption(
+            "↑ 這份數字是**直接呼叫本策略的實際篩選/排序程式**跑出來的"
+            f"（{_cmp_periods() or '—'} 期、同一批換股日、同一個等權基準），"
+            "所以它測的就是你現在按下去會得到的東西。"
+        )
+        # 走查（前後半段）—— 全期平均會掩蓋「後來失效」這件事
+        if _wf20 and _wf20.get("first_half") is not None:
+            _f, _sd = _wf20["first_half"], _wf20["second_half"]
+            _flip = (_f is not None and _sd is not None and _f * _sd < 0)
+            st.caption(
+                f"走查驗證（持有1個月）：前半段 {_f:+.2f}%、後半段 {_sd:+.2f}%"
+                + ("　⚠️ **前後半段變號＝不穩定**，全期平均會掩蓋這件事。"
+                   if _flip else "　（前後半段同向，較穩定）")
+            )
+
+        # ── 依「目前大盤環境」給參考 ──────────────────────────────────────────
+        # ⚠️ 分環境檢驗只做在舊的同家族模型上，**不是本策略的定義**。
+        #    先前這裡直接寫「此策略歷史超額報酬 X%」，等於把別的模型的成績
+        #    掛在這個策略名下。現在明確標示它是誰量的。
         cur_reg = regime.get("regime", "neutral")
-        rs = ev_regime_model(sdef["evidence_model"], cur_reg)
+        rs = ev_regime_model(sdef["evidence_model"], cur_reg) \
+            if sdef["evidence_model"] else {}
         if rs:
             good = rs["excess_return"] > 0
             rc = "#4caf50" if good else "#f44336"
@@ -1920,48 +1976,35 @@ def render_smart_screener_page():
             padding:10px 14px;margin:0 0 10px 0;">
   <span style="color:{rc};font-weight:700;">
     {'✅' if good else '⚠️'} 在目前的「{regime.get('label', '')}」環境下：
-    此策略歷史超額報酬 {rs['excess_return']:+.2f}%</span>
+    同家族模型的歷史超額報酬 {rs['excess_return']:+.2f}%</span>
   <span style="color:#cfd8dc;font-size:13px;">
-    （分環境樣本 {rs['periods']} 期）
-    {'——與目前盤勢相符，可考慮採用。' if good else '——在這種盤勢下歷史表現不佳。'}
+    （分環境樣本 {rs['periods']} 期；量的是舊模型
+    「{sdef['evidence_model']}」，**不是本策略現在的定義**，僅供方向參考）
+    {'——與目前盤勢相符。' if good else '——這種盤勢下該家族歷史表現不佳。'}
   </span>
 </div>""", unsafe_allow_html=True)
-
-        # ⚠️ 沒有分環境資料 ≠ 表現不佳。先前這裡把「查無資料」也講成「歷史表現不佳」，
-        #    還推薦一個已經被整併掉的策略名稱。
-        if not rs:
+            if not good:
+                st.info(
+                    f"💡 目前大盤為「{regime.get('label', '')}」，這一類策略在這種環境的"
+                    "歷史表現不佳。**但走查驗證顯示：與其隨盤勢換策略，不如固定用同一個模型**"
+                    "——滾動走查中「每折重挑最佳模型」的成績，輸給從頭到尾固定用趨勢結構分。"
+                )
+        else:
             st.caption(
-                f"（此模型尚未做分環境檢驗，因此不顯示「{regime.get('label', '')}」環境下的表現。"
-                "全期間與走查結果見上方。）"
-            )
-        elif rs["excess_return"] <= 0:
-            st.info(
-                f"💡 目前大盤為「{regime.get('label', '')}」，此策略在這類環境的歷史表現不佳。"
-                "**但走查驗證顯示：與其隨盤勢換策略，不如固定用同一個模型**"
-                "——滾動走查中「每折重挑最佳模型」的成績，輸給從頭到尾固定用趨勢結構分。"
+                f"（本策略尚未做分環境檢驗，因此不顯示「{regime.get('label', '')}」"
+                "環境下的表現。查無資料 ≠ 表現不佳。）"
             )
 
-        if ev["excess_return"] < 0 and ev["significant"]:
+        if _cmp20["excess"] < 0 and abs(_cmp20.get("t") or 0) >= 1.96:
             st.warning(
-                f"⚠️ **全期間平均而言，此策略輸給「隨便買」**（超額 {ev['excess_return']:+.2f}%，"
-                f"{ev['periods']} 期中僅 {ev['beat_benchmark_rate']:.0f}% 贏過大盤）。"
-                "分環境檢驗顯示這類逆勢型策略**在空頭期間才轉為有效**；"
-                "但**走查驗證中，靠盤勢切換到這類策略並未帶來好處**"
-                "——切換的成績輸給從頭到尾固定用趨勢型，"
-                "因為等你確認是空頭，跌勢常已走完一段。"
+                f"⚠️ **全期間平均而言，此策略顯著輸給「隨便買」**"
+                f"（持有1個月超額 {_cmp20['excess']:+.2f}%，"
+                f"{_cmp20.get('periods', '—')} 期中只有 "
+                f"{_cmp20.get('beat_rate', 0):.0f}% 贏過大盤）。"
+                "頁面仍提供它供你自行研判，但這不是有依據的建議。"
             )
-    elif strategy == "lowpe":
-        st.warning(
-            "❔ **這個策略我無法給你實證數據——請當作探索工具，不是有依據的建議。**\n\n"
-            "我試過用證交所歷史本益比回測，但 `BWIBBU_d` 端點**限流極嚴**"
-            "（60 個日期有 43 個被擋，只成功 17 個），樣本太少且非隨機，"
-            "所以那份結果我**作廢不採用**。因此「低本益比在台股有沒有效」目前是**未知數**。\n\n"
-            "⚠️ 已知風險：低本益比常伴隨**價值陷阱**——便宜是因為獲利即將衰退，"
-            "或 EPS 被業外一次性收益灌大（本策略已排除 <3 倍者，但無法完全過濾）。"
-            "建議搭配「長線結構分」與營收趨勢一起看，別只看本益比。"
-        )
     else:
-        st.caption(f"❔ 此策略尚未納入回測驗證（{ev_v['note']}）")
+        st.caption(f"❔ 此策略尚未納入策略對照回測（{ev_v['note']}）")
 
     skip_news = st.checkbox(
         "⚡ 略過新聞分析（掃描快 2–3 倍）", value=False, key="smart_skipnews",
@@ -1972,7 +2015,7 @@ def render_smart_screener_page():
     )
 
     # 說明文字全部來自策略表（services/strategies.py），不再散落
-    st.caption(f"📋 {sdef['bar_note']}　｜　排序依據：{sdef['sort_desc']}")
+    st.caption(f"📋 {strat_bar_note(sdef)}　｜　排序依據：{sdef['sort_desc']}")
 
     # ── 分數門檻實證：幾分以上才值得買 ────────────────────────────────────────
     _note = threshold_note(20)
@@ -2006,7 +2049,8 @@ def render_smart_screener_page():
             mins = (datetime.datetime.now() - last_t).total_seconds() / 60
             st.caption(
                 f"✅ 已快取 {n} 檔（{last_t.strftime('%H:%M:%S')}，{mins:.0f} 分鐘前）　"
-                "**切換策略／持有週期／流動性門檻都不會重抓**，只重新排序。"
+                "**切換策略不會重抓**（只重新排序）；**調流動性門檻也不會重抓**"
+                "（掃描一律評分到最寬門檻，門檻在記憶體過濾）。"
                 "歷史資料另有硬碟快取，重啟後仍在。"
             )
         else:
@@ -2144,6 +2188,16 @@ def render_smart_screener_page():
         st.session_state[last_run_key] = datetime.datetime.now()
 
     results = st.session_state.get(cache_key, [])
+    # ── 流動性門檻：在**記憶體**過濾，不重掃 ──────────────────────────────────
+    # 掃描一律評分到最寬門檻（services/universe.scan_universe），使用者選的門檻
+    # 在這裡套用。先前門檻是在掃描迴圈裡就套用的，於是掃完之後拖滑桿完全沒反應
+    # ——畫面卻寫著「調整門檻不會重抓，只重新排序」。
+    scanned_total = len(results)
+    if full_market and results:
+        _bar_to = min_turnover_yi * 1e8
+        results = [r for r in results
+                   if (r.get("turnover") or 0) >= _bar_to or r.get("turnover") is None]
+        st.session_state[cache_key + "_liq"] = _bar_to
     if not results:
         st.info(
             "👆 **請按上方「🔄 重新掃描」開始分析**"
@@ -2162,7 +2216,7 @@ def render_smart_screener_page():
 
     # ── Strategy-specific ranking + filtering (over the shared scan) ───────────
     # Each strategy's bar is intrinsic to the strategy (no separate checkboxes).
-    buy_bar = 58 + (get_market_regime().get("threshold_adj", 0) or 0)
+    buy_bar = total_buy_threshold(get_market_regime().get("threshold_adj", 0))
 
     # 篩選＋排序完全由策略表決定（services/strategies.py），
     # 不再有一長串 if-elif —— 新增策略只要在表裡加一筆。
@@ -2170,19 +2224,20 @@ def render_smart_screener_page():
                                         "trend_bar": TREND_BUY_BAR})
 
     # ── Summary strip (always shows both lenses) ──────────────────────────────
-    buy_ct     = sum(1 for r in results if r["total_score"] >= 58)
+    buy_ct     = sum(1 for r in results if r["total_score"] >= buy_bar)
     sleeper_ct = sum(1 for r in results if (r.get("potential") or {}).get("qualifies"))
     lu_ct      = sum(1 for r in results if r.get("is_limit_up"))
     scanned = st.session_state.get(cache_key + "_scanned")
     cols_m = st.columns(4)
     with cols_m[0]:
         if scanned:
-            st.metric("完整分析檔數", scanned, "全上市")
+            st.metric("流動性門檻內", len(results),
+                      f"共分析 {scanned} 檔")
         else:
             st.metric("掃描股票數", len(results), "熱門股池")
     with cols_m[1]:
         _enr = sum(1 for r in results if r.get("enriched"))
-        st.metric(f"買進建議（≥{buy_bar}）", buy_ct,
+        st.metric(f"綜合評分達買進線（≥{buy_bar}）", buy_ct,
                   f"/{len(results)} 檔" + (f"（{_enr} 檔深度分析）" if _enr else ""))
     with cols_m[2]:
         st.metric("潛伏股（題材未漲）", sleeper_ct, "支")
@@ -2191,8 +2246,9 @@ def render_smart_screener_page():
     if scanned:
         st.caption(
             f"🌏 本次**完整分析了 {scanned} 檔上市櫃股**（技術／量價／低基期／融資／估值／風報比 逐檔實算），"
+            f"其中 **{len(results)} 檔**達到目前的流動性門檻（{min_turnover_yi} 億）；"
             f"並對初篩最前的 {sum(1 for r in results if r.get('enriched'))} 檔補齊新聞與詳細財報。"
-            f"**全部 {len(results)} 檔都留在結果裡**，所以換策略時是在完整股池裡重選，"
+            f"**全部結果都留在快取裡**，所以換策略或調門檻都是在完整股池裡重選，"
             f"不是在別的策略挑剩的名單裡挑。"
         )
 
@@ -2230,13 +2286,20 @@ def render_smart_screener_page():
             textposition="outside",
             textfont=dict(color="#fafafa"),
         ))
+        # ⚠️ y 軸是**趨勢結構分**，參考線一律用 TREND_BUY_BAR。
+        #    先前畫的是綜合評分量表的 58／68／48：圖上寫「買進線 58」但策略
+        #    實際門檻是趨勢分 50，而且低於 50 的早就被濾掉，「觀望線 48」
+        #    永遠不會有點落在它下面——三條線全是舊量表的殘留。
         if strategy in ("trend", "sectorhot", "limitup"):
-            fig_bar.add_hline(y=buy_bar + 10, line_dash="dot", line_color="#4caf50",
-                              annotation_text=f"強力買進線 {buy_bar + 10}", annotation_position="right")
-            fig_bar.add_hline(y=buy_bar, line_dash="dot", line_color="#a9e34b",
-                              annotation_text=f"買進線 {buy_bar}", annotation_position="right")
-            fig_bar.add_hline(y=buy_bar - 10, line_dash="dot", line_color="#ff9800",
-                              annotation_text=f"觀望線 {buy_bar - 10}", annotation_position="right")
+            fig_bar.add_hline(y=TREND_BUY_BAR, line_dash="dot", line_color="#a9e34b",
+                              annotation_text=f"買進線 {TREND_BUY_BAR:.0f}",
+                              annotation_position="right")
+            _edge_rows = ev_trend_rows(60)
+            if _edge_rows:
+                _edge_lo = _edge_rows[-1]["lo"]
+                fig_bar.add_hline(y=_edge_lo, line_dash="dot", line_color="#4caf50",
+                                  annotation_text=f"優勢集中 {_edge_lo:.0f}+",
+                                  annotation_position="right")
         fig_bar.update_layout(
             height=300, title=dict(text=metric_name, font=dict(size=13, color="#aaa")),
             plot_bgcolor="#0e1117", paper_bgcolor="#0e1117",
@@ -2345,7 +2408,7 @@ def render_sector_view(results):
             mc = "#f03e3e" if s["mom"] > 0 else "#2f9e44"
             bc = "#4caf50" if s["breadth"] >= 60 else "#ff9800" if s["breadth"] >= 40 else "#f44336"
             hot = "🔥" if i <= 5 else ""
-            ml = f"{s['median_long']:.0f}" if s["median_long"] is not None else "—"
+            ml = f"{s['median_trend']:.0f}" if s["median_trend"] is not None else "—"
             rows_html.append(
                 f"<tr style='border-bottom:1px solid #2d3548;'>"
                 f"<td style='padding:6px 10px;'>{i} {hot}</td>"
@@ -2364,20 +2427,26 @@ def render_sector_view(results):
     <th style="padding:8px 10px;text-align:left;">檔數</th>
     <th style="padding:8px 10px;text-align:left;">60日動能(中位)</th>
     <th style="padding:8px 10px;text-align:left;">上漲廣度</th>
-    <th style="padding:8px 10px;text-align:left;">長線分(中位)</th>
+    <th style="padding:8px 10px;text-align:left;">趨勢分(中位)</th>
   </tr></thead><tbody>{''.join(rows_html)}</tbody></table></div>""",
                     unsafe_allow_html=True)
 
-        # 前 5 強族群裡，長線分最高的個股（這才是實證有效的做法）
-        st.markdown("#### 🔥 前 5 強族群中，長線分最高的個股")
-        st.caption("這是實證有效的做法：族群動能 + 個股也強，而**非**挑落後股。")
+        # 前 5 強族群裡，趨勢結構分最高的個股。
+        # ⚠️ 這裡原本排序用 `horizon["long"]`（離散長線分），與 `sectorhot`
+        #    策略自己用的 `_trend()` 不是同一個指標——同一頁的兩份名單會不一致；
+        #    而且深度分析過的 row 沒有那個鍵，只會拿到 0 分而全部墊底。
+        st.markdown("#### 🔥 前 5 強族群中，趨勢結構分最高的個股")
+        st.caption("這是實證有效的做法：族群動能 + 個股也強，而**非**挑落後股。"
+                   "排序與『強勢族群＋趨勢分』策略用的是同一個分數。")
         hot_ids = {s["name"] for s in sectors[:5]}
         ind = get_industry_map()
         picks = []
         for r in results:
             meta = ind.get(r.get("stock_id"))
             if meta and meta["name"] in hot_ids:
-                lg = (r.get("horizon") or {}).get("long", {}).get("score", 0)
+                lg = r.get("trend_score")
+                if lg is None:
+                    continue
                 picks.append((lg, meta["name"], r))
         picks.sort(key=lambda x: -x[0])
         if picks:
@@ -2386,7 +2455,7 @@ def render_sector_view(results):
                 pe = r.get("pe_ratio")
                 st.markdown(
                     f"- **{r['stock_id']} {r['company_name']}**"
-                    f"　`{sec}`　長線分 **{lg}**"
+                    f"　`{sec}`　趨勢分 **{lg:.0f}**"
                     f"　52週位階 {p.get('position_pct', 0):.0f}%"
                     + (f"　本益比 {pe:.1f}" if pe else "")
                 )
@@ -2687,25 +2756,14 @@ def _render_smart_card(rank, r, strategy, horizon_key=None):
     cell_sleeper  = _score_cell("潛力", pot_total, "#7986cb", strategy == "contrarian")
     cell_balanced = _score_cell("綜合", r["total_score"], "#4dd0e1", False)
 
-    # Risk/reward (from the ATR plan) — shows whether the entry is worth the risk
-    rr = r.get("rr")
-    if rr is not None:
-        rr_color = "#4caf50" if rr >= 2.5 else "#a9e34b" if rr >= 1.5 else "#ff9800" if rr >= 1 else "#f44336"
-        stop_pct = r.get("stop_pct")
-        rr_html = (
-            f"<div style='min-width:96px;font-size:11px;color:#aaa;'>"
-            f"<div>風報比 <span style='color:{rr_color};font-weight:800;font-size:14px;'>{rr:.2f}</span></div>"
-            f"<div>停損 {abs(stop_pct):.1f}%　ATR {r.get('atr_pct', 0):.1f}%</div></div>"
-        )
-    else:
-        rr_html = "<div style='min-width:96px;'></div>"
-
     # 本益比（共用元件，三頁一致）
     pe_html = pe_badge(r.get("pe_ratio"), r.get("dividend_yield"),
                        highlight=(strategy == "lowpe"))
 
     # 四格週期分數（共用元件）
     horizon_html = horizon_cells(r.get("horizon"), selected_key=horizon_key)
+    # 風報比（共用元件）。先前上面另有一整段自己拼 HTML 的版本，
+    # 算完立刻被這一行覆蓋掉——死碼，而且改了那份不會有任何效果。
     rr_html = rr_cell(r.get("rr"), r.get("stop_pct"), r.get("atr_pct"))
 
     card_border = "border:2px solid #7f1d1d;" if r.get("is_limit_up") else "border:1px solid #2d3548;"
@@ -2805,6 +2863,13 @@ def render_cross_screen_page():
         if cached:
             results, uni_tag = cached, tag
             break
+    # 套用智能選股頁當下的流動性門檻——不然兩頁都說「沿用同一批掃描結果」，
+    # 實際上這裡多了幾百檔選股頁根本不會顯示的低流動性股票。
+    if results:
+        _liq = st.session_state.get(f"smart_{uni_tag}_liq")
+        if _liq:
+            results = [r for r in results
+                       if (r.get("turnover") or 0) >= _liq or r.get("turnover") is None]
     if not results:
         st.info("👈 請先到 **🎯 智能選股** 掃描一次（本頁直接沿用那份結果，不會重抓資料）。")
         if st.button("前往智能選股"):
@@ -2857,8 +2922,8 @@ def render_cross_screen_page():
         else:
             st.markdown("（這些組合尚未納入交集回測）")
 
-    buy_bar = 58 + (get_market_regime().get("threshold_adj", 0) or 0)
-    ctx = {"buy_bar": buy_bar, "horizon_key": "long", "trend_bar": TREND_BUY_BAR}
+    buy_bar = total_buy_threshold(get_market_regime().get("threshold_adj", 0))
+    ctx = {"buy_bar": buy_bar, "horizon_key": None, "trend_bar": TREND_BUY_BAR}
 
     picks, ranks = {}, {}
     for k in picked:
@@ -2973,7 +3038,7 @@ def render_portfolio_page():
 **分數越高真的越好嗎？——這次是真的**
 """ + bucket_table(60) + """
 
-**買進線為什麼是 50？**
+**買進線為什麼是 """ + f"{TREND_BUY_BAR:.0f}" + """？**
 """ + threshold_note(20) + """
 **真正的優勢集中在 90 分以上**——這也是為什麼選股頁只取前 10 名，
 而不是把所有及格的都列出來。
@@ -3124,6 +3189,8 @@ def render_portfolio_page():
 
     rows.sort(key=lambda x: _key_score(x["r"]), reverse=True)
     totals = portfolio_totals([x["pos"] for x in rows])
+    # 綜合評分的門檻會隨大盤環境平移，畫線／判讀弱勢部位時要用同一個值
+    regime_adj = get_market_regime().get("threshold_adj", 0) or 0
 
     # ── Portfolio summary ─────────────────────────────────────────────────────
     scored = [x for x in rows if x["r"]]
@@ -3131,7 +3198,11 @@ def render_portfolio_page():
     # Value-weighted score — what your money is actually exposed to
     mv_total = sum(x["pos"]["market_value"] for x in scored) or 1
     w_score = sum(_key_score(x["r"]) * x["pos"]["market_value"] for x in scored) / mv_total
-    weak = [x for x in scored if _key_score(x["r"]) < 48]
+    # 門檻要跟著「排名依據」走：趨勢分用買進線，綜合評分用觀望線。
+    # 先前一律寫死 48（綜合評分量表），套在趨勢分上等於用錯尺。
+    _weak_bar = (trend_buy_bar() if rank_by_long
+                 else total_buy_threshold(regime_adj) - 10)
+    weak = [x for x in scored if _key_score(x["r"]) < _weak_bar]
 
     pnl_color = "#f03e3e" if totals["pnl"] >= 0 else "#2f9e44"
     s1, s2, s3, s4, s5 = st.columns(5)
@@ -3145,12 +3216,13 @@ def render_portfolio_page():
         st.metric("未實現損益", f"{totals['pnl']:+,.0f}",
                   f"{totals['pnl_pct']:+.2f}%" if totals["pnl_pct"] is not None else None)
     with s5:
-        score_name = "長線結構分" if rank_by_long else "綜合評分"
+        # 命名要與「排名依據」選單一致：全站的長期分數只有「趨勢結構分」一個
+        score_name = "趨勢結構分" if rank_by_long else "綜合評分"
         st.metric(f"持股平均{score_name}", f"{avg_score:.0f}",
                   f"市值加權 {w_score:.0f}")
 
     # ── 用與選股頁相同的實證門檻判讀（避免兩頁標準不一致造成混亂）──────────────
-    pf_thr = long_threshold()
+    pf_thr = trend_buy_bar()
     if rank_by_long:
         below = [x for x in scored if _key_score(x["r"]) < pf_thr]
         above = [x for x in scored if _key_score(x["r"]) >= pf_thr]
@@ -3159,7 +3231,7 @@ def render_portfolio_page():
         st.markdown(f"""
 <div style="background:#161b26;border-left:4px solid {'#f44336' if pct_below > 50 else '#ff9800' if pct_below > 20 else '#4caf50'};
             border-radius:6px;padding:10px 14px;margin:6px 0;">
-  <span style="font-weight:700;">🎯 實證門檻檢視（長線結構分 {pf_thr:.0f} 分）</span>
+  <span style="font-weight:700;">🎯 實證門檻檢視（趨勢結構分 {pf_thr:.0f} 分）</span>
   <span style="color:#cfd8dc;font-size:13px;">
     —— {len(above)} 檔達標、<b>{len(below)} 檔未達標</b>，
     未達標部位佔總市值 <b>{pct_below:.0f}%</b>。
@@ -3176,24 +3248,28 @@ def render_portfolio_page():
                     cands = st.session_state[k]
                     break
             held = {x["h"]["stock_id"] for x in rows}
+            # ⚠️ 這裡原本讀 `horizon["long"]`（舊的離散長線分）再去比 pf_thr
+            #    （趨勢分量表的門檻）——量表不同，等於張冠李戴；更糟的是
+            #    深度分析過的那批 row 早就沒有 `horizon["long"]` 了
+            #    （horizon_cards 只剩極短／短／中），一律拿到 0 分而被排除，
+            #    於是「達標標的」剛好漏掉最該出現的那幾檔。改用趨勢結構分。
             alts = [c for c in cands
                     if c.get("stock_id") not in held
-                    and (c.get("horizon") or {}).get("long", {}).get("score", 0) >= pf_thr
-                    and (c.get("volume_adj", 0) or 0) >= 0]
-            alts.sort(key=lambda c: (c.get("horizon") or {}).get("long", {}).get("score", 0),
-                      reverse=True)
+                    and (c.get("trend_score") or 0) >= pf_thr]
+            alts.sort(key=lambda c: c.get("trend_score") or 0, reverse=True)
             with st.expander(
                     f"🔄 有 {len(below)} 檔未達標——看看選股頁目前有哪些達標標的？",
                     expanded=False):
                 if alts:
                     st.markdown(
-                        f"以下是**智能選股掃描結果中、你尚未持有、且長線分 ≥{pf_thr:.0f}** 的標的："
+                        f"以下是**智能選股掃描結果中、你尚未持有、"
+                        f"且趨勢結構分 ≥{pf_thr:.0f}** 的標的："
                     )
                     for c in alts[:8]:
-                        lg = (c.get("horizon") or {}).get("long", {}).get("score", 0)
+                        lg = c.get("trend_score") or 0
                         pe = c.get("pe_ratio")
                         st.markdown(
-                            f"- **{c['stock_id']} {c['company_name']}**　長線分 **{lg}**"
+                            f"- **{c['stock_id']} {c['company_name']}**　趨勢分 **{lg:.0f}**"
                             f"　綜合 {c.get('total_score', '—')}"
                             + (f"　本益比 {pe:.1f}" if pe else "")
                         )
@@ -3207,7 +3283,7 @@ def render_portfolio_page():
 
     if weak:
         st.warning(
-            f"⚠️ **需留意的部位**（{score_name} < 48）："
+            f"⚠️ **需留意的部位**（{score_name} < {_weak_bar:.0f}）："
             + "、".join(f"{x['h']['stock_id']} {x['r']['company_name']}"
                        f"（{_key_score(x['r'])}分）" for x in weak)
             + " — 建議檢視是否減碼或設好停損。"
@@ -3240,8 +3316,11 @@ def render_portfolio_page():
                       if rr is not None and stop_pct is not None else "")
             pe_txt = pe_inline(r.get("pe_ratio"), r.get("dividend_yield"))
             # 實證區間徽章（共用元件）
-            evid_html = evidence_badge((r.get("horizon_tech") or {}).get("long")
-                                       or (hz.get("long") or {}).get("score"))
+            # ⚠️ `evidence_badge()` 查的是**趨勢分**的分桶表，必須餵趨勢分。
+            #    先前餵的是離散長線分（例：94），於是同一張卡片上「趨勢結構分」
+            #    那格顯示 57、右邊徽章卻寫「趨勢分 94 落在 90-100 區間」，
+            #    兩個都叫趨勢分卻互相矛盾。個股頁早就修好了，這頁漏掉。
+            evid_html = evidence_badge(r.get("trend_score"))
             oh_html = overheat_badge(r.get("overheat"))
             trend_delta = th_delta(sid, r.get("trend_score"), _prev_scores)
         else:
@@ -3311,7 +3390,7 @@ def render_portfolio_page():
                         cands = st.session_state[k]
                         break
                 if cands:
-                    _bb = long_threshold()
+                    _bb = trend_buy_bar()
                     _ctx = {"buy_bar": _bb, "horizon_key": None}
                     with st.expander(f"🔍 {sid} 在各選股策略中的入選情形", expanded=False):
                         st.caption("與智能選股頁**完全相同的條件**逐條檢核，"
@@ -3365,10 +3444,16 @@ def render_portfolio_page():
                 text=[_key_score(x["r"]) for x in sc],
                 textposition="outside", textfont=dict(color="#fafafa"),
             ))
-            fig_b.add_hline(y=58, line_dash="dot", line_color="#a9e34b",
-                            annotation_text="買進線 58", annotation_position="right")
-            fig_b.add_hline(y=48, line_dash="dot", line_color="#ff9800",
-                            annotation_text="觀望線 48", annotation_position="right")
+            # 參考線必須跟著「圖上畫的是哪個分數」走（先前寫死 58/48）
+            _bar = (trend_buy_bar() if rank_by_long
+                    else total_buy_threshold(regime_adj))
+            fig_b.add_hline(y=_bar, line_dash="dot", line_color="#a9e34b",
+                            annotation_text=f"買進線 {_bar:.0f}",
+                            annotation_position="right")
+            if not rank_by_long:
+                fig_b.add_hline(y=_bar - 10, line_dash="dot", line_color="#ff9800",
+                                annotation_text=f"觀望線 {_bar - 10:.0f}",
+                                annotation_position="right")
             fig_b.update_layout(
                 height=330, paper_bgcolor="#0e1117", plot_bgcolor="#0e1117",
                 font=dict(color="#fafafa"), showlegend=False,

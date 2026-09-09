@@ -36,6 +36,30 @@ def _target_price_score(upside_pct: float) -> tuple:
         return 10, f"目標價下跌空間 {upside_pct:.1f}%，大幅高估，風險偏高 (-)"
 
 
+# ── 綜合評分的權重與動作門檻：**全站唯一定義** ───────────────────────────────
+# 先前 app.py 的評分分解自己寫了一份 35/35/15/15、ui.score_legend() 又寫了一份
+# 40/30/15/15（與實際不符），持股頁的配置圖也自己寫死 58/48。
+# 任何要在畫面上顯示權重或門檻的地方，一律引用這裡。
+WEIGHTS_TP = {"tech": 0.35, "fund": 0.35, "news": 0.15, "tp": 0.15}
+WEIGHTS_NO_TP = {"tech": 0.40, "fund": 0.40, "news": 0.20}
+
+# (強力買進, 買進, 觀望, 減碼) —— 大盤環境的 threshold_adj 會整體平移
+BASE_THRESHOLDS = (68, 58, 48, 38)
+
+
+def weight_note_str(has_tp: bool = True) -> str:
+    """權重說明文字（畫面用），由 WEIGHTS_* 生成而非另寫一份。"""
+    w = WEIGHTS_TP if has_tp else WEIGHTS_NO_TP
+    label = {"tech": "技術", "fund": "基本面", "news": "消息", "tp": "目標價"}
+    body = " + ".join(f"{label[k]} {v * 100:.0f}%" for k, v in w.items())
+    return body if has_tp else f"{body}（無目標價資料）"
+
+
+def buy_threshold(regime_adj: int = 0) -> int:
+    """綜合評分的買進線（含大盤環境調整）。"""
+    return BASE_THRESHOLDS[1] + (regime_adj or 0)
+
+
 def generate_recommendation(
     tech_score: int,
     fund_score: int,
@@ -55,16 +79,18 @@ def generate_recommendation(
         tp_score, tp_reason = _target_price_score(target_upside_pct)
         # tech 35% + fund 35% + news 15% + target 15%
         total = (
-            tech_score  * 0.35
-            + fund_score  * 0.35
-            + news_score  * 0.15
-            + tp_score    * 0.15
+            tech_score  * WEIGHTS_TP["tech"]
+            + fund_score  * WEIGHTS_TP["fund"]
+            + news_score  * WEIGHTS_TP["news"]
+            + tp_score    * WEIGHTS_TP["tp"]
         )
-        weight_note = "技術 35% + 基本面 35% + 消息 15% + 目標價 15%"
+        weight_note = weight_note_str(True)
     else:
         tp_score, tp_reason = None, "目標價資料不足，未納入評分（改以 tech40/fund40/news20）"
-        total = tech_score * 0.40 + fund_score * 0.40 + news_score * 0.20
-        weight_note = "技術 40% + 基本面 40% + 消息 20%（無目標價資料）"
+        total = (tech_score * WEIGHTS_NO_TP["tech"]
+                 + fund_score * WEIGHTS_NO_TP["fund"]
+                 + news_score * WEIGHTS_NO_TP["news"])
+        weight_note = weight_note_str(False)
 
     total = int(total)
 
@@ -75,10 +101,16 @@ def generate_recommendation(
     margin_penalty = 0
     margin_reason = None
     if margin_signal:
+        # `penalty` 是**帶正負號**的：正值＝籌碼風險（扣分），負值＝去槓桿（加分）。
+        # ⚠️ 先前只有 `> 0` 才套用，於是 margin.py 產生的理由寫著
+        #    「散戶去槓桿、籌碼趨安定 (+6)」，但綜合評分其實一分都沒加；
+        #    而 generate_timeframe_recommendations() 那條路徑卻是不分正負都套用
+        #    ——同一個訊號在兩條計分路徑上行為不一致。現在兩邊都套用帶號值。
         margin_penalty = margin_signal.get("penalty", 0) or 0
-        if margin_penalty > 0:
+        if margin_penalty:
             total -= margin_penalty
-            weight_note += f"　（融資籌碼風險 -{margin_penalty}）"
+            label = ("融資籌碼風險" if margin_penalty > 0 else "融資去槓桿")
+            weight_note += f"　（{label} {-margin_penalty:+d}）"
             margin_reason = "；".join(margin_signal.get("reasons", [])) or "融資使用率偏高"
 
     # ── Volume (量價) overlay ─────────────────────────────────────────────────
@@ -100,7 +132,7 @@ def generate_recommendation(
     # means less in a downtrend. Raise the bar in a bear market, relax slightly in
     # a bull market, instead of using fixed 68/58/48/38 cutoffs in every regime.
     adj = (market_regime or {}).get("threshold_adj", 0) or 0
-    t_strong, t_buy, t_hold, t_reduce = 68 + adj, 58 + adj, 48 + adj, 38 + adj
+    t_strong, t_buy, t_hold, t_reduce = (b + adj for b in BASE_THRESHOLDS)
     regime_note = ""
     if adj and market_regime:
         direction = "提高" if adj > 0 else "放寬"
@@ -255,14 +287,19 @@ def _volume_margin_combo(volume_signal, margin_signal):
 # ─── Timeframe-specific recommendations ───────────────────────────────────────
 
 def _action_for(score: int) -> dict:
-    """Map a 0-100 score to an action label/color/icon (shared thresholds)."""
-    if score >= 68:
+    """
+    Map a 0-100 score to an action label/color/icon.
+
+    門檻取自 BASE_THRESHOLDS（同一份定義），先前這裡又寫了一次 68/58/48/38。
+    """
+    t_strong, t_buy, t_hold, t_reduce = BASE_THRESHOLDS
+    if score >= t_strong:
         return {"action": "強力買進", "en": "STRONG BUY", "color": "#00c853", "icon": "🚀"}
-    if score >= 58:
+    if score >= t_buy:
         return {"action": "偏多買進", "en": "BUY", "color": "#4caf50", "icon": "📈"}
-    if score >= 48:
+    if score >= t_hold:
         return {"action": "持有觀望", "en": "HOLD", "color": "#ff9800", "icon": "⚖️"}
-    if score >= 38:
+    if score >= t_reduce:
         return {"action": "偏空減碼", "en": "REDUCE", "color": "#f44336", "icon": "📉"}
     return {"action": "建議出場", "en": "SELL", "color": "#b71c1c", "icon": "⛔"}
 
@@ -360,8 +397,10 @@ def generate_timeframe_recommendations(
         if applied_vol != 0 and vol_rel:
             sign = f"+{applied_vol}" if applied_vol > 0 else str(applied_vol)
             drivers.append(f"量價：{vol_rel} ({sign})")
-        if applied_penalty > 0:
-            drivers.append(f"融資籌碼風險 (-{applied_penalty})")
+        if applied_penalty:
+            drivers.append(
+                f"融資籌碼風險 (-{applied_penalty})" if applied_penalty > 0
+                else f"融資去槓桿 (+{-applied_penalty})")
 
         results.append({
             "key": cfg["key"],
