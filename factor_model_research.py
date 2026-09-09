@@ -272,6 +272,8 @@ def main():
 
     # 結果容器
     res = {m: {h: [] for h in FWD} for m in MODELS}
+    absr = {m: {h: [] for h in FWD} for m in MODELS}   # 絕對報酬（給 UI 顯示）
+    benchr = {h: [] for h in FWD}                      # 當日等權基準
     dates_used = []
     disc = defaultdict(list)          # 鑑別力：最大並列數
     mgn_cov, pe_cov = [], []
@@ -329,12 +331,15 @@ def main():
         scores = score_models(ranks, len(day))
         bench = {h: float(np.mean([x["fwd"][h] for x in day])) for h in FWD}
 
+        for h in FWD:
+            benchr[h].append(bench[h])
         for m, sc in scores.items():
             order = np.argsort(-sc)[:args.topn]
             picks = [day[i] for i in order]
             for h in FWD:
                 r = float(np.mean([p["fwd"][h] for p in picks]))
                 res[m][h].append(r - bench[h])
+                absr[m][h].append(r)
             # 鑑別力：分數最高者有幾檔同分
             top = sc.max()
             disc[m].append(int((np.abs(sc - top) < 1e-9).sum()))
@@ -436,6 +441,7 @@ def main():
     out = {
         "generated_periods": len(dates_used),
         "date_range": [str(dates_used[0].date()), str(dates_used[-1].date())],
+        "benchmark": {f"h{h}": float(np.mean(benchr[h])) for h in FWD},
         "coverage": {"margin_pct": float(np.mean(mgn_cov)),
                      "pe_pct": float(np.mean(pe_cov))},
         "topn": args.topn,
@@ -444,6 +450,9 @@ def main():
                 "weights": MODELS[m],
                 "max_tie": float(np.mean(disc[m])),
                 **{f"h{h}": {"excess": float(np.mean(res[m][h])),
+                         "portfolio_return": float(np.mean(absr[m][h])),
+                         "stock_win_rate": 100 * sum(
+                             1 for x in absr[m][h] if x > 0) / len(absr[m][h]),
                              "t": _t(res[m][h]),
                              "win_rate": 100 * sum(1 for x in res[m][h] if x > 0)
                              / len(res[m][h]),

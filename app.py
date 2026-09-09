@@ -1875,16 +1875,24 @@ def render_smart_screener_page():
                         run=sdef.get("evidence_run", "main_3y"))
     ev_v = ev_verdict(ev)
     if ev:
+        # ⚠️ 一律用 .get()：不同回測 run 的欄位不完全一樣（新的因子模型沒有
+        # 「組合報酬」這一欄），用 ev['x'] 直接取值會讓整頁 KeyError 掛掉——
+        # 已經發生過一次。有什麼就顯示什麼，缺的就不顯示。
+        _pr = ev.get("portfolio_return")
+        _nr = ev.get("net_return")
+        _periods = ev.get("periods", "—")
+        _abs = (f"組合報酬 <b>{_pr:+.2f}%</b>（扣成本 {_nr:+.2f}%）、"
+                if _pr is not None and _nr is not None else "")
         st.markdown(f"""
 <div style="background:#161b26;border-left:4px solid {ev_v['color']};border-radius:6px;
             padding:10px 14px;margin:6px 0 10px 0;">
   <span style="color:{ev_v['color']};font-weight:700;">{ev_v['icon']} 回測實證：{ev_v['label']}</span>
   <span style="color:#cfd8dc;font-size:13px;">
-    — 近3年139期、持有1個月：組合報酬 <b>{ev['portfolio_return']:+.2f}%</b>
-    （扣成本 {ev['net_return']:+.2f}%）、
-    <b style="color:{ev_v['color']};">超額報酬 {ev['excess_return']:+.2f}%</b>、
-    贏過「隨便買」的期數比率 {ev['beat_benchmark_rate']:.0f}%、t={ev['t_stat']:+.2f}
-    {'（統計顯著）' if ev['significant'] else '（不顯著）'}
+    — {_periods} 期、持有1個月：{_abs}
+    <b style="color:{ev_v['color']};">超額報酬 {ev.get('excess_return', 0):+.2f}%</b>、
+    贏過「隨便買」的期數比率 {ev.get('beat_benchmark_rate', 0):.0f}%、
+    t={ev.get('t_stat', 0):+.2f}
+    {'（統計顯著）' if ev.get('significant') else '（不顯著）'}
   </span>
 </div>""", unsafe_allow_html=True)
         # ── 依「目前大盤環境」給建議（分環境回測推翻了一刀切的結論）──────────
