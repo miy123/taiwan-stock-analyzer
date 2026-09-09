@@ -306,3 +306,41 @@ def trend_monotonicity(hold_days: int = 20):
 def trend_bucket_rows(hold_days: int = 20) -> list:
     data = load_trend_buckets().get("buckets", {}).get(str(hold_days))
     return data["rows"] if data else []
+
+
+# ── 策略對照（strategy_comparison.py 產生）─────────────────────────────────
+# **唯一可以拿來比較策略強弱的來源。** 其他 run 的數字是不同批日期、
+# 不同方法量出來的，跨 run 比名次無效（全距 0.6~0.76% > 模型間差異）。
+_strat_cmp = None
+
+
+def load_strategy_comparison() -> dict:
+    global _strat_cmp
+    if _strat_cmp is None:
+        try:
+            import json
+            from pathlib import Path
+            p = Path(__file__).resolve().parent.parent / "strategy_comparison.json"
+            _strat_cmp = json.loads(p.read_text())
+        except Exception:
+            _strat_cmp = {}
+    return _strat_cmp
+
+
+def strategy_stats(key: str, hold_days: int = 60) -> dict:
+    d = load_strategy_comparison().get("strategies", {}).get(key) or {}
+    return d.get(f"h{hold_days}") or {}
+
+
+def strategy_walk_forward(key: str, hold_days: int = 60) -> dict:
+    d = load_strategy_comparison().get("strategies", {}).get(key) or {}
+    return (d.get("walk_forward") or {}).get(f"h{hold_days}") or {}
+
+
+def strategy_ranking(hold_days: int = 60) -> list:
+    """依超額報酬排名，回傳 [(key, stats)]，最強在前。"""
+    cmp = load_strategy_comparison().get("strategies", {})
+    rows = [(k, v.get(f"h{hold_days}")) for k, v in cmp.items()
+            if v.get(f"h{hold_days}")]
+    rows.sort(key=lambda kv: -kv[1]["excess"])
+    return rows

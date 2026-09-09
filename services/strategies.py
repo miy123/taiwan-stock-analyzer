@@ -210,7 +210,7 @@ def _f_trend_bar(r, ctx):
 STRATEGIES = [
     {
         "key": "trend", "label": "📈 趨勢結構分（主力）",
-        "caption": "139期回測 t值最高　✅實證最強",
+        "caption": "趨勢結構分最高者　（強弱見策略對照表）",
         "bar_note": (f"門檻：趨勢結構分 ≥ {BUY_BAR:.0f}"
                      f"（即贏過全市場 {BUY_BAR:.0f}% 的股票；實測 40 分以下超額為負）"),
         "sort_desc": "**連續趨勢結構分**（距季線／均線排列／季線斜率的橫斷面百分位）",
@@ -223,7 +223,7 @@ STRATEGIES = [
     },
     {
         "key": "sectorhot", "label": "🏭 強勢族群＋趨勢分",
-        "caption": "熱門族群中的強股　✅族群動能有效",
+        "caption": "限動能前5強族群　（同次回測不如純趨勢分）",
         "bar_note": f"門檻：屬於動能前5強族群，且趨勢結構分 ≥ {BUY_BAR:.0f}",
         "sort_desc": "**趨勢結構分**（限動能前5強族群）",
         "prelim_key": "prelim_bestproven", "color": "#26a69a",
@@ -236,7 +236,7 @@ STRATEGIES = [
     },
     {
         "key": "lowpe", "label": "💎 超低本益比",
-        "caption": "本益比最低的便宜股　⛔回測顯著為負",
+        "caption": "本益比最低的便宜股　⛔回測為負且不穩定",
         "bar_note": "門檻：本益比 3–12 倍（排除 <3 倍的一次性收益假低估）",
         "sort_desc": "**本益比由低到高**",
         "prelim_key": "prelim_lowpe", "color": "#ffd54f",
@@ -248,7 +248,7 @@ STRATEGIES = [
     },
     {
         "key": "limitup", "label": "🔥 漲停動能",
-        "caption": "連日漲停高動能　❔未回測",
+        "caption": "近期連日漲停　（1個月最強，但波動極大）",
         "bar_note": "門檻：近期有連日漲停紀錄",
         "sort_desc": "**連續漲停天數 → 趨勢結構分**",
         "prelim_key": "prelim_momentum", "color": None,
@@ -259,7 +259,7 @@ STRATEGIES = [
     },
     {
         "key": "contrarian", "label": "🌱 逆勢潛伏（低基期）",
-        "caption": "題材浮現但還沒漲　⛔多頭失效、空頭才強",
+        "caption": "低基期且有題材　⛔前後半段皆為負",
         "bar_note": "門檻：低基期且潛力分達標，或體質不弱且風報比 ≥1.5",
         "sort_desc": "**潛力分**（低基期 × 題材）",
         "prelim_key": "prelim_sleeper", "color": "#7986cb",

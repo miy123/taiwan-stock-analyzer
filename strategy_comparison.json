@@ -1,0 +1,206 @@
+{
+  "generated_periods": 139,
+  "date_range": [
+    "2023-08-01",
+    "2026-06-09"
+  ],
+  "topn": 10,
+  "method": "同一次回測、同一批換股日、同一個當日等權基準；直接呼叫 services/strategies.select()，測的就是 App 實跑的定義",
+  "strategies": {
+    "trend": {
+      "periods_with_picks": 139,
+      "avg_picks": 10.0,
+      "h20": {
+        "excess": 1.62,
+        "t": 2.2,
+        "beat_rate": 53.2,
+        "periods": 139,
+        "net_excess": 1.03
+      },
+      "h40": {
+        "excess": 4.13,
+        "t": 3.66,
+        "beat_rate": 57.6,
+        "periods": 139,
+        "net_excess": 3.54
+      },
+      "h60": {
+        "excess": 7.14,
+        "t": 5.48,
+        "beat_rate": 66.2,
+        "periods": 139,
+        "net_excess": 6.55
+      },
+      "walk_forward": {
+        "h20": {
+          "first_half": 1.75,
+          "second_half": 1.48
+        },
+        "h40": {
+          "first_half": 3.72,
+          "second_half": 4.53
+        },
+        "h60": {
+          "first_half": 4.49,
+          "second_half": 9.75
+        }
+      }
+    },
+    "sectorhot": {
+      "periods_with_picks": 139,
+      "avg_picks": 10.0,
+      "h20": {
+        "excess": 1.24,
+        "t": 1.87,
+        "beat_rate": 51.1,
+        "periods": 139,
+        "net_excess": 0.66
+      },
+      "h40": {
+        "excess": 2.32,
+        "t": 2.16,
+        "beat_rate": 54.7,
+        "periods": 139,
+        "net_excess": 1.73
+      },
+      "h60": {
+        "excess": 4.36,
+        "t": 3.18,
+        "beat_rate": 53.2,
+        "periods": 139,
+        "net_excess": 3.78
+      },
+      "walk_forward": {
+        "h20": {
+          "first_half": 0.75,
+          "second_half": 1.73
+        },
+        "h40": {
+          "first_half": 0.68,
+          "second_half": 3.93
+        },
+        "h60": {
+          "first_half": -0.42,
+          "second_half": 9.08
+        }
+      }
+    },
+    "lowpe": {
+      "periods_with_picks": 139,
+      "avg_picks": 10.0,
+      "h20": {
+        "excess": -1.88,
+        "t": -4.13,
+        "beat_rate": 34.5,
+        "periods": 139,
+        "net_excess": -2.46
+      },
+      "h40": {
+        "excess": -3.29,
+        "t": -4.0,
+        "beat_rate": 44.6,
+        "periods": 139,
+        "net_excess": -3.87
+      },
+      "h60": {
+        "excess": -4.57,
+        "t": -3.96,
+        "beat_rate": 48.9,
+        "periods": 139,
+        "net_excess": -5.15
+      },
+      "walk_forward": {
+        "h20": {
+          "first_half": 0.63,
+          "second_half": -4.35
+        },
+        "h40": {
+          "first_half": 1.92,
+          "second_half": -8.42
+        },
+        "h60": {
+          "first_half": 3.26,
+          "second_half": -12.28
+        }
+      }
+    },
+    "limitup": {
+      "periods_with_picks": 139,
+      "avg_picks": 10.0,
+      "h20": {
+        "excess": 2.86,
+        "t": 3.94,
+        "beat_rate": 57.6,
+        "periods": 139,
+        "net_excess": 2.27
+      },
+      "h40": {
+        "excess": 4.27,
+        "t": 3.58,
+        "beat_rate": 57.6,
+        "periods": 139,
+        "net_excess": 3.69
+      },
+      "h60": {
+        "excess": 5.53,
+        "t": 3.66,
+        "beat_rate": 54.0,
+        "periods": 139,
+        "net_excess": 4.94
+      },
+      "walk_forward": {
+        "h20": {
+          "first_half": 1.79,
+          "second_half": 3.91
+        },
+        "h40": {
+          "first_half": 1.96,
+          "second_half": 6.55
+        },
+        "h60": {
+          "first_half": 2.63,
+          "second_half": 8.39
+        }
+      }
+    },
+    "contrarian": {
+      "periods_with_picks": 139,
+      "avg_picks": 10.0,
+      "h20": {
+        "excess": -1.74,
+        "t": -5.18,
+        "beat_rate": 30.9,
+        "periods": 139,
+        "net_excess": -2.33
+      },
+      "h40": {
+        "excess": -3.46,
+        "t": -5.65,
+        "beat_rate": 26.6,
+        "periods": 139,
+        "net_excess": -4.05
+      },
+      "h60": {
+        "excess": -4.65,
+        "t": -5.66,
+        "beat_rate": 29.5,
+        "periods": 139,
+        "net_excess": -5.23
+      },
+      "walk_forward": {
+        "h20": {
+          "first_half": -1.25,
+          "second_half": -2.23
+        },
+        "h40": {
+          "first_half": -2.37,
+          "second_half": -4.54
+        },
+        "h60": {
+          "first_half": -2.89,
+          "second_half": -6.38
+        }
+      }
+    }
+  }
+}

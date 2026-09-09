@@ -41,6 +41,7 @@ from services.strategies import STRATEGIES, LABELS as STRAT_LABELS, \
     select as strat_select, explain as strat_explain
 from services.ui import (
     overheat_badge, trend_cell, score_legend, bucket_table,
+    strategy_caption, strategy_table,
     pe_badge, pe_inline, horizon_cells, evidence_badge, rr_cell,
     threshold_note, long_threshold,
 )
@@ -1799,9 +1800,10 @@ def render_smart_screener_page():
         "每檔都同時顯示『綜合評分』（趨勢強弱）與『潛力分』（題材＋尚未起漲），兩種視角並列。"
     )
 
+    # 說明文字用**同一次回測**的可比數字，不用形容詞（「實證最強」看不出誰比誰強）
     strat_label = st.radio(
         "選股策略", STRAT_LABELS, horizontal=True, key="smart_strategy",
-        captions=STRAT_CAPTIONS,
+        captions=[strategy_caption(s["key"], 60) for s in STRATEGIES],
     )
     sdef = get_strategy(strat_label)
     strategy = sdef["key"]
@@ -2035,10 +2037,30 @@ def render_smart_screener_page():
             seen.add(sid)
             prog.progress(0.45 + 0.55 * (i + 1) / len(shortlist))
 
-        # 全市場已涵蓋所有上市櫃股，漲停股只需「標記」而非另外掃一輪
+        # ⚠️ 快取**全部** rows，不是只留深度分析過的那 ~40 檔。
+        # 先前只存 enriched，但 shortlist 是用「當下策略」的初篩鍵挑的，
+        # 於是快取宣稱「換策略只重新排序」其實是假的：換到別的策略時，
+        # 它只能在別人挑剩的 40 檔裡選。漲停動能因此永遠 0 檔——
+        # 漲停股幾乎不會出現在趨勢分的前 40 名裡。
+        # 做法：以全市場 rows 為底，把深度分析結果疊上去（保留掃描時算的
+        # 橫斷面趨勢分，因為那是跟當日全市場比出來的，比單檔對照分布更準）。
+        by_id = {r["stock_id"]: r for r in rows}
+        for full in enriched:
+            if not full or not full.get("stock_id"):
+                continue
+            base = by_id.get(full["stock_id"], {})
+            merged = {**base, **full}
+            for k in ("trend_score", "trend_pcts"):
+                if base.get(k) is not None:
+                    merged[k] = base[k]
+            merged["enriched"] = True
+            by_id[full["stock_id"]] = merged
+        results_all = list(by_id.values())
+
+        # 漲停標記套用到**全部**股票，不是只有深度分析過的
         try:
             lu_map = {x["stock_id"]: x for x in get_limit_up_stocks(top_n=30)}
-            for row in enriched:
+            for row in results_all:
                 lu = lu_map.get(row.get("stock_id"))
                 if lu:
                     row.update({"is_limit_up": True,
@@ -2050,7 +2072,7 @@ def render_smart_screener_page():
             pass
 
         prog.empty(); status.empty()
-        st.session_state[cache_key] = enriched
+        st.session_state[cache_key] = results_all
         st.session_state[cache_key + "_scanned"] = len(rows)
         st.session_state[last_run_key] = datetime.datetime.now()
 
@@ -2150,15 +2172,19 @@ def render_smart_screener_page():
         else:
             st.metric("掃描股票數", len(results), "熱門股池")
     with cols_m[1]:
-        st.metric(f"買進建議（≥{buy_bar}）", buy_ct, f"/{len(results)} 深analysed".replace("analysed", "析"))
+        _enr = sum(1 for r in results if r.get("enriched"))
+        st.metric(f"買進建議（≥{buy_bar}）", buy_ct,
+                  f"/{len(results)} 檔" + (f"（{_enr} 檔深度分析）" if _enr else ""))
     with cols_m[2]:
         st.metric("潛伏股（題材未漲）", sleeper_ct, "支")
     with cols_m[3]:
         st.metric("符合此策略", len(view), "支")
     if scanned:
         st.caption(
-            f"🌏 本次**完整分析了 {scanned} 檔上市股**（技術／量價／低基期／融資／估值／風報比 逐檔實算），"
-            f"再對排名最前的 {len(results)} 檔補齊新聞與詳細財報後做最終排序。"
+            f"🌏 本次**完整分析了 {scanned} 檔上市櫃股**（技術／量價／低基期／融資／估值／風報比 逐檔實算），"
+            f"並對初篩最前的 {sum(1 for r in results if r.get('enriched'))} 檔補齊新聞與詳細財報。"
+            f"**全部 {len(results)} 檔都留在結果裡**，所以換策略時是在完整股池裡重選，"
+            f"不是在別的策略挑剩的名單裡挑。"
         )
 
     if not view:
@@ -2231,6 +2257,13 @@ def render_smart_screener_page():
         st.caption("⚠️ 漲停股波動極大、籌碼凌亂，追高風險高。請務必參考卡片上的風報比與停損幅度，嚴格控管部位。")
     else:
         st.caption("⚠️ 評分模型為量化指標的加權組合，不代表投資建議。請結合個人判斷與風險承受能力做決策。")
+
+    with st.expander("🏅 五個策略哪個強？（同一次回測，直接比較）", expanded=False):
+        st.markdown(strategy_table(60))
+        st.markdown("\n**持有 1 個月的排名不一樣：**\n")
+        st.markdown(strategy_table(20))
+        st.caption("⚠️ 走查前後半段變號（⚠️翻盤）代表該策略不穩定，"
+                   "全期平均會掩蓋這件事——超低本益比就是典型：前半 +3.26%、後半 −12.28%。")
 
     with st.expander("📖 卡片上這些分數各自代表什麼？哪個能當選股指標？", expanded=False):
         st.markdown(score_legend())

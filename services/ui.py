@@ -252,3 +252,57 @@ def bucket_table(hold_days=60) -> str:
         out.append("")
         out.append(f"單調性 Spearman **ρ = {rho:+.2f}** —— 分數與後續超額幾乎完全同向。")
     return "\n".join(out)
+
+
+def strategy_caption(key: str, hold_days: int = 60) -> str:
+    """
+    策略選單上的說明 —— **一律用可比較的數字，不要用形容詞**。
+
+    先前寫的是「✅實證最強」「✅族群動能有效」，使用者無從判斷哪個強；
+    而且那些數字來自不同次回測，本來就不能互比。現在全部來自
+    `strategy_comparison.json`（同一批日期、同一個基準、同一次執行）。
+    """
+    from services.evidence import strategy_stats, strategy_ranking
+    st = strategy_stats(key, hold_days)
+    if not st:
+        return "（尚未納入策略對照回測）"
+    rank = [k for k, _ in strategy_ranking(hold_days)].index(key) + 1
+    total = len(strategy_ranking(hold_days))
+    good = st["excess"] > 0 and st["t"] >= 1.96
+    bad = st["excess"] < 0 and st["t"] <= -1.96
+    icon = "✅" if good else "⛔" if bad else "🟡"
+    lab = {20: "1個月", 40: "2個月", 60: "3個月"}.get(hold_days, f"{hold_days}日")
+    return (f"{icon} 第{rank}/{total}名　持有{lab}超額 **{st['excess']:+.2f}%**"
+            f"　t={st['t']:+.2f}　贏大盤 {st['beat_rate']:.0f}%")
+
+
+def strategy_table(hold_days: int = 60) -> str:
+    """五個策略的並排比較 —— 同一次回測，直接可比。"""
+    from services.evidence import (
+        strategy_ranking, strategy_walk_forward, load_strategy_comparison,
+    )
+    from services.strategies import STRATEGIES
+    rows = strategy_ranking(hold_days)
+    if not rows:
+        return ""
+    meta = load_strategy_comparison()
+    label = {s["key"]: s["label"] for s in STRATEGIES}
+    lab = {20: "1個月", 40: "2個月", 60: "3個月"}.get(hold_days, f"{hold_days}日")
+    out = [f"| 名次 | 策略 | 持有{lab}超額 | t值 | 贏大盤 | 走查前半 | 走查後半 |",
+           "|---|---|---|---|---|---|---|"]
+    for i, (k, v) in enumerate(rows, 1):
+        w = strategy_walk_forward(k, hold_days)
+        f, s = w.get("first_half"), w.get("second_half")
+        flip = ""
+        if f is not None and s is not None and f * s < 0:
+            flip = " ⚠️翻盤"
+        out.append(
+            f"| {i} | {label.get(k, k)} | **{v['excess']:+.2f}%** | {v['t']:+.2f} | "
+            f"{v['beat_rate']:.0f}% | {f:+.2f}% | {s:+.2f}%{flip} |"
+        )
+    out.append("")
+    out.append(f"*{meta.get('generated_periods', '—')} 期（{meta.get('date_range', ['', ''])[0]}"
+               f" ~ {meta.get('date_range', ['', ''])[1]}）、每次選前 "
+               f"{meta.get('topn', 10)} 名、扣成本前。*"
+               "**同一批換股日、同一個等權基準，所以這張表可以直接比。**")
+    return "\n".join(out)
