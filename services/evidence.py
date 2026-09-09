@@ -259,3 +259,50 @@ MODEL_TO_STRATEGY = {
     "攻守兼備": ("balanced", "⚖️ 攻守兼備"),
     "綜合強勢(技術)": ("momentum", "🚀 綜合強勢"),
 }
+
+
+# ── 連續趨勢分的分桶實證（trend_score_buckets.py 產生）─────────────────────
+# UI 一律讀這裡，不要在畫面上寫死任何分桶數字——寫死的那份已經過期兩次：
+# 第一次是換成純技術長線分時，第二次是換成連續趨勢分時。
+_trend_buckets = None
+
+
+def load_trend_buckets() -> dict:
+    global _trend_buckets
+    if _trend_buckets is None:
+        try:
+            import json
+            from services.scoring import BUCKET_PATH
+            _trend_buckets = json.loads(BUCKET_PATH.read_text())
+        except Exception:
+            _trend_buckets = {}
+    return _trend_buckets
+
+
+def trend_bucket_stats(score, hold_days: int = 20) -> dict:
+    """某個趨勢分落在哪個實證區間 → 該區間的歷史超額與勝率。"""
+    if score is None:
+        return {}
+    data = load_trend_buckets().get("buckets", {}).get(str(hold_days))
+    if not data:
+        return {}
+    for row in data["rows"]:
+        if row["lo"] <= score < row["hi"] or (row["hi"] >= 100 and score >= row["lo"]):
+            return row
+    return {}
+
+
+def trend_threshold(hold_days: int = 20):
+    """超額報酬轉正的最低分數區間（實測值，不是猜的）。"""
+    data = load_trend_buckets().get("buckets", {}).get(str(hold_days))
+    return data.get("turns_positive_at") if data else None
+
+
+def trend_monotonicity(hold_days: int = 20):
+    data = load_trend_buckets().get("buckets", {}).get(str(hold_days))
+    return data.get("spearman") if data else None
+
+
+def trend_bucket_rows(hold_days: int = 20) -> list:
+    data = load_trend_buckets().get("buckets", {}).get(str(hold_days))
+    return data["rows"] if data else []

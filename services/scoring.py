@@ -41,6 +41,14 @@ from pathlib import Path
 import numpy as np
 
 DIST_PATH = Path(__file__).resolve().parent.parent / "market_distribution.json"
+BUCKET_PATH = Path(__file__).resolve().parent.parent / "trend_score_thresholds.json"
+
+# 買進線 —— **全站唯一定義**。先前 app.py 有一個常數、strategies.py 的說明文字
+# 另外寫死一個數字，改了常數卻沒改文字，畫面就出現「門檻 ≥70」但實際用 50。
+# 依 trend_score_buckets.py 實測（139期）：0–40 分超額穩定為負（−0.79% ~ −1.60%），
+# 40–50 約為零（+0.04%, t=0.2，與 0 無異），50 以上才明確轉正（t≥2.1）。
+# 取 50 而非轉正點 40：轉正那一格 t 值太低，拿它當門檻是把雜訊當訊號。
+BUY_BAR = 50.0
 
 # 回測選出的權重。改這裡等於改掉全站排序，動之前請先用
 # factor_model_research.py 驗證，並確認走查前後段都不變差。

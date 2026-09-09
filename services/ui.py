@@ -15,6 +15,7 @@
 
 from services.evidence import (
     horizon_efficacy, score_bucket_stats, buy_threshold,
+    trend_bucket_stats, trend_threshold, trend_monotonicity, trend_bucket_rows,
 )
 
 # 「長」已從這裡移除：它就是**連續趨勢結構分**要回答的問題，而且舊的離散長線分
@@ -83,27 +84,25 @@ def horizon_cells(horizon: dict, selected_key=None, show_legend=True,
     )
 
 
-def evidence_badge(long_score, hold_days=20, min_width=150) -> str:
+def evidence_badge(trend_score, hold_days=20, min_width=150) -> str:
     """
-    該檔長線分落在哪個實證區間 → 歷史勝率與超額報酬。
+    該檔**趨勢結構分**落在哪個實證區間 → 歷史超額與贏大盤比率。
 
-    ⚠️ long_score 必須傳**純技術**長線分（horizon_tech["long"]），
-    因為實證門檻是在那個分數上量出來的。傳混合分會張冠李戴
-    （台積電：純技術 94 vs 混合 81）——見 services/strategies._long。
+    ⚠️ 以前這裡吃的是離散長線分、查的是離散分的分桶表。分數換成連續趨勢分之後
+    那張表就不適用了（不同量表，只是數字範圍看起來像）。現在改讀
+    `trend_score_thresholds.json`，也就是連續分自己量出來的數字。
     """
-    if long_score is None:
-        return f"<div style='min-width:{min_width}px;'></div>"
-    b = (score_bucket_stats("長線+量能確認", long_score, hold_days)
-         or score_bucket_stats("長線結構分", long_score, hold_days))
+    b = trend_bucket_stats(trend_score, hold_days)
     if not b:
         return f"<div style='min-width:{min_width}px;'></div>"
     ok = b.get("excess", 0) > 0
     color = "#4caf50" if ok else "#f44336"
     return (
         f"<div style='min-width:{min_width}px;font-size:11px;'>"
-        f"<div style='color:#78909c;'>長線分 {long_score} 實證區間 {b['range']}</div>"
+        f"<div style='color:#78909c;'>趨勢分 {trend_score:.0f} 落在 {b['range']} 區間</div>"
         f"<div style='color:{color};font-weight:700;'>{'✅' if ok else '⚠️'} "
-        f"勝率 {b.get('win_rate', 0):.0f}%　超額 {b.get('excess', 0):+.2f}%</div></div>"
+        f"超額 {b.get('excess', 0):+.2f}%　贏大盤 {b.get('beat_rate', 0):.0f}%"
+        f"　t={b.get('t', 0):+.1f}</div></div>"
     )
 
 
@@ -126,17 +125,43 @@ def rr_cell(rr, stop_pct=None, atr_pct=None, min_width=96) -> str:
 
 
 def threshold_note(hold_days=20) -> str:
-    """統一的『幾分以上才值得買』說法，避免各頁講法不一致。"""
-    thr = buy_threshold("長線+量能確認", hold_days)
-    if not thr:
+    """
+    「幾分以上才值得買」—— 數字全部從實證檔讀出，畫面上不寫死。
+    先前這裡寫死的 179 期數字在換模型後就過期了，而且沒人發現。
+    """
+    rows = trend_bucket_rows(hold_days)
+    thr = trend_threshold(hold_days)
+    if not rows or thr is None:
         return ""
-    return (f"依 179 期回測，長線結構分 **低於 {thr:.0f} 分**的區間，"
-            f"持有 1 個月的超額報酬全為負；**{thr:.0f} 分以上**才轉正。")
+    neg = [r for r in rows if r["excess"] <= 0]
+    top = rows[-1]
+    rho = trend_monotonicity(hold_days)
+    from services.scoring import BUY_BAR
+    neg_txt = (f"**{neg[0]['lo']}–{neg[-1]['hi']} 分區間的超額報酬為負**"
+               f"（{min(r['excess'] for r in neg):+.2f}% ~ "
+               f"{max(r['excess'] for r in neg):+.2f}%），" if neg else "")
+    # 買進線比「轉正點」保守一級：轉正那一格通常 t 值極低（統計上與 0 沒差別），
+    # 拿它當門檻等於把雜訊當訊號。
+    # 要看的是**買進線下方那一格**——它若與 0 無異，就是「不要再往下放」的理由
+    bar_row = next((r for r in rows if r["hi"] <= BUY_BAR
+                    and r["hi"] > BUY_BAR - 10), None)
+    bar_txt = ""
+    if bar_row and abs(bar_row.get("t", 0)) < 1.5:
+        bar_txt = (f"　（{bar_row['range']} 分只有 {bar_row['excess']:+.2f}%、"
+                   f"t={bar_row['t']:+.2f}，與 0 無異，故買進線取較保守的 "
+                   f"{BUY_BAR:.0f} 分）")
+    return (
+        f"{neg_txt}約 **{thr:.0f} 分以上轉正**{bar_txt}；優勢集中在最高區間 "
+        f"**{top['range']} 分：超額 {top['excess']:+.2f}%、t={top['t']:+.2f}、"
+        f"贏大盤 {top['beat_rate']:.0f}%**。"
+        + (f"　分數與後續超額的單調性 ρ={rho:+.2f}。" if rho is not None else "")
+    )
 
 
-def long_threshold(hold_days=20, default=70.0) -> float:
-    """三頁共用的買進門檻分數。"""
-    return buy_threshold("長線+量能確認", hold_days) or default
+def long_threshold(hold_days=20, default=None) -> float:
+    """三頁共用的買進門檻分數（趨勢分量表）。"""
+    from services.scoring import BUY_BAR
+    return trend_threshold(hold_days) or default or BUY_BAR
 
 
 def overheat_badge(overheat: dict, compact: bool = True) -> str:
@@ -208,3 +233,22 @@ def score_legend() -> str:
 但它是純技術的**相對排名**，不看貴不貴——高分常常正是因為已經漲很多，
 請搭配 🔥 過熱警示與本益比一起看。
 """
+
+
+def bucket_table(hold_days=60) -> str:
+    """分數區間 → 後續表現的表格（由實證檔生成，畫面上不寫死任何數字）。"""
+    rows = trend_bucket_rows(hold_days)
+    if not rows:
+        return ""
+    lab = {20: "1個月", 40: "2個月", 60: "3個月"}.get(hold_days, f"{hold_days}日")
+    out = [f"| 趨勢分區間 | 持有{lab}超額 | t值 | 贏大盤比率 | 絕對報酬 |",
+           "|---|---|---|---|---|"]
+    for r in rows:
+        star = " ⬅" if r["lo"] >= 90 else ""
+        out.append(f"| {r['range']}{star} | {r['excess']:+.2f}% | {r['t']:+.2f} | "
+                   f"{r['beat_rate']:.0f}% | {r['abs_return']:+.2f}% |")
+    rho = trend_monotonicity(hold_days)
+    if rho is not None:
+        out.append("")
+        out.append(f"單調性 Spearman **ρ = {rho:+.2f}** —— 分數與後續超額幾乎完全同向。")
+    return "\n".join(out)

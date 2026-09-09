@@ -40,7 +40,7 @@ from services.strategies import STRATEGIES, LABELS as STRAT_LABELS, \
     CAPTIONS as STRAT_CAPTIONS, get as get_strategy, \
     select as strat_select, explain as strat_explain
 from services.ui import (
-    overheat_badge, trend_cell, score_legend,
+    overheat_badge, trend_cell, score_legend, bucket_table,
     pe_badge, pe_inline, horizon_cells, evidence_badge, rr_cell,
     threshold_note, long_threshold,
 )
@@ -52,12 +52,9 @@ from services.market import get_market_regime, get_index_forward_return
 from services.technical import calculate_risk_plan
 from services.analysis import prepare_frame, compute_scores, PERIOD_ROWS
 
-# 趨勢結構分是「橫斷面百分位」，所以門檻可以直接用百分位解讀。
-# 實測分桶（trend_score_buckets.py，139期）：40分以下超額穩定為負
-# （−2% ~ −4%），40–50 約為 0，50 分以上才轉正。所以買進線 = 50。
-# ⚠️ 別把舊離散長線分的「70 分門檻」搬過來——那是完全不同的量表，
-#    只是數字長得像。真正的優勢集中在 90 分以上（3個月超額 +5.25%, t=5.49）。
-TREND_BUY_BAR = 50.0
+# 買進線的唯一定義在 services/scoring.BUY_BAR，這裡只是取用。
+# 別在任何地方另外寫死數字——說明文字與實際門檻不一致的錯誤已經發生過。
+from services.scoring import BUY_BAR as TREND_BUY_BAR
 from services.target_price import calculate_target_price
 from services.analyst_targets import get_analyst_targets
 from services.catalyst_impact import get_catalyst_impact
@@ -1916,12 +1913,18 @@ def render_smart_screener_page():
   </span>
 </div>""", unsafe_allow_html=True)
 
-        if not rs or rs["excess_return"] <= 0:
+        # ⚠️ 沒有分環境資料 ≠ 表現不佳。先前這裡把「查無資料」也講成「歷史表現不佳」，
+        #    還推薦一個已經被整併掉的策略名稱。
+        if not rs:
+            st.caption(
+                f"（此模型尚未做分環境檢驗，因此不顯示「{regime.get('label', '')}」環境下的表現。"
+                "全期間與走查結果見上方。）"
+            )
+        elif rs["excess_return"] <= 0:
             st.info(
                 f"💡 目前大盤為「{regime.get('label', '')}」，此策略在這類環境的歷史表現不佳。"
-                "**走查驗證顯示：與其隨盤勢切換策略，不如穩定使用「🏆 長線+量能確認」**"
-                "（後90期未參與挑選的測試中，穩定單押 +5.27%／勝率 77.8%，"
-                "而依環境切換只有 +3.05%／勝率 54.4%）。"
+                "**但走查驗證顯示：與其隨盤勢換策略，不如固定用同一個模型**"
+                "——滾動4折走查換模型 +5.97%，同期間固定用趨勢結構分 +8.16%。"
             )
 
         if ev["excess_return"] < 0 and ev["significant"]:
@@ -1961,15 +1964,12 @@ def render_smart_screener_page():
                + ("" if sdef["uses_horizon"] else "（此策略不使用上方的週期選單）"))
 
     # ── 分數門檻實證：幾分以上才值得買 ────────────────────────────────────────
-    thr = long_threshold()
-    if thr:
-        st.info(
-            f"🎯 **分數門檻實證**（依 179 期、依分數分桶而非排名）：長線結構分 "
-            f"**低於 {thr:.0f} 分時，1個月超額報酬全為負**（-0.06% ~ -0.95%），"
-            f"達 **70–75 分為 +1.30%**、80分以上 +0.92%。"
-            f"　**持有 3 個月勝率最高（58.7%，超額 +2.61%）**，1個月 53.6%、1週僅 50.2%。"
-            f"→ 建議只買 **{thr:.0f} 分以上**並**抱滿 3 個月**。"
-        )
+    _note = threshold_note(20)
+    if _note:
+        _note60 = threshold_note(60)
+        st.info(f"🎯 **分數門檻實證**（依分數分桶而非排名，持有1個月）：{_note}"
+                + (f"\n\n持有 3 個月：{_note60}" if _note60 else "")
+                + "\n\n→ 分數越高越好（不是「達標就好」），且**抱越久超額越大**。")
 
     # One shared scan serves all strategies (switching re-ranks the same results
     # with no rescan). Only 漲停動能 uses a different universe, so it caches apart.
@@ -2774,30 +2774,19 @@ def render_portfolio_page():
 距季線幅度、MA60vsMA120、季線斜率三項，各自換算成**當日全市場的百分位**再平均。
 所以分數本身就是「贏過幾 % 的股票」，80 分＝趨勢強度排在全市場前 20%。
 
-**分數越高真的越好嗎？——這次是真的（139期實測）**
-
-| 分數區間 | 持有1個月超額 | 持有3個月超額 | t值(3個月) |
-|---|---|---|---|
-| 0–20 | −1.20% ~ −1.60% | −3.32% ~ −4.22% | −4.3 / −8.0 |
-| 20–40 | −0.88% ~ −0.77% | −2.37% ~ −1.97% | −4.7 / −4.0 |
-| 40–50 | −0.00% | +0.40% | 1.27 |
-| **50–70** | +0.41% ~ +0.76% | +1.77% ~ +1.56% | 3.7 / 3.2 |
-| **70–90** | +1.09% ~ +0.63% | +1.63% ~ +2.16% | 3.2 / 3.1 |
-| **90–100** | **+1.78%** | **+5.25%** | **5.49** |
-
-**單調性 Spearman ρ = +0.95** —— 分數與後續超額報酬幾乎完全同向。
-（舊的離散長線分只有 ρ=0.69，而且 49% 的股票並列滿分。）
+**分數越高真的越好嗎？——這次是真的**
+""" + bucket_table(60) + """
 
 **買進線為什麼是 50？**
-40 分以下超額報酬穩定為負，50 分以上才轉正。
-但**真正的優勢集中在 90 分以上**——這也是為什麼選股頁只取前 10 名，
-而不是把所有 50 分以上的都列出來。
+""" + threshold_note(20) + """
+**真正的優勢集中在 90 分以上**——這也是為什麼選股頁只取前 10 名，
+而不是把所有及格的都列出來。
 
 **「超額報酬」是什麼？為什麼看它而不是報酬率？**
 超額報酬 =（這批股票的報酬）−（當天全市場等權平均報酬）。
 多頭時什麼都在漲，看絕對報酬會誤以為模型很神；**只有贏過「隨便買」才證明選股有價值**。
-上表 90–100 區間持有3個月的絕對報酬是 +14.24%，但同期間「隨便買」也有 +8.99%，
-真正靠選股賺到的是那 +5.25%。
+上表最後一欄「絕對報酬」連最低分區間都是正的——因為期間本身是多頭。
+**這正是必須看超額而非絕對報酬的理由。**
 
 **為什麼建議抱 3 個月？**
 同一批高分股，持有越久超額越大（+1.78% → +3.29% → +5.25%），

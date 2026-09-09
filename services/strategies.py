@@ -186,6 +186,9 @@ def explain(sdef, r, results, ctx):
     return out
 
 
+from services.scoring import BUY_BAR
+
+
 def _trend(r):
     """
     連續趨勢結構分（0~100 百分位）—— **全站排序的主訊號**。
@@ -200,7 +203,7 @@ def _trend(r):
 
 
 def _f_trend_bar(r, ctx):
-    bar = ctx.get("trend_bar", 70)
+    bar = ctx.get("trend_bar", BUY_BAR)
     return _trend(r) >= bar, f"趨勢結構分 {_trend(r):.0f} ≥ 買進線 {bar:.0f}"
 
 
@@ -208,7 +211,8 @@ STRATEGIES = [
     {
         "key": "trend", "label": "📈 趨勢結構分（主力）",
         "caption": "139期回測 t值最高　✅實證最強",
-        "bar_note": "門檻：趨勢結構分 ≥ 70（即贏過全市場 70% 的股票）",
+        "bar_note": (f"門檻：趨勢結構分 ≥ {BUY_BAR:.0f}"
+                     f"（即贏過全市場 {BUY_BAR:.0f}% 的股票；實測 40 分以下超額為負）"),
         "sort_desc": "**連續趨勢結構分**（距季線／均線排列／季線斜率的橫斷面百分位）",
         "prelim_key": "prelim_bestproven", "color": "#66bb6a",
         "uses_horizon": False,
@@ -220,7 +224,7 @@ STRATEGIES = [
     {
         "key": "sectorhot", "label": "🏭 強勢族群＋趨勢分",
         "caption": "熱門族群中的強股　✅族群動能有效",
-        "bar_note": "門檻：屬於動能前5強族群，且趨勢結構分達買進線",
+        "bar_note": f"門檻：屬於動能前5強族群，且趨勢結構分 ≥ {BUY_BAR:.0f}",
         "sort_desc": "**趨勢結構分**（限動能前5強族群）",
         "prelim_key": "prelim_bestproven", "color": "#26a69a",
         "uses_horizon": False,

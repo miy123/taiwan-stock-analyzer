@@ -12,6 +12,7 @@
 """
 
 import argparse
+import json
 import math
 from collections import defaultdict
 
@@ -150,6 +151,35 @@ def main():
                if len(obs[h][b]) >= 20 and np.mean(list(obs[h][b].values())) > 0]
         if pos:
             print(f"  超額報酬轉正的最低區間：{min(pos)} 分以上")
+
+    # 落地供 App 引用 —— UI 不該再寫死任何分桶數字（寫死的那份已經過期兩次了）
+    out = {"periods": len(dates), "buckets": {}}
+    for h in FWD:
+        rows = []
+        for b in BUCKETS:
+            series = list(obs[h][b].values())
+            if len(series) < 20:
+                continue
+            rows.append({
+                "range": f"{b[0]}-{min(b[1], 100)}", "lo": b[0], "hi": min(b[1], 100),
+                "excess": round(float(np.mean(series)), 2),
+                "abs_return": round(float(np.mean(list(absr[h][b].values()))), 2),
+                "t": round(_t(series), 2),
+                "beat_rate": round(100 * sum(1 for x in series if x > 0) / len(series), 1),
+                "periods": len(series),
+            })
+        pts = [(r["lo"], r["excess"]) for r in rows]
+        rho = None
+        if len(pts) >= 5:
+            xs = np.argsort(np.argsort([q[0] for q in pts]))
+            ys = np.argsort(np.argsort([q[1] for q in pts]))
+            rho = round(float(np.corrcoef(xs, ys)[0, 1]), 3)
+        first_pos = next((r["lo"] for r in rows if r["excess"] > 0), None)
+        out["buckets"][str(h)] = {"rows": rows, "spearman": rho,
+                                  "turns_positive_at": first_pos}
+    with open("trend_score_thresholds.json", "w", encoding="utf-8") as f:
+        json.dump(out, f, ensure_ascii=False, indent=2)
+    print("\n已存出 trend_score_thresholds.json")
 
 
 if __name__ == "__main__":

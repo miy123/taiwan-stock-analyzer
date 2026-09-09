@@ -1,0 +1,323 @@
+{
+  "periods": 139,
+  "buckets": {
+    "20": {
+      "rows": [
+        {
+          "range": "0-10",
+          "lo": 0,
+          "hi": 10,
+          "excess": -1.2,
+          "abs_return": 1.76,
+          "t": -3.76,
+          "beat_rate": 36.7,
+          "periods": 139
+        },
+        {
+          "range": "10-20",
+          "lo": 10,
+          "hi": 20,
+          "excess": -1.6,
+          "abs_return": 1.35,
+          "t": -7.63,
+          "beat_rate": 24.5,
+          "periods": 139
+        },
+        {
+          "range": "20-30",
+          "lo": 20,
+          "hi": 30,
+          "excess": -0.86,
+          "abs_return": 2.1,
+          "t": -4.39,
+          "beat_rate": 37.4,
+          "periods": 139
+        },
+        {
+          "range": "30-40",
+          "lo": 30,
+          "hi": 40,
+          "excess": -0.79,
+          "abs_return": 2.16,
+          "t": -3.76,
+          "beat_rate": 43.9,
+          "periods": 139
+        },
+        {
+          "range": "40-50",
+          "lo": 40,
+          "hi": 50,
+          "excess": 0.04,
+          "abs_return": 2.99,
+          "t": 0.21,
+          "beat_rate": 54.7,
+          "periods": 139
+        },
+        {
+          "range": "50-60",
+          "lo": 50,
+          "hi": 60,
+          "excess": 0.35,
+          "abs_return": 3.3,
+          "t": 1.83,
+          "beat_rate": 55.4,
+          "periods": 139
+        },
+        {
+          "range": "60-70",
+          "lo": 60,
+          "hi": 70,
+          "excess": 0.78,
+          "abs_return": 3.74,
+          "t": 4.15,
+          "beat_rate": 55.4,
+          "periods": 139
+        },
+        {
+          "range": "70-80",
+          "lo": 70,
+          "hi": 80,
+          "excess": 1.05,
+          "abs_return": 4.01,
+          "t": 4.81,
+          "beat_rate": 64.0,
+          "periods": 139
+        },
+        {
+          "range": "80-90",
+          "lo": 80,
+          "hi": 90,
+          "excess": 0.62,
+          "abs_return": 3.58,
+          "t": 1.87,
+          "beat_rate": 48.2,
+          "periods": 139
+        },
+        {
+          "range": "90-100",
+          "lo": 90,
+          "hi": 100,
+          "excess": 1.81,
+          "abs_return": 4.77,
+          "t": 3.36,
+          "beat_rate": 56.1,
+          "periods": 139
+        }
+      ],
+      "spearman": 0.952,
+      "turns_positive_at": 40
+    },
+    "40": {
+      "rows": [
+        {
+          "range": "0-10",
+          "lo": 0,
+          "hi": 10,
+          "excess": -2.22,
+          "abs_return": 3.63,
+          "t": -3.86,
+          "beat_rate": 36.0,
+          "periods": 139
+        },
+        {
+          "range": "10-20",
+          "lo": 10,
+          "hi": 20,
+          "excess": -2.83,
+          "abs_return": 3.02,
+          "t": -7.45,
+          "beat_rate": 27.3,
+          "periods": 139
+        },
+        {
+          "range": "20-30",
+          "lo": 20,
+          "hi": 30,
+          "excess": -1.56,
+          "abs_return": 4.3,
+          "t": -4.25,
+          "beat_rate": 38.1,
+          "periods": 139
+        },
+        {
+          "range": "30-40",
+          "lo": 30,
+          "hi": 40,
+          "excess": -1.39,
+          "abs_return": 4.46,
+          "t": -3.95,
+          "beat_rate": 42.4,
+          "periods": 139
+        },
+        {
+          "range": "40-50",
+          "lo": 40,
+          "hi": 50,
+          "excess": 0.18,
+          "abs_return": 6.03,
+          "t": 0.71,
+          "beat_rate": 52.5,
+          "periods": 139
+        },
+        {
+          "range": "50-60",
+          "lo": 50,
+          "hi": 60,
+          "excess": 1.43,
+          "abs_return": 7.28,
+          "t": 3.82,
+          "beat_rate": 63.3,
+          "periods": 139
+        },
+        {
+          "range": "60-70",
+          "lo": 60,
+          "hi": 70,
+          "excess": 1.16,
+          "abs_return": 7.02,
+          "t": 3.59,
+          "beat_rate": 59.0,
+          "periods": 139
+        },
+        {
+          "range": "70-80",
+          "lo": 70,
+          "hi": 80,
+          "excess": 1.39,
+          "abs_return": 7.24,
+          "t": 3.58,
+          "beat_rate": 63.3,
+          "periods": 139
+        },
+        {
+          "range": "80-90",
+          "lo": 80,
+          "hi": 90,
+          "excess": 0.98,
+          "abs_return": 6.84,
+          "t": 1.82,
+          "beat_rate": 46.0,
+          "periods": 139
+        },
+        {
+          "range": "90-100",
+          "lo": 90,
+          "hi": 100,
+          "excess": 3.33,
+          "abs_return": 9.18,
+          "t": 4.31,
+          "beat_rate": 59.0,
+          "periods": 139
+        }
+      ],
+      "spearman": 0.879,
+      "turns_positive_at": 40
+    },
+    "60": {
+      "rows": [
+        {
+          "range": "0-10",
+          "lo": 0,
+          "hi": 10,
+          "excess": -3.33,
+          "abs_return": 5.64,
+          "t": -4.26,
+          "beat_rate": 33.1,
+          "periods": 139
+        },
+        {
+          "range": "10-20",
+          "lo": 10,
+          "hi": 20,
+          "excess": -4.17,
+          "abs_return": 4.79,
+          "t": -7.91,
+          "beat_rate": 21.6,
+          "periods": 139
+        },
+        {
+          "range": "20-30",
+          "lo": 20,
+          "hi": 30,
+          "excess": -2.34,
+          "abs_return": 6.62,
+          "t": -4.72,
+          "beat_rate": 37.4,
+          "periods": 139
+        },
+        {
+          "range": "30-40",
+          "lo": 30,
+          "hi": 40,
+          "excess": -1.97,
+          "abs_return": 6.99,
+          "t": -3.98,
+          "beat_rate": 41.7,
+          "periods": 139
+        },
+        {
+          "range": "40-50",
+          "lo": 40,
+          "hi": 50,
+          "excess": 0.4,
+          "abs_return": 9.36,
+          "t": 1.25,
+          "beat_rate": 55.4,
+          "periods": 139
+        },
+        {
+          "range": "50-60",
+          "lo": 50,
+          "hi": 60,
+          "excess": 1.72,
+          "abs_return": 10.68,
+          "t": 3.66,
+          "beat_rate": 60.4,
+          "periods": 139
+        },
+        {
+          "range": "60-70",
+          "lo": 60,
+          "hi": 70,
+          "excess": 1.54,
+          "abs_return": 10.51,
+          "t": 3.02,
+          "beat_rate": 48.9,
+          "periods": 139
+        },
+        {
+          "range": "70-80",
+          "lo": 70,
+          "hi": 80,
+          "excess": 1.61,
+          "abs_return": 10.57,
+          "t": 3.15,
+          "beat_rate": 55.4,
+          "periods": 139
+        },
+        {
+          "range": "80-90",
+          "lo": 80,
+          "hi": 90,
+          "excess": 2.1,
+          "abs_return": 11.06,
+          "t": 3.0,
+          "beat_rate": 48.2,
+          "periods": 139
+        },
+        {
+          "range": "90-100",
+          "lo": 90,
+          "hi": 100,
+          "excess": 5.29,
+          "abs_return": 14.26,
+          "t": 5.53,
+          "beat_rate": 64.7,
+          "periods": 139
+        }
+      ],
+      "spearman": 0.952,
+      "turns_positive_at": 40
+    }
+  }
+}
