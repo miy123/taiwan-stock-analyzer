@@ -49,66 +49,97 @@ def _hz_tech(r, key):
     return (r.get("horizon") or {}).get(key, {}).get("score", 0)
 
 
-# ── 各策略的篩選＋排序 ────────────────────────────────────────────────────────
+# ── 篩選條件（單一來源）──────────────────────────────────────────────────────
+# 每個條件寫成 (說明, 判斷函式)。select() 與 explain() **共用同一份**，
+# 所以「為什麼沒選到」的解釋不可能與實際篩選結果不一致。
+# 先前只有 select()，使用者看到自己持股沒出現在選股結果時完全無從得知原因
+# （例：萬海長線分 94 很高，卻因量價轉弱被「長線+量能確認」濾掉）。
 
-def _sel_sectorhot(results, ctx):
-    # 回測最佳（+3.07%, t=5.32，兩次獨立執行一致）：前5強族群 + 長線分最高
-    from services.sector import analyse_sectors, get_industry_map
-    secs = analyse_sectors(results, min_members=3)
-    hot = {s["name"] for s in secs[:5]}
-    ind = get_industry_map()
+def _f_long_bar(r, ctx):
+    return _long(r) >= ctx["buy_bar"], f"長線分 {_long(r)} ≥ 買進線 {ctx['buy_bar']:.0f}"
+
+
+def _f_vol_ok(r, ctx):
+    v = r.get("volume_adj", 0) or 0
+    return v >= 0, f"量價未轉弱（量價分 {v:+d}）"
+
+
+def _f_hot_sector(r, ctx):
+    hot = ctx.get("hot_sectors") or set()
+    ind = ctx.get("industry_of") or {}
+    name = (ind.get(r.get("stock_id")) or {}).get("name")
+    return name in hot, f"屬於動能前5強族群（本檔：{name or '未分類'}）"
+
+
+def _f_hscore_bar(r, ctx):
+    v = _hscore(r, ctx.get("horizon_key"))
+    return v >= ctx["buy_bar"], f"所選週期評分 {v} ≥ 買進線 {ctx['buy_bar']:.0f}"
+
+
+def _f_pe_band(r, ctx):
+    pe = r.get("pe_ratio")
+    ok = pe is not None and 3 <= pe <= 12
+    return ok, f"本益比 3–12 倍（本檔：{pe if pe else '無'}）"
+
+
+def _f_is_limitup(r, ctx):
+    return bool(r.get("is_limit_up")), "近期有連日漲停紀錄"
+
+
+def _f_sleeper_ok(r, ctx):
+    return bool((r.get("potential") or {}).get("qualifies")), "通過『有題材且尚未起漲』檢核"
+
+
+def _f_total_48(r, ctx):
+    return r.get("total_score", 0) >= 48, f"綜合評分 {r.get('total_score', 0)} ≥ 48"
+
+
+def _f_lowbase_45(r, ctx):
+    v = (r.get("potential") or {}).get("low_base", 0)
+    return v >= 45, f"低基期分 {v} ≥ 45（尚未過熱）"
+
+
+def _f_pot_45(r, ctx):
+    v = (r.get("potential") or {}).get("total", 0)
+    return v >= 45, f"潛力分 {v} ≥ 45"
+
+
+def _f_rr_15(r, ctx):
+    rr = r.get("rr")
+    return (rr is None or rr >= 1.5), f"風報比 ≥ 1.5（本檔：{rr if rr else '無'}）"
+
+
+def prepare_ctx(results, ctx):
+    """族群排名等「需要全體才能算」的資訊，先算好放進 ctx 供各條件使用。"""
+    ctx = dict(ctx)
+    if "hot_sectors" not in ctx:
+        try:
+            from services.sector import analyse_sectors, get_industry_map
+            secs = analyse_sectors(results, min_members=3)
+            ctx["hot_sectors"] = {s["name"] for s in secs[:5]}
+            ctx["industry_of"] = get_industry_map()
+        except Exception:
+            ctx["hot_sectors"], ctx["industry_of"] = set(), {}
+    return ctx
+
+
+def select(sdef, results, ctx):
+    """套用該策略的所有條件並排序。"""
+    ctx = prepare_ctx(results, ctx)
     view = [r for r in results
-            if (ind.get(r.get("stock_id")) or {}).get("name") in hot
-            and _long(r) >= ctx["buy_bar"]]
-    view.sort(key=_long, reverse=True)
+            if all(f(r, ctx)[0] for _, f in sdef["filters"])]
+    view.sort(key=lambda r: sdef["sort_key"](r, ctx), reverse=sdef.get("desc", True))
     return view
 
 
-def _sel_bestproven(results, ctx):
-    view = [r for r in results
-            if _long(r) >= ctx["buy_bar"] and (r.get("volume_adj", 0) or 0) >= 0]
-    if not view:      # 舊快取可能沒有 volume_adj，退回只用長線分
-        view = [r for r in results if _long(r) >= ctx["buy_bar"]]
-    view.sort(key=_long, reverse=True)
-    return view
-
-
-def _sel_momentum(results, ctx):
-    hk = ctx.get("horizon_key")
-    view = [r for r in results if _hscore(r, hk) >= ctx["buy_bar"]]
-    view.sort(key=lambda r: _hscore(r, hk), reverse=True)
-    return view
-
-
-def _sel_lowpe(results, ctx):
-    # 3–12 倍：<3 倍多為業外一次性收益灌大 EPS 的假低估（價值陷阱）
-    view = [r for r in results
-            if r.get("pe_ratio") is not None and 3 <= r["pe_ratio"] <= 12]
-    view.sort(key=lambda r: r["pe_ratio"])
-    return view
-
-
-def _sel_limitup(results, ctx):
-    view = [r for r in results if r.get("is_limit_up")]
-    view.sort(key=lambda r: (r.get("max_streak", 0), r.get("total_score", 0)),
-              reverse=True)
-    return view
-
-
-def _sel_sleeper(results, ctx):
-    view = [r for r in results if (r.get("potential") or {}).get("qualifies")]
-    view.sort(key=lambda r: (r.get("potential") or {}).get("total", 0), reverse=True)
-    return view
-
-
-def _sel_balanced(results, ctx):
-    view = [r for r in results
-            if r.get("total_score", 0) >= 48
-            and (r.get("potential") or {}).get("low_base", 0) >= 45
-            and (r.get("potential") or {}).get("total", 0) >= 45
-            and (r.get("rr") is None or r["rr"] >= 1.5)]
-    view.sort(key=lambda r: r.get("combined_score", 0), reverse=True)
-    return view
+def explain(sdef, r, results, ctx):
+    """這一檔為何入選／未入選——與 select() 用同一份條件，不會不一致。"""
+    ctx = prepare_ctx(results, ctx)
+    out = []
+    for label, f in sdef["filters"]:
+        ok, detail = f(r, ctx)
+        out.append({"ok": ok, "label": label, "detail": detail})
+    return out
 
 
 STRATEGIES = [
@@ -119,7 +150,9 @@ STRATEGIES = [
         "sort_desc": "**長線結構分**（族群動能前5強之內）",
         "prelim_key": "prelim_bestproven", "color": "#26a69a",
         "uses_horizon": False, "evidence_model": "強勢族群+長線分",
-        "metric": _long, "select": _sel_sectorhot,
+        "metric": _long,
+        "filters": [("屬於前5強族群", _f_hot_sector), ("長線分達買進線", _f_long_bar)],
+        "sort_key": lambda r, c: _long(r),
     },
     {
         "key": "bestproven", "label": "🏆 長線+量能確認",
@@ -128,7 +161,9 @@ STRATEGIES = [
         "sort_desc": "**長線結構分**（量價未轉弱者）",
         "prelim_key": "prelim_bestproven", "color": "#66bb6a",
         "uses_horizon": False, "evidence_model": "長線+量能確認",
-        "metric": _long, "select": _sel_bestproven,
+        "metric": _long,
+        "filters": [("長線分達買進線", _f_long_bar), ("量價未轉弱", _f_vol_ok)],
+        "sort_key": lambda r, c: _long(r),
     },
     {
         "key": "momentum", "label": "🚀 綜合強勢",
@@ -137,7 +172,9 @@ STRATEGIES = [
         "sort_desc": "**所選週期的評分**（可用上方選單切換）",
         "prelim_key": "prelim_momentum", "color": None,
         "uses_horizon": True, "evidence_model": "綜合強勢(技術)",
-        "metric": lambda r: r.get("total_score", 0), "select": _sel_momentum,
+        "metric": lambda r: r.get("total_score", 0),
+        "filters": [("所選週期評分達買進線", _f_hscore_bar)],
+        "sort_key": lambda r, c: _hscore(r, c.get("horizon_key")),
     },
     {
         "key": "lowpe", "label": "💎 超低本益比",
@@ -146,7 +183,9 @@ STRATEGIES = [
         "sort_desc": "**本益比由低到高**",
         "prelim_key": "prelim_lowpe", "color": "#ffd54f",
         "uses_horizon": False, "evidence_model": None,
-        "metric": lambda r: r.get("pe_ratio") or 0, "select": _sel_lowpe,
+        "metric": lambda r: r.get("pe_ratio") or 0,
+        "filters": [("本益比 3–12 倍", _f_pe_band)],
+        "sort_key": lambda r, c: -(r.get("pe_ratio") or 999),
     },
     {
         "key": "limitup", "label": "🔥 漲停動能",
@@ -155,7 +194,9 @@ STRATEGIES = [
         "sort_desc": "**連續漲停天數 → 綜合評分**",
         "prelim_key": "prelim_momentum", "color": None,
         "uses_horizon": False, "evidence_model": None,
-        "metric": lambda r: r.get("total_score", 0), "select": _sel_limitup,
+        "metric": lambda r: r.get("total_score", 0),
+        "filters": [("近期連日漲停", _f_is_limitup)],
+        "sort_key": lambda r, c: (r.get("max_streak", 0), r.get("total_score", 0)),
     },
     {
         "key": "sleeper", "label": "🌱 潛力潛伏",
@@ -165,7 +206,8 @@ STRATEGIES = [
         "prelim_key": "prelim_sleeper", "color": "#7986cb",
         "uses_horizon": False, "evidence_model": "潛力潛伏",
         "metric": lambda r: (r.get("potential") or {}).get("total", 0),
-        "select": _sel_sleeper,
+        "filters": [("通過潛伏股檢核", _f_sleeper_ok)],
+        "sort_key": lambda r, c: (r.get("potential") or {}).get("total", 0),
     },
     {
         "key": "balanced", "label": "⚖️ 攻守兼備",
@@ -174,12 +216,15 @@ STRATEGIES = [
         "sort_desc": "**攻守兼備分**（綜合×潛力幾何平均）",
         "prelim_key": "prelim_balanced", "color": "#4dd0e1",
         "uses_horizon": False, "evidence_model": "攻守兼備",
-        "metric": lambda r: r.get("combined_score", 0), "select": _sel_balanced,
+        "metric": lambda r: r.get("combined_score", 0),
+        "filters": [("綜合評分 ≥48", _f_total_48), ("低基期 ≥45", _f_lowbase_45),
+                    ("潛力分 ≥45", _f_pot_45), ("風報比 ≥1.5", _f_rr_15)],
+        "sort_key": lambda r, c: r.get("combined_score", 0),
     },
 ]
 
 _REQUIRED = ("key", "label", "caption", "bar_note", "sort_desc", "prelim_key",
-             "color", "uses_horizon", "evidence_model", "metric", "select")
+             "color", "uses_horizon", "evidence_model", "metric", "filters", "sort_key")
 
 
 def validate():

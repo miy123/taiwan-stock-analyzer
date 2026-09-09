@@ -37,7 +37,8 @@ from services.evidence import (
 )
 from services.sector import analyse_sectors, get_industry_map, industry_name
 from services.strategies import STRATEGIES, LABELS as STRAT_LABELS, \
-    CAPTIONS as STRAT_CAPTIONS, get as get_strategy
+    CAPTIONS as STRAT_CAPTIONS, get as get_strategy, \
+    select as strat_select, explain as strat_explain
 from services.ui import (
     pe_badge, pe_inline, horizon_cells, evidence_badge, rr_cell,
     threshold_note, long_threshold,
@@ -2111,7 +2112,7 @@ def render_smart_screener_page():
 
     # 篩選＋排序完全由策略表決定（services/strategies.py），
     # 不再有一長串 if-elif —— 新增策略只要在表裡加一筆。
-    view = sdef["select"](results, {"buy_bar": buy_bar, "horizon_key": horizon_key})
+    view = strat_select(sdef, results, {"buy_bar": buy_bar, "horizon_key": horizon_key})
 
     # ── Summary strip (always shows both lenses) ──────────────────────────────
     buy_ct     = sum(1 for r in results if r["total_score"] >= 58)
@@ -2371,7 +2372,14 @@ def render_evidence_table():
 # ─── Strategy backtest ────────────────────────────────────────────────────────
 
 def _select_by_strategy(results, strategy, horizon_key, buy_bar, top_n):
-    """Apply the same ranking/filtering the live screener uses."""
+    """Apply the same ranking/filtering the live screener uses (共用同一份條件)。"""
+    sdef = get_strategy(strategy)
+    if sdef:
+        for r in results:
+            pt = (r.get("potential") or {}).get("total", 0)
+            r["combined_score"] = int(round((max(r.get("total_score", 0), 0) * max(pt, 0)) ** 0.5))
+        return strat_select(sdef, results,
+                            {"buy_bar": buy_bar, "horizon_key": horizon_key})[:top_n]
     for r in results:
         pt = (r.get("potential") or {}).get("total", 0)
         r["combined_score"] = int(round((max(r["total_score"], 0) * max(pt, 0)) ** 0.5))
@@ -3053,6 +3061,29 @@ def render_portfolio_page():
     {evid_html}
   </div>
 </div>""", unsafe_allow_html=True)
+
+            # 「為什麼選股頁沒看到這檔？」——用與選股頁完全相同的條件逐條檢核
+            if r:
+                cands = []
+                for k in list(st.session_state.keys()):
+                    if k.startswith("smart_") and not k.endswith(("_scanned", "_time")) \
+                            and isinstance(st.session_state[k], list):
+                        cands = st.session_state[k]
+                        break
+                if cands:
+                    _bb = long_threshold()
+                    _ctx = {"buy_bar": _bb, "horizon_key": None}
+                    with st.expander(f"🔍 {sid} 在各選股策略中的入選情形", expanded=False):
+                        st.caption("與智能選股頁**完全相同的條件**逐條檢核，"
+                                   "所以這裡的結果一定和選股頁一致。")
+                        for sd in STRATEGIES:
+                            checks = strat_explain(sd, r, cands, _ctx)
+                            passed = all(c["ok"] for c in checks)
+                            head = f"{'✅ 入選' if passed else '❌ 未入選'}　**{sd['label']}**"
+                            st.markdown(head)
+                            for c in checks:
+                                st.markdown(
+                                    f"　　{'✅' if c['ok'] else '❌'} {c['detail']}")
 
             b1, b2, b3 = st.columns([1, 1, 4])
             with b1:
