@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # 這裡刻意**不**匯入 calculate_technical_score / generate_recommendation 之類的
 # 計分函式——先前匯了一大串卻一個都沒用到，看起來像是 app.py 還自己算一套分數。
 from services.stock_data import (
-    get_ticker_info, get_financials, get_news, POPULAR_STOCKS,
+    get_ticker_info, get_financials, get_news, POPULAR_STOCKS, _is_otc,
 )
 from services.technical import get_technical_signals
 from services.fundamental import analyze_fundamentals
@@ -1834,7 +1834,10 @@ def _analyze_one_stock(stock_id: str, period: str = None, limit_up_info=None,
             # Limit-up / streak metadata (None for regular pool)
             "is_limit_up":      limit_up_info is not None,
             "limit_up_pct":     (limit_up_info or {}).get("change_pct"),
-            "exchange":         (limit_up_info or {}).get("exchange", "TWSE"),
+            # ⚠️ 不要預設 "TWSE"：沒有 limit_up_info 時要自己查官方清單，
+            #    否則深度分析會把上櫃股改標成上市（見 _is_otc 的唯一實作）。
+            "exchange":         ((limit_up_info or {}).get("exchange")
+                                 or ("TPEX" if _is_otc(stock_id) else "TWSE")),
             "max_streak":       (limit_up_info or {}).get("max_streak", 0),
             "trailing_streak":  (limit_up_info or {}).get("trailing_streak", 0),
             "last_days_ago":    (limit_up_info or {}).get("last_days_ago", 0),
@@ -1880,14 +1883,25 @@ def render_smart_screener_page():
                 key="smart_liq",
                 help="成交金額太低的股票買賣不易、滑價大。調低可掃更多冷門股（較慢），調高只看流動性好的。",
             )
+            # 排除上櫃 —— 與流動性門檻一樣是**記憶體過濾**，不重掃。
+            # 刻意不改掃描範圍：趨勢結構分是「當日全市場橫斷面百分位」，
+            # 若把上櫃整批抽掉再算百分位，同一檔股票在選股頁與個股／持股頁
+            # 就會出現兩個分數（那兩頁對照的是掃描落地的全市場分布）。
+            # 因此照樣算全市場，只是不顯示上櫃股。
+            exclude_otc = st.checkbox(
+                "排除上櫃股（只看上市）", value=False, key="smart_ex_otc",
+                help="只是**不顯示**上櫃股，不會重新掃描。趨勢結構分仍以上市＋上櫃的"
+                     "全市場百分位計算，所以同一檔股票在各頁的分數不會因為這個開關而變。",
+            )
             st.caption(
-                "🌏 全市場模式：涵蓋**上市＋上櫃約 1,974 檔**，**每一檔**都會實際計算"
+                "🌏 全市場模式：涵蓋**上市＋上櫃**，**每一檔**都會實際計算"
                 "技術面、量價、低基期位階、估值與風報比（非抽樣粗篩）。"
                 "新聞與詳細財報無法批次取得，會在入圍後再補齊。"
                 "（融資資料目前僅上市有，上櫃股不計融資扣分。）"
             )
         else:
             min_turnover_yi = 0.0
+            exclude_otc = False
             st.caption("⭐ 快速模式：只掃 31 檔熱門股（約 1.6% 市場覆蓋率），速度快但看不到中小型潛伏股。")
 
     col_cfg1, col_cfg2, col_cfg3 = st.columns([1, 1.3, 1.7])
@@ -2103,7 +2117,7 @@ def render_smart_screener_page():
                 continue
             base = by_id.get(full["stock_id"], {})
             merged = {**base, **full}
-            for k in ("trend_score", "trend_pcts"):
+            for k in ("trend_score", "trend_pcts", "exchange", "turnover"):
                 if base.get(k) is not None:
                     merged[k] = base[k]
             merged["enriched"] = True
@@ -2188,16 +2202,29 @@ def render_smart_screener_page():
         st.session_state[last_run_key] = datetime.datetime.now()
 
     results = st.session_state.get(cache_key, [])
+    _had_cache = bool(results)
     # ── 流動性門檻：在**記憶體**過濾，不重掃 ──────────────────────────────────
     # 掃描一律評分到最寬門檻（services/universe.scan_universe），使用者選的門檻
     # 在這裡套用。先前門檻是在掃描迴圈裡就套用的，於是掃完之後拖滑桿完全沒反應
     # ——畫面卻寫著「調整門檻不會重抓，只重新排序」。
     scanned_total = len(results)
+    otc_in_scan = sum(1 for r in results if r.get("exchange") == "TPEX")
     if full_market and results:
         _bar_to = min_turnover_yi * 1e8
         results = [r for r in results
                    if (r.get("turnover") or 0) >= _bar_to or r.get("turnover") is None]
         st.session_state[cache_key + "_liq"] = _bar_to
+        if exclude_otc:
+            results = [r for r in results if r.get("exchange") != "TPEX"]
+        st.session_state[cache_key + "_exotc"] = exclude_otc
+    if not results and _had_cache:
+        st.warning(
+            "目前的篩選條件把所有股票都濾掉了"
+            + (f"（流動性門檻 {min_turnover_yi} 億" if full_market else "（")
+            + ("、且已排除上櫃" if exclude_otc else "")
+            + "）。放寬門檻即可，**不需要重新掃描**。"
+        )
+        return
     if not results:
         st.info(
             "👆 **請按上方「🔄 重新掃描」開始分析**"
@@ -2231,8 +2258,9 @@ def render_smart_screener_page():
     cols_m = st.columns(4)
     with cols_m[0]:
         if scanned:
-            st.metric("流動性門檻內", len(results),
-                      f"共分析 {scanned} 檔")
+            st.metric("符合篩選條件", len(results),
+                      f"共分析 {scanned} 檔"
+                      + ("・已排除上櫃" if exclude_otc else ""))
         else:
             st.metric("掃描股票數", len(results), "熱門股池")
     with cols_m[1]:
@@ -2246,7 +2274,9 @@ def render_smart_screener_page():
     if scanned:
         st.caption(
             f"🌏 本次**完整分析了 {scanned} 檔上市櫃股**（技術／量價／低基期／融資／估值／風報比 逐檔實算），"
-            f"其中 **{len(results)} 檔**達到目前的流動性門檻（{min_turnover_yi} 億）；"
+            f"其中 **{len(results)} 檔**符合目前的篩選條件"
+            f"（流動性 ≥ {min_turnover_yi} 億"
+            + (f"、排除上櫃 {otc_in_scan} 檔" if exclude_otc else "") + "）；"
             f"並對初篩最前的 {sum(1 for r in results if r.get('enriched'))} 檔補齊新聞與詳細財報。"
             f"**全部結果都留在快取裡**，所以換策略或調門檻都是在完整股池裡重選，"
             f"不是在別的策略挑剩的名單裡挑。"
@@ -2870,6 +2900,8 @@ def render_cross_screen_page():
         if _liq:
             results = [r for r in results
                        if (r.get("turnover") or 0) >= _liq or r.get("turnover") is None]
+        if st.session_state.get(f"smart_{uni_tag}_exotc"):
+            results = [r for r in results if r.get("exchange") != "TPEX"]
     if not results:
         st.info("👈 請先到 **🎯 智能選股** 掃描一次（本頁直接沿用那份結果，不會重抓資料）。")
         if st.button("前往智能選股"):
@@ -2878,7 +2910,10 @@ def render_cross_screen_page():
         return
 
     st.caption(f"沿用智能選股的掃描結果：**{len(results)} 檔**"
-               f"（{'全市場' if uni_tag == 'full' else '熱門股池'}）。"
+               f"（{'全市場' if uni_tag == 'full' else '熱門股池'}"
+               + ("、已排除上櫃"
+                  if st.session_state.get(f"smart_{uni_tag}_exotc") else "") + "）。"
+               "篩選條件（流動性門檻／排除上櫃）與智能選股頁同步。"
                "要更新資料請回智能選股重新掃描。")
 
     c1, c2 = st.columns([3, 1])
