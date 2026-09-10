@@ -1866,14 +1866,37 @@ def render_smart_screener_page():
     # is now part of the strategy itself rather than a separate checkbox.
     include_limit_up = (strategy == "limitup")
 
-    # ── Scan universe: full listed market vs the curated shortlist ────────────
-    uc1, uc2 = st.columns([1.6, 2.4])
+    # ── Scan universe ────────────────────────────────────────────────────────
+    # 一排三欄，由左到右是「掃哪些股票 → 範圍多寬 → 顯示幾檔」：
+    #   ① 掃描範圍（全市場／熱門股池）＋ 排除上櫃  ← 兩者都在回答「哪些股票」
+    #   ② 流動性門檻
+    #   ③ 顯示前 N 名 ＋ 略過新聞
+    # 先前排除上櫃跟流動性滑桿擠在同一欄、而「掃描範圍」單獨在左邊，
+    # 兩個同類的選項反而被拆開；「略過新聞」也自己佔了一整列。
+    uc1, uc2, uc3 = st.columns([1.7, 1.5, 1.1])
     with uc1:
         universe_label = st.radio(
             "掃描範圍", ["🌏 全市場：上市+上櫃（完整）", "⭐ 熱門股池（快速）"],
             index=0, key="smart_universe", horizontal=False,
         )
-    full_market = universe_label.startswith("🌏")
+        full_market = universe_label.startswith("🌏")
+        # 排除上櫃 —— 與流動性門檻一樣是**記憶體過濾**，不重掃。
+        # 刻意不改掃描範圍：趨勢結構分是「當日全市場橫斷面百分位」，
+        # 若把上櫃整批抽掉再算百分位，同一檔股票在選股頁與個股／持股頁
+        # 就會出現兩個分數（那兩頁對照的是掃描落地的全市場分布）。
+        # 因此照樣算全市場，只是不顯示上櫃股。
+        # 只在全市場模式下**顯示**這個勾選框（熱門股池 31 檔全是上市，勾了沒意義）。
+        # 刻意用 if 而不是 `full_market and st.checkbox(...)`：後者靠 `and` 短路
+        # 讓 widget 根本不被建立，看起來一樣但很容易被誤讀成「有畫但停用」。
+        # 也刻意不用 disabled= —— 本專案的教訓是「掛著一個按了沒反應的控制項，
+        # 比沒有它更糟」（已移除過一個永遠停用的週期選單）。
+        exclude_otc = False
+        if full_market:
+            exclude_otc = st.checkbox(
+                "排除上櫃股（只看上市）", value=False, key="smart_ex_otc",
+                help="只是**不顯示**上櫃股，不會重新掃描。趨勢結構分仍以上市＋上櫃的"
+                     "全市場百分位計算，所以同一檔股票在各頁的分數不會因為這個開關而變。",
+            )
     with uc2:
         if full_market:
             min_turnover_yi = st.select_slider(
@@ -1881,40 +1904,37 @@ def render_smart_screener_page():
                 options=[0.1, 0.3, 0.5, 1.0, 2.0, 5.0], value=0.5,
                 format_func=lambda v: f"{v} 億",
                 key="smart_liq",
-                help="成交金額太低的股票買賣不易、滑價大。調低可掃更多冷門股（較慢），調高只看流動性好的。",
-            )
-            # 排除上櫃 —— 與流動性門檻一樣是**記憶體過濾**，不重掃。
-            # 刻意不改掃描範圍：趨勢結構分是「當日全市場橫斷面百分位」，
-            # 若把上櫃整批抽掉再算百分位，同一檔股票在選股頁與個股／持股頁
-            # 就會出現兩個分數（那兩頁對照的是掃描落地的全市場分布）。
-            # 因此照樣算全市場，只是不顯示上櫃股。
-            exclude_otc = st.checkbox(
-                "排除上櫃股（只看上市）", value=False, key="smart_ex_otc",
-                help="只是**不顯示**上櫃股，不會重新掃描。趨勢結構分仍以上市＋上櫃的"
-                     "全市場百分位計算，所以同一檔股票在各頁的分數不會因為這個開關而變。",
-            )
-            st.caption(
-                "🌏 全市場模式：涵蓋**上市＋上櫃**，**每一檔**都會實際計算"
-                "技術面、量價、低基期位階、估值與風報比（非抽樣粗篩）。"
-                "新聞與詳細財報無法批次取得，會在入圍後再補齊。"
-                "（融資資料目前僅上市有，上櫃股不計融資扣分。）"
+                help="成交金額太低的股票買賣不易、滑價大。調低可看更多冷門股，"
+                     "調高只看流動性好的。**改這個不會重新掃描**（記憶體過濾）。",
             )
         else:
             min_turnover_yi = 0.0
-            exclude_otc = False
-            st.caption("⭐ 快速模式：只掃 31 檔熱門股（約 1.6% 市場覆蓋率），速度快但看不到中小型潛伏股。")
-
-    col_cfg1, col_cfg2, col_cfg3 = st.columns([1, 1.3, 1.7])
-    with col_cfg1:
+            st.markdown("<div style='padding-top:8px;font-size:13px;color:#78909c;'>"
+                        "熱門股池不需設流動性門檻</div>", unsafe_allow_html=True)
+    with uc3:
         top_n = st.selectbox("顯示前 N 名", [5, 10, 15, 20, 30], index=1)
-    # 「排序用的週期評分」選單已移除。整併成 5 個策略後，**沒有一個**的排序會讀它
-    # （`uses_horizon` 全為 False），它永遠是停用狀態的裝飾品，還掛著一段舊 run 的
-    # 說明數字。排序依據改由每個策略的 `sort_desc` 直接寫在下方說明列。
+        skip_news = st.checkbox(
+            "⚡ 略過新聞分析", value=False, key="smart_skipnews",
+            help=("新聞抓取是掃描最慢的一環（每檔約 6 秒），略過可快 2–3 倍。"
+                  "新聞面佔綜合評分 15%，但因為沒有歷史新聞快照，"
+                  "它的貢獻**從未被回測驗證**。略過後消息面以中性 50 計；"
+                  "趨勢結構分完全不含新聞，排序結論不受影響。"),
+        )
+
+    if full_market:
+        st.caption(
+            "🌏 全市場模式：涵蓋**上市＋上櫃**，**每一檔**都會實際計算"
+            "技術面、量價、低基期位階、估值與風報比（非抽樣粗篩）。"
+            "新聞與詳細財報無法批次取得，會在入圍後再補齊。"
+            "（融資資料目前僅上市有，上櫃股不計融資扣分。）"
+        )
+    else:
+        st.caption("⭐ 快速模式：只掃 31 檔熱門股（約 1.6% 市場覆蓋率），速度快但看不到中小型潛伏股。")
+
+    # 整併成 5 個策略後沒有任何策略的排序會讀「週期評分」選單，該選單已移除；
+    # 排序依據改由每個策略的 `sort_desc` 寫在下方說明列。
     horizon_key, horizon_label = None, "趨勢結構分"
-    with col_cfg2:
-        st.markdown(
-            "<div style='padding-top:26px;font-size:13px;color:#78909c;'>"
-            "排序依據見下方說明列</div>", unsafe_allow_html=True)
+    _, col_cfg3 = st.columns([2.2, 2.1])
     with col_cfg3:
         regime = get_market_regime()
         if regime.get("regime") != "unknown":
@@ -2019,14 +2039,6 @@ def render_smart_screener_page():
             )
     else:
         st.caption(f"❔ 此策略尚未納入策略對照回測（{ev_v['note']}）")
-
-    skip_news = st.checkbox(
-        "⚡ 略過新聞分析（掃描快 2–3 倍）", value=False, key="smart_skipnews",
-        help=("新聞抓取是掃描最慢的一環（每檔約 6 秒）。新聞面佔綜合評分 15%，"
-              "但因為沒有歷史新聞快照，它的貢獻**從未被回測驗證**。"
-              "略過後消息面以中性 50 計；長線結構分含 5% 新聞權重，"
-              "故會有 1 分內的微小差異（實測 82→81），不影響排序結論。"),
-    )
 
     # 說明文字全部來自策略表（services/strategies.py），不再散落
     st.caption(f"📋 {strat_bar_note(sdef)}　｜　排序依據：{sdef['sort_desc']}")
