@@ -40,6 +40,7 @@ from services.strategies import STRATEGIES, LABELS as STRAT_LABELS, \
     bar_note as strat_bar_note
 from services.ui import (
     overheat_badge, trend_cell, score_legend, bucket_table,
+    health_cell, potential_cell, divergence_note, health_grade,
     strategy_caption, strategy_table, cross_evidence,
     hold_longer_note as _hold_longer_note, cmp_periods as _cmp_periods,
     trend_delta_badge,
@@ -1235,13 +1236,16 @@ def render_recommendation_tab(
             for _w in (a.get("trend_why") or []):
                 st.caption(f"· {_w}")
 
-        # 綜合評分退居輔助
+        # 綜合評分退居輔助 —— 只給**體質等級**，不給買賣動作。
+        # 主視覺（上方儀表板）的動作詞是由趨勢結構分推導的；這裡若再給一個
+        # 由綜合評分推導的動作詞，同一頁就會出現兩個互相打架的建議。
+        _health = health_grade(rec['total_score'])
         st.markdown(f"""
-<div style="background:#1a2035;border:1px solid {rec['color']};border-radius:10px;
+<div style="background:#1a2035;border:1px solid {_health['color']};border-radius:10px;
             padding:10px 14px;text-align:center;margin-top:10px;">
   <div style="font-size:11px;color:#90a4ae;">綜合評分（技術+基本面+消息+目標價）</div>
-  <div style="font-size:26px;font-weight:900;color:{rec['color']}">{rec['total_score']}</div>
-  <div style="font-size:13px;color:{rec['color']}">{rec['icon']} {rec['action']}</div>
+  <div style="font-size:26px;font-weight:900;color:{_health['color']}">{rec['total_score']}</div>
+  <div style="font-size:13px;color:{_health['color']}">{_health['label']}・體質健檢</div>
 </div>""", unsafe_allow_html=True)
 
         # 兩個分數常常不一致，直接說明為什麼，而不是讓使用者自己猜
@@ -2316,9 +2320,11 @@ def render_smart_screener_page():
 
     # Score distribution chart (of the strategy's primary metric)
     if len(display) > 0:
-        primary_color = sdef["color"]
-        bar_colors = [r["color"] for r in display] if primary_color is None \
-            else [primary_color] * len(display)
+        # 顏色一律用策略自己的顏色。先前 `color: None` 的策略（漲停動能）
+        # 會退回用每一列的 `r["color"]`——那是**綜合評分**的動作顏色，
+        # 但長條的高度是**趨勢結構分**。高度講一件事、顏色講另一件事。
+        primary_color = sdef["color"] or "#ef5350"
+        bar_colors = [primary_color] * len(display)
         fig_bar = go.Figure()
         fig_bar.add_trace(go.Bar(
             x=[f"{r['stock_id']}<br>{r['company_name']}" for r in display],
@@ -2736,21 +2742,10 @@ def render_strategy_backtest(strategy, strat_label, horizon_key, horizon_label,
 
 # ─── Smart-screener unified card ──────────────────────────────────────────────
 
-def _score_cell(label, value, color, primary):
-    """One score column; the strategy's primary metric gets a coloured ring."""
-    ring = (f"box-shadow:0 0 0 2px {color};border-radius:10px;background:rgba(255,255,255,0.03);"
-            if primary else "")
-    star = " ★" if primary else ""
-    return (
-        f"<div style='min-width:76px;text-align:center;padding:6px 8px;{ring}'>"
-        f"<div style='font-size:26px;font-weight:900;color:{color};line-height:1;'>{value}</div>"
-        f"<div style='font-size:10px;color:#aaa;margin-top:2px;'>{label}{star}</div></div>"
-    )
-
-
 def _render_smart_card(rank, r, strategy, horizon_key=None):
     p = r.get("potential") or {}
-    color = r["color"]; icon = r["icon"]; action = r["action"]
+    # ⚠️ 刻意不取 r["color"] / r["icon"] / r["action"]：那三個都是**綜合評分**
+    #    推導出來的買賣動作，卡片上已改由 health_cell 顯示體質等級。
     current = r["current_price"]; chg = r["change_pct"]
     chg_color = "#f03e3e" if chg >= 0 else "#2f9e44"
     upside = r.get("upside_pct")
@@ -2792,11 +2787,16 @@ def _render_smart_card(rank, r, strategy, horizon_key=None):
     sleeper_badge = ("<span style='font-size:11px;background:#1a237e;color:#9fa8da;border-radius:4px;"
                      "padding:1px 6px;margin-left:6px;white-space:nowrap;'>🌱 潛伏</span>") if qualifies else ""
 
-    # Three always-visible scores; primary highlighted per strategy
+    # 三個分數，排序用的那個加框加 ★。**每一格都自己帶用途說明**，
+    # 不要再出現「大數字旁邊一個孤零零的動作詞」——先前綜合評分的動作詞
+    # （建議出場／偏多買進）緊貼在趨勢分右邊，數字卻在更右邊，
+    # 使用者只看得到「趨勢 99 ★」配「⛔ 建議出場」，無從判斷該信哪個。
     cell_momentum = trend_cell(r.get("trend_score"),
                                primary=strategy in ("trend", "sectorhot", "limitup"))
-    cell_sleeper  = _score_cell("潛力", pot_total, "#7986cb", strategy == "contrarian")
-    cell_balanced = _score_cell("綜合", r["total_score"], "#4dd0e1", False)
+    cell_sleeper  = potential_cell(pot_total, primary=(strategy == "contrarian"))
+    cell_balanced = health_cell(r["total_score"])
+    # 兩個分數差 15 分以上就直接解釋，不讓使用者自己猜
+    diverge_html = divergence_note(r.get("trend_score"), r["total_score"])
 
     # 本益比（共用元件，三頁一致）
     pe_html = pe_badge(r.get("pe_ratio"), r.get("dividend_yield"),
@@ -2827,7 +2827,6 @@ def _render_smart_card(rank, r, strategy, horizon_key=None):
       <div style="font-size:12px;color:{chg_color};">{chg:+.2f}%</div>
     </div>
     {cell_momentum}
-    <div style="min-width:60px;font-size:11px;color:{color};text-align:center;">{icon}<br>{action}</div>
     {cell_sleeper}
     {cell_balanced}
     <!-- 52w position + target -->
@@ -2854,6 +2853,7 @@ def _render_smart_card(rank, r, strategy, horizon_key=None):
       </div>
     </div>
   </div>
+  {diverge_html}
 </div>""", unsafe_allow_html=True)
 
         # Strategy-relevant "why" expander
@@ -3347,7 +3347,8 @@ def render_portfolio_page():
         rank_emoji = ["🥇", "🥈", "🥉"][rank - 1] if rank <= 3 else f"#{rank}"
 
         if r:
-            color, icon, action = r["color"], r["icon"], r["action"]
+            # 綜合評分一律走 health_cell（體質等級），不再顯示它推導出來的買賣動作
+            # ——與選股頁同一份實作，同一檔股票兩頁講法才會一致。
             total = r["total_score"]
             p = r.get("potential") or {}
             pot = p.get("total", 0)
@@ -3370,10 +3371,16 @@ def render_portfolio_page():
             evid_html = evidence_badge(r.get("trend_score"))
             oh_html = overheat_badge(r.get("overheat"))
             trend_delta = th_delta(sid, r.get("trend_score"), _prev_scores)
+            health_html = health_cell(total)
+            pot_html = potential_cell(pot)
+            diverge_html = divergence_note(r.get("trend_score"), total)
         else:
-            color, icon, action, total, pot = "#78909c", "❔", "無資料", 0, 0
+            total, pot = 0, 0
             price, t_w, f_w, n_w = 0, 0, 0, 0
             hz_html, rr_txt, evid_html, pe_txt, oh_html, trend_html = "", "", "", "", "", ""
+            health_html = ("<div style='min-width:88px;text-align:center;font-size:11px;"
+                           "color:#666;'>尚無評分</div>")
+            pot_html = diverge_html = ""
             trend_delta = None
 
         pl_color = "#f03e3e" if pos["pnl"] >= 0 else "#2f9e44"
@@ -3402,20 +3409,8 @@ def render_portfolio_page():
     </div>
     <div style="text-align:center;">{trend_html}
       {trend_delta_badge(trend_delta, _prev_date)}</div>
-    <div style="min-width:88px;text-align:center;padding:4px 8px;">
-      <div style="font-size:22px;font-weight:800;color:{color};line-height:1;">{total}</div>
-      <div style="font-size:10px;color:#aaa;margin-top:2px;">綜合評分</div>
-      <div style="font-size:9px;color:#78909c;">體質總覽・非選股用</div>
-    </div>
-    <div style="min-width:74px;text-align:center;">
-      <div style="font-size:14px;color:{color};font-weight:700;">{icon}</div>
-      <div style="font-size:12px;color:{color};">{action}</div>
-    </div>
-    <div style="min-width:64px;text-align:center;">
-      <div style="font-size:18px;font-weight:800;color:#7986cb;">{pot}</div>
-      <div style="font-size:10px;color:#aaa;">潛力</div>
-      <div style="font-size:9px;color:#78909c;">多頭失效</div>
-    </div>
+    {health_html}
+    {pot_html}
     {hz_html}
     <div style="min-width:120px;font-size:11px;color:#aaa;">
       <div>技 <span style="color:#74c0fc;font-weight:700;">{t_w}</span>
@@ -3426,6 +3421,7 @@ def render_portfolio_page():
     </div>
     {evid_html}
   </div>
+  {diverge_html}
 </div>""", unsafe_allow_html=True)
 
             # 「為什麼選股頁沒看到這檔？」——用與選股頁完全相同的條件逐條檢核

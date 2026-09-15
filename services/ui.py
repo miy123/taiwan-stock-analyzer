@@ -224,6 +224,121 @@ def trend_cell(trend_score, min_width=104, primary=True) -> str:
     )
 
 
+def health_grade(total_score) -> dict:
+    """
+    綜合評分 → **體質等級**（不是買賣動作）。三頁共用的唯一實作。
+
+    門檻取自 recommendation.BASE_THRESHOLDS，與 `_action_for()` 同一組界線，
+    只是說法不同：動作詞（買進／出場）留給**排序訊號**，綜合評分只講體質。
+    """
+    from services.recommendation import BASE_THRESHOLDS
+    t_strong, t_buy, t_hold, t_reduce = BASE_THRESHOLDS
+    if total_score is None:
+        return {"label": "無資料", "color": "#78909c"}
+    if total_score >= t_strong:
+        return {"label": "體質佳", "color": "#4caf50"}
+    if total_score >= t_buy:
+        return {"label": "體質良好", "color": "#a9e34b"}
+    if total_score >= t_hold:
+        return {"label": "體質普通", "color": "#ff9800"}
+    if total_score >= t_reduce:
+        return {"label": "體質偏弱", "color": "#f44336"}
+    return {"label": "體質差", "color": "#b71c1c"}
+
+
+def health_cell(total_score, min_width=88) -> str:
+    """
+    綜合評分 —— 顯示成**體質等級**，不是買賣動作。
+
+    ⚠️ 這是使用者實際踩到的坑：卡片上「趨勢結構分 99 ★」旁邊緊接著一個
+    「⛔ 建議出場」，而那個動作是從**綜合評分**算的（`_action_for(total_score)`），
+    它的數字卻排在更右邊。等於把 A 的結論貼在 B 的數字旁邊，
+    使用者只能問「到底該看哪個」。
+
+    綜合評分的角色是**體質健檢**（本專案自己的實證：t 值低、不該拿來排序），
+    所以它不該說出「買進／出場」這種動作詞——那會跟排序訊號打架。
+    改成講體質等級，動作詞只留給排序訊號（trend_cell 那一格）。
+    門檻取自 recommendation.BASE_THRESHOLDS，不另外寫一份。
+    """
+    if total_score is None:
+        return f"<div style='min-width:{min_width}px;'></div>"
+    g = health_grade(total_score)
+    label, color = g["label"], g["color"]
+    return (
+        f"<div style='min-width:{min_width}px;text-align:center;padding:5px 8px;'>"
+        f"<div style='font-size:22px;font-weight:800;color:{color};line-height:1;'>"
+        f"{total_score}</div>"
+        f"<div style='font-size:10px;color:#aaa;margin-top:2px;'>綜合評分</div>"
+        f"<div style='font-size:9px;color:{color};'>{label}</div>"
+        f"<div style='font-size:9px;color:#78909c;'>體質總覽・非選股用</div></div>"
+    )
+
+
+def potential_cell(pot_total, primary=False, min_width=76) -> str:
+    """
+    潛力分。**一定要帶上「多頭失效」的註記**——它在卡片上長得跟趨勢分一樣是個
+    大數字，不標清楚就會被當成另一個選股依據（實證是持有3個月顯著為負）。
+    """
+    color = "#7986cb"
+    ring = (f"box-shadow:0 0 0 2px {color};border-radius:10px;"
+            f"background:rgba(255,255,255,0.03);" if primary else "")
+    return (
+        f"<div style='min-width:{min_width}px;text-align:center;padding:5px 8px;{ring}'>"
+        f"<div style='font-size:22px;font-weight:800;color:{color};line-height:1;'>"
+        f"{pot_total}</div>"
+        f"<div style='font-size:10px;color:#aaa;margin-top:2px;'>潛力分"
+        f"{' ★' if primary else ''}</div>"
+        f"<div style='font-size:9px;color:#78909c;'>多頭失效</div></div>"
+    )
+
+
+# 兩個分數差多少才值得解釋。個股分析頁用的也是這個門檻，維持一致。
+DIVERGENCE_GAP = 15
+
+
+def divergence_note(trend_score, total_score) -> str:
+    """
+    趨勢結構分與綜合評分差很多時，直接在卡片上說明該看哪個。
+
+    不解釋的話畫面就是「99 分排第一」配上一個偏空的體質等級，
+    使用者沒有辦法判斷這是矛盾還是互補。回傳空字串＝兩者一致，不必囉嗦。
+    """
+    if trend_score is None or total_score is None:
+        return ""
+    gap = trend_score - total_score
+    if abs(gap) < DIVERGENCE_GAP:
+        return ""
+    # ⚠️ 只有**真的互相矛盾**時才解釋，光看分差不夠：趨勢 88 / 綜合 72 的差距
+    #    有 16 分，但 72 分本來就是「體質佳」，硬要說「體質偏弱是風險提醒」
+    #    就變成畫面自己講錯話。所以再看綜合評分落在買進線的哪一邊。
+    from services.recommendation import BASE_THRESHOLDS
+    from services.scoring import BUY_BAR
+    t_buy = BASE_THRESHOLDS[1]
+    weak_health = total_score < t_buy
+    strong_trend = trend_score >= BUY_BAR
+    if gap > 0 and not weak_health:
+        return ""          # 兩邊都不差，沒有矛盾可解釋
+    if gap < 0 and strong_trend:
+        return ""          # 趨勢也達標，同樣沒有矛盾
+    # 用與 health_cell 同一個等級字，否則格子寫「體質差」、說明寫「體質偏弱」，
+    # 同一張卡片兩種說法。
+    grade = health_grade(total_score)["label"]
+    if gap > 0:
+        color, icon = "#ff9800", "⚠️"
+        txt = (f"<b>趨勢強（{trend_score:.0f}）但{grade}（{total_score}）</b>"
+               "：價格結構排在全市場前段，這是本策略選它的理由；"
+               "基本面／籌碼／估值較弱則是風險提醒，"
+               "<b>不是叫你賣出</b>——綜合評分沒有選股預測力。")
+    else:
+        color, icon = "#78909c", "ℹ️"
+        txt = (f"<b>{grade}（{total_score}）但趨勢落後（{trend_score:.0f}）</b>"
+               "：基本面撐得住，但價格結構還沒轉強，"
+               "進場時機訊號偏弱。")
+    return (f"<div style='font-size:11px;color:#cfd8dc;margin-top:6px;"
+            f"padding:5px 10px;background:#161b26;border-left:3px solid {color};"
+            f"border-radius:4px;'>{icon} {txt}</div>")
+
+
 def score_legend() -> str:
     """
     卡片上每個數字是什麼、哪個能拿來選股 —— 三頁共用的唯一說明。
@@ -268,7 +383,7 @@ def score_legend() -> str:
 | 卡片上的數字 | 代表什麼 | 能當選股指標嗎 |
 |---|---|---|
 | **趨勢結構分** ★ | 距季線／均線排列／季線斜率在**當日全市場的百分位**。80 分＝趨勢強度贏過八成股票 | {trend_line} |
-| 綜合評分 | {_wnote} 的體質總覽 | {total_line} |
+| 綜合評分 | {_wnote} 的體質總覽，顯示成**體質等級**（體質佳／普通／偏弱） | {total_line} |
 | 潛力分 | 低基期×題材，找「還沒漲的」 | ⛔ 持有3個月{fmt(ct)} |
 | 極短／短／中 週期評分 | 各持有期的技術強弱（1–3天／1週／1個月） | 🟡 越短週期越弱，僅供參考 |
 | 本益比 | 估值 | ⛔ **單獨用會虧錢**：持有3個月{fmt(lp)} |
@@ -277,6 +392,22 @@ def score_legend() -> str:
 **結論：選股看「趨勢結構分」，其他都是背景資訊。**
 但它是純技術的**相對排名**，不看貴不貴——高分常常正是因為已經漲很多，
 請搭配 🔥 過熱警示與本益比一起看。
+
+### 高分卻顯示「體質差」，該看哪個？
+**兩個都要看，但它們回答的是不同問題：**
+
+| | 回答什麼 | 高分代表 |
+|---|---|---|
+| 趨勢結構分 ★ | **現在是不是進場時機** | 價格結構強，排在全市場前段 |
+| 綜合評分 | **這家公司體質如何** | 基本面／籌碼／估值健康 |
+
+一檔股票可以「趨勢很強、體質很差」——漲很多所以估值貴、籌碼亂，
+這在強勢股身上很常見（台虹就是：趨勢 99、本益比 93、近 60 日漲逾一倍）。
+**這不是矛盾，是兩件事。**
+
+排序與進出場看**趨勢結構分**（有回測背書）；綜合評分只給體質等級當風險提醒，
+它沒有選股預測力，所以卡片上不會用它說「買進」或「出場」。
+兩者差距大時，卡片下方會直接寫出該怎麼讀，不必自己猜。
 """
 
 
