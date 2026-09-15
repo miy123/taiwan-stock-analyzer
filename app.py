@@ -1808,7 +1808,9 @@ def _analyze_one_stock(stock_id: str, period: str = None, limit_up_info=None,
             "upside_pct":   tp.get("upside_pct"),
             "target_low":   tp.get("target_low"),
             "target_high":  tp.get("target_high"),
-            "pe_ratio":     info.get("trailingPE"),
+            # 走 fundamentals 而不是直接讀 info：本益比的來源與虧損處理
+            # 統一在 analyze_fundamentals（官方優先、虧損為 None）。
+            "pe_ratio":     fundamentals.get("pe_ratio"),
             "dividend_yield": fundamentals.get("dividend_yield"),  # normalised fraction
             "revenue_growth": info.get("revenueGrowth"),
             # Margin (融資) chip-structure risk

@@ -39,7 +39,13 @@ def analyze_fundamentals(info: dict, financials: dict, stock_id: str = None) -> 
     result = {}
 
     # From yfinance info
-    result["pe_ratio"] = info.get("trailingPE") or info.get("forwardPE")
+    # ⚠️ **不要寫成 `trailingPE or forwardPE`。** 那會讓虧損股默默改用預估本益比：
+    #    台泥本業虧損，證交所（正確地）不提供本益比，yfinance 的 trailingPE 是空的，
+    #    於是自動掉到 forwardPE 17.7——歷史與預估本益比意義完全不同，卻放在同一個
+    #    欄位、用同一組門檻計分與篩選（lowpe 策略就是吃這個欄位）。
+    #    虧損就是「沒有本益比」，畫面已經會顯示「—（虧損或無資料）」。
+    result["pe_ratio"] = info.get("trailingPE")
+    result["forward_pe"] = info.get("forwardPE")   # 另存，供目標價等處參考
     result["pb_ratio"] = info.get("priceToBook")
     result["roe"] = info.get("returnOnEquity")
     result["roa"] = info.get("returnOnAssets")
@@ -66,6 +72,23 @@ def analyze_fundamentals(info: dict, financials: dict, stock_id: str = None) -> 
         for k in ("roe", "profit_margin", "revenue_growth", "debt_to_equity"):
             if fin.get(k) is not None:
                 result[k] = fin[k]
+        # 估值也走官方快照（證交所 BWIBBU／櫃買 peratio），與全市場掃描同一把尺。
+        # 先前個股頁用 yfinance、掃描用證交所，同一檔的本益比兩邊差最多 17%
+        # （國泰金 13.3 vs 15.6），而 lowpe 策略與過熱警示都吃這個欄位。
+        try:
+            from services.universe import get_full_market_snapshot
+            meta = get_full_market_snapshot().get(stock_id) or {}
+        except Exception:
+            meta = {}
+        if meta.get("pe") is not None:
+            result["pe_ratio"] = meta["pe"]
+        elif meta:
+            # 官方有這檔但沒給本益比＝虧損或無獲利資料，不要用 yfinance 的數字頂替
+            result["pe_ratio"] = None
+        if meta.get("pb") is not None:
+            result["pb_ratio"] = meta["pb"]
+        if meta.get("dy") is not None:
+            result["dividend_yield"] = meta["dy"]
         if fin.get("is_financial"):
             # 金融業的負債權益比與一般產業不可比（存款即負債），不計分
             result["debt_to_equity"] = None

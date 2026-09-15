@@ -541,6 +541,31 @@ lowpe 一直都查得到 `ev`，那段永遠不會顯示。已刪。）
 
 **新增任何「大數字 + 一句話」的卡片元素時，檢查那句話是不是由那個數字推導的。**
 
+## 💱 本益比也統一成官方來源（2026-09-15）
+兩個不一致，都已修：
+
+1. **兩條路徑來源不同** —— 掃描用證交所／櫃買的官方本益比，個股頁用 yfinance。
+   實測同一檔差最多 **17%**（國泰金 13.3 vs 15.6）。而 `lowpe` 策略與
+   `overheat_flag()` 都吃這個欄位，等於深度分析過的那幾十檔跟其他人不是同一把尺。
+2. **虧損股默默改用預估本益比** —— 原本寫 `info.get("trailingPE") or
+   info.get("forwardPE")`。台泥本業虧損，證交所（正確地）不給本益比、
+   yfinance 的 trailingPE 也是空的，於是**自動掉到 forwardPE 17.7**。
+   歷史與預估本益比意義完全不同，卻放在同一個欄位、用同一組門檻篩選。
+   差距可以很大：台積電 trailing 27.6 / forward 16.8。
+
+`analyze_fundamentals()` 現在：官方快照（BWIBBU／櫃買 peratio）優先 →
+官方有這檔但沒給本益比＝**虧損，回 None**，不用 yfinance 頂替 →
+官方查無此檔才退回 yfinance 的 **trailingPE**（不再 `or forwardPE`）。
+`forward_pe` 另存欄位，需要預估值的地方自己取。
+`pb_ratio` / `dividend_yield` 一併改走官方快照。
+
+⚠️ `_analyze_one_stock()` 先前是直接讀 `info.get("trailingPE")` 塞進 row，
+**繞過了 analyze_fundamentals**，所以上面的規則對它無效。已改成讀 fundamentals。
+**新增任何估值欄位時，檢查 row 是不是又自己去讀了一次 info。**
+
+實測：8 檔測試股兩條路徑本益比全部一致；台泥正確顯示「—」而非 17.7；
+全市場 898 檔有 112 檔（12%）無本益比，`lowpe` 策略選出的 158 檔全部有本益比。
+
 ## ⚖️ 體質分只看品質，不看估值（2026-09-15，改過計分公式）
 使用者問「基本面會跟 EPS／本益比掛勾嗎」，進而問「混在一起合理嗎」。
 結論：**拆開**。`calculate_fundamental_score()` 已移除本益比與殖利率兩個因子。
