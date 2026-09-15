@@ -61,7 +61,7 @@ from services.scoring import BUY_BAR as TREND_BUY_BAR
 # 綜合評分的買進／觀望線也只有一個定義（services/recommendation.py），
 # 先前 app.py 三處各自寫死 58／48，改了模型就對不上。
 from services.recommendation import buy_threshold as total_buy_threshold
-from services.recommendation import BASE_THRESHOLDS as _BASE_TH
+from services.ui import HEALTH_BANDS as _HEALTH_BANDS
 from services.target_price import calculate_target_price
 from services.analyst_targets import get_analyst_targets
 from services.catalyst_impact import get_catalyst_impact
@@ -1240,13 +1240,13 @@ def render_recommendation_tab(
         # 綜合評分退居輔助 —— 只給**體質等級**，不給買賣動作。
         # 主視覺（上方儀表板）的動作詞是由趨勢結構分推導的；這裡若再給一個
         # 由綜合評分推導的動作詞，同一頁就會出現兩個互相打架的建議。
-        _health = health_grade(rec['total_score'])
+        _health = health_grade(fund_score)
         st.markdown(f"""
 <div style="background:#1a2035;border:1px solid {_health['color']};border-radius:10px;
             padding:10px 14px;text-align:center;margin-top:10px;">
   <div style="font-size:11px;color:#90a4ae;">綜合評分（技術+基本面+消息+目標價）</div>
   <div style="font-size:26px;font-weight:900;color:{_health['color']}">{rec['total_score']}</div>
-  <div style="font-size:13px;color:{_health['color']}">{_health['label']}・體質健檢</div>
+  <div style="font-size:13px;color:{_health['color']}">體質 {fund_score}・{_health['label']}</div>
 </div>""", unsafe_allow_html=True)
 
         # 兩個分數常常不一致，直接說明為什麼，而不是讓使用者自己猜
@@ -1799,6 +1799,10 @@ def _analyze_one_stock(stock_id: str, period: str = None, limit_up_info=None,
             "icon":         rec["icon"],
             "tech_score":   tech_score,
             "fund_score":   fund_score,
+            # 這條路徑一定抓了 yfinance 的完整財報（ROE／營收成長／淨利率…），
+            # 所以 fund_score 是**實算**的。全市場粗掃只有本益比／淨值比／殖利率，
+            # 算出來的分數會停在中性附近，兩者不可混為一談。
+            "has_financials": True,
             "news_score":   news_score,
             "target_price": tp.get("recommended_target"),
             "upside_pct":   tp.get("upside_pct"),
@@ -1921,18 +1925,18 @@ def render_smart_screener_page():
         # 體質門檻 —— 加掛在**所選策略**上的額外條件（不是另一個策略）。
         # 排序仍由該策略有回測背書的訊號負責，這只是再濾掉體質不合格的。
         # 選項界線取自 recommendation.BASE_THRESHOLDS，不另外寫一組數字。
-        _t_strong, _t_buy, _t_hold, _ = _BASE_TH
-        _health_opts = {
-            "不設限": None,
-            f"體質普通以上（≥{_t_hold}）": _t_hold,
-            f"體質良好以上（≥{_t_buy}）": _t_buy,
-            f"體質佳（≥{_t_strong}）": _t_strong,
-        }
+        # 界線取自 ui.HEALTH_BANDS（基本面分的量表），不要沿用綜合評分的 68/58/48
+        _health_opts = {"不設限": None}
+        for _bar, _lab, _ in _HEALTH_BANDS[::-1]:
+            _health_opts[f"{_lab}以上（基本面 ≥{_bar}）"] = _bar
         _health_label = st.selectbox(
             "體質門檻", list(_health_opts), index=0, key="smart_health",
-            help="在所選策略之外**再加一條**「綜合評分要夠高」的條件，"
-                 "用來找『趨勢強且體質也好』的股票。⚠️ 這條件**無法回測**"
-                 "（綜合評分含新聞與財報，沒有歷史快照），下方實證數字不含它。",
+            help="在所選策略之外**再加一條**「基本面要夠好」的條件"
+                 "（營收成長／ROE／淨利率／負債／估值），"
+                 "用來找『趨勢強且體質也好』的股票。\n\n"
+                 "⚠️ 只有**深度分析過**的股票能通過——全市場粗掃只有本益比／"
+                 "淨值比／殖利率，算不出體質。\n\n"
+                 "⚠️ 這條件**無法回測**（財報沒有歷史快照），下方實證數字不含它。",
         )
         health_bar = _health_opts[_health_label]
         st.session_state["smart_health_bar"] = health_bar
@@ -2334,11 +2338,13 @@ def render_smart_screener_page():
         )
 
     if not view and health_bar:
-        _pass_h = sum(1 for r in results if r.get("total_score", 0) >= health_bar)
+        _withfin = [r for r in results if r.get("has_financials")]
+        _pass_h = sum(1 for r in _withfin if r.get("fund_score", 0) >= health_bar)
         st.warning(
-            f"加上「{_health_label}」之後選不出標的"
-            f"（股池中有 {_pass_h} 檔體質達標，但都不符合本策略的其他條件）。"
-            "把體質門檻調低或改選別的策略即可，**不需要重新掃描**。"
+            f"加上「{_health_label}」之後選不出標的。"
+            f"本次掃描有 **{len(_withfin)} 檔**取得完整財報（其餘只有估值面資料，"
+            f"算不出體質），其中 {_pass_h} 檔達標，但都不符合本策略的其他條件。\n\n"
+            "把門檻調低、或**重新掃描一次**（開著體質門檻掃描會深度分析更多檔）。"
         )
         return
     if not view:
@@ -2837,9 +2843,12 @@ def _render_smart_card(rank, r, strategy, horizon_key=None):
     cell_momentum = trend_cell(r.get("trend_score"),
                                primary=strategy in ("trend", "sectorhot", "limitup"))
     cell_sleeper  = potential_cell(pot_total, primary=(strategy == "contrarian"))
-    cell_balanced = health_cell(r["total_score"], enriched=bool(r.get("enriched")))
+    cell_balanced = health_cell(r.get("fund_score"),
+                                has_financials=bool(r.get("has_financials")),
+                                total_score=r["total_score"])
     # 兩個分數差 15 分以上就直接解釋，不讓使用者自己猜
-    diverge_html = divergence_note(r.get("trend_score"), r["total_score"])
+    diverge_html = divergence_note(r.get("trend_score"), r.get("fund_score"),
+                                   bool(r.get("has_financials")))
 
     # 本益比（共用元件，三頁一致）
     pe_html = pe_badge(r.get("pe_ratio"), r.get("dividend_yield"),
@@ -3421,9 +3430,12 @@ def render_portfolio_page():
             evid_html = evidence_badge(r.get("trend_score"))
             oh_html = overheat_badge(r.get("overheat"))
             trend_delta = th_delta(sid, r.get("trend_score"), _prev_scores)
-            health_html = health_cell(total)
+            health_html = health_cell(r.get("fund_score"),
+                                      has_financials=bool(r.get("has_financials")),
+                                      total_score=total)
             pot_html = potential_cell(pot)
-            diverge_html = divergence_note(r.get("trend_score"), total)
+            diverge_html = divergence_note(r.get("trend_score"), r.get("fund_score"),
+                                           bool(r.get("has_financials")))
         else:
             total, pot = 0, 0
             price, t_w, f_w, n_w = 0, 0, 0, 0
