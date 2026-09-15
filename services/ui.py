@@ -246,7 +246,7 @@ def health_grade(total_score) -> dict:
     return {"label": "體質差", "color": "#b71c1c"}
 
 
-def health_cell(total_score, min_width=88) -> str:
+def health_cell(total_score, min_width=88, enriched=True) -> str:
     """
     綜合評分 —— 顯示成**體質等級**，不是買賣動作。
 
@@ -259,17 +259,28 @@ def health_cell(total_score, min_width=88) -> str:
     所以它不該說出「買進／出場」這種動作詞——那會跟排序訊號打架。
     改成講體質等級，動作詞只留給排序訊號（trend_cell 那一格）。
     門檻取自 recommendation.BASE_THRESHOLDS，不另外寫一份。
+
+    enriched=False 會標上「粗估」。全市場掃描只對初篩最前的數十檔補齊新聞與
+    詳細財報，其餘的綜合評分是用「技術＋估值」算的（消息面以中性 50 計、
+    財報只有本益比／淨值比／殖利率，且因為沒有目標價而改用 tech40/fund40/news20
+    的權重）。實測兩條路徑對同一檔股票的差距：中位 6 分、最大 15 分、全距 29 分
+    （台積電 42→57、國泰金 58→44）。不標出來的話，使用者會以為所有卡片上的
+    綜合評分是同一種東西。
     """
     if total_score is None:
         return f"<div style='min-width:{min_width}px;'></div>"
     g = health_grade(total_score)
     label, color = g["label"], g["color"]
+    rough = ("" if enriched else
+             "<div style='font-size:9px;color:#ffa726;' "
+             "title='未深度分析：消息面以中性 50 計、財報僅估值面。"
+             "與實算中位差 6 分、最大 15 分。'>≈ 粗估</div>")
     return (
         f"<div style='min-width:{min_width}px;text-align:center;padding:5px 8px;'>"
         f"<div style='font-size:22px;font-weight:800;color:{color};line-height:1;'>"
         f"{total_score}</div>"
         f"<div style='font-size:10px;color:#aaa;margin-top:2px;'>綜合評分</div>"
-        f"<div style='font-size:9px;color:{color};'>{label}</div>"
+        f"<div style='font-size:9px;color:{color};'>{label}</div>{rough}"
         f"<div style='font-size:9px;color:#78909c;'>體質總覽・非選股用</div></div>"
     )
 

@@ -79,6 +79,36 @@ def _f_pot_45(r, ctx):
     return v >= 45, f"潛力分 {v} ≥ 45"
 
 
+# ── 使用者加選的「體質門檻」──────────────────────────────────────────────────
+# 這是**加掛在任一策略上**的額外條件，不是一個新策略。為什麼不做成策略：
+#
+#   `strategy_comparison.py` 回測時每一列都給 `total_score = 50` 中性值
+#   ——綜合評分含新聞與財報，**沒有歷史快照、無法還原**（納入會造成前視偏誤）。
+#   所以任何以綜合評分為條件的策略都**量不出成績**：門檻 >50 就是每期零檔，
+#   ≤50 就是完全不過濾。做成策略只會讓實證面板印出看起來很權威的假數字。
+#
+# 做成加掛條件，責任就清楚了：排序仍由有回測背書的訊號負責，
+# 體質門檻是使用者自己疊上去的風險偏好，畫面必須講明它沒有實證支持。
+
+def _f_health_bar(r, ctx):
+    bar = ctx.get("health_bar")
+    v = r.get("total_score", 0)
+    return v >= bar, f"綜合評分 {v} ≥ 體質門檻 {bar:.0f}"
+
+
+def filters_for(sdef, ctx):
+    """
+    該策略實際要套用的條件 = 策略自己的 filters（+ 使用者加選的體質門檻）。
+
+    `select()` 與 `explain()` **共用這一份**，所以「為什麼沒選到」的解釋
+    不可能與實際結果不一致——這是本專案的既有規矩，加掛條件也要遵守。
+    """
+    fs = list(sdef["filters"])
+    if ctx.get("health_bar"):
+        fs.append(("綜合評分達體質門檻", _f_health_bar))
+    return fs
+
+
 def prepare_ctx(results, ctx):
     """族群排名等「需要全體才能算」的資訊，先算好放進 ctx 供各條件使用。"""
     ctx = dict(ctx)
@@ -93,7 +123,7 @@ def prepare_ctx(results, ctx):
     return ctx
 
 
-def bar_note(sdef) -> str:
+def bar_note(sdef, ctx=None) -> str:
     """
     「門檻：…」說明文字 —— **由 filters 的標籤生成**，不是另外手寫一份。
 
@@ -104,7 +134,7 @@ def bar_note(sdef) -> str:
 
     `note` 是可選的補充說明（例如買進線的意義、為什麼排除某個區間）。
     """
-    labels = "，且".join(label for label, _ in sdef["filters"])
+    labels = "，且".join(label for label, _ in filters_for(sdef, ctx or {}))
     extra = sdef.get("note")
     return f"門檻：{labels}" + (f"（{extra}）" if extra else "")
 
@@ -113,7 +143,7 @@ def select(sdef, results, ctx):
     """套用該策略的所有條件並排序。"""
     ctx = prepare_ctx(results, ctx)
     view = [r for r in results
-            if all(f(r, ctx)[0] for _, f in sdef["filters"])]
+            if all(f(r, ctx)[0] for _, f in filters_for(sdef, ctx))]
     view.sort(key=lambda r: sdef["sort_key"](r, ctx), reverse=sdef.get("desc", True))
     return view
 
@@ -122,7 +152,7 @@ def explain(sdef, r, results, ctx):
     """這一檔為何入選／未入選——與 select() 用同一份條件，不會不一致。"""
     ctx = prepare_ctx(results, ctx)
     out = []
-    for label, f in sdef["filters"]:
+    for label, f in filters_for(sdef, ctx):
         ok, detail = f(r, ctx)
         out.append({"ok": ok, "label": label, "detail": detail})
     return out
