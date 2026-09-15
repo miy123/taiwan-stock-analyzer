@@ -17,8 +17,12 @@
 
 只有兩項無法批次取得，改為「入圍後再深查」：
   · 新聞情緒／催化劑（話題）— 逐檔抓 RSS 很慢
-  · 詳細財報（ROE／營收成長／淨利率）— 逐檔 yfinance 約 2.5 秒
-粗掃階段這兩項對所有股票給相同的中性值，因此**不影響彼此排名**，入圍者再補齊。
+粗掃階段新聞對所有股票給相同的中性值，因此**不影響彼此排名**，入圍者再補齊。
+
+財報原本也在「無法批次」之列（逐檔 yfinance 約 2.5 秒），於是全市場幾乎每一檔的
+體質分都只能靠估值面、停在中性 50 分。現已改用公開資訊觀測站的**批次**財報
+（services/financials.py，3 組端點、涵蓋 1959/1971 檔 ≈ 99%），
+ROE／淨利率／營收成長／負債比全市場逐檔都算得出來。
 """
 
 import requests
@@ -228,6 +232,7 @@ def scan_universe(min_turnover=1e7, period="2y", progress_cb=None, include_otc=T
         raw_factors as _raw_factors, score_cross_section, save_distribution,
     )
     from services.fundamental import calculate_fundamental_score
+    from services.financials import get_bulk_fundamentals
     from services.recommendation import (
         generate_recommendation, generate_timeframe_recommendations,
     )
@@ -254,6 +259,9 @@ def scan_universe(min_turnover=1e7, period="2y", progress_cb=None, include_otc=T
         suffix_of=lambda c: ".TWO" if snap.get(c, {}).get("market") == "TPEX" else ".TW",
     )
 
+    # 全市場財報（3 個批次端點，涵蓋 1959/1971 檔）。沒有它的話體質分只能靠
+    # 本益比／淨值比／殖利率，全市場幾乎每一檔都會停在中性 50 分而標「無財報資料」。
+    bulk_fin = get_bulk_fundamentals()
     _, margin_table = get_latest_margin_table()
     regime = get_market_regime()
     rows = []
@@ -266,10 +274,15 @@ def scan_universe(min_turnover=1e7, period="2y", progress_cb=None, include_otc=T
                 continue
 
             tech_score, _ = calculate_technical_score(df)
-            # Partial fundamentals from the bulk valuation feed
+            # 估值面來自證交所快照，獲利／成長／負債來自公開資訊觀測站批次財報
+            _fin = bulk_fin.get(code) or {}
             fundamentals = {
                 "pe_ratio": meta.get("pe"), "pb_ratio": meta.get("pb"),
                 "dividend_yield": meta.get("dy"),
+                "roe": _fin.get("roe"),
+                "profit_margin": _fin.get("profit_margin"),
+                "revenue_growth": _fin.get("revenue_growth"),
+                "debt_to_equity": _fin.get("debt_to_equity"),
             }
             fund_score, _ = calculate_fundamental_score({}, fundamentals)
 
@@ -332,10 +345,11 @@ def scan_universe(min_turnover=1e7, period="2y", progress_cb=None, include_otc=T
                 # 營收成長／淨利率**，fund_score 因此接近中性 50。
                 # 「無資料」與「剛好中等」在分數上長得一模一樣，所以必須另外標記，
                 # 否則任何以基本面為條件的篩選都會把沒資料的當成中等體質放行。
-                "has_financials": False,
+                "has_financials": bool(_fin),
                 "target_price": None, "upside_pct": None,
                 "pe_ratio": meta.get("pe"), "dividend_yield": meta.get("dy"),
-                "revenue_growth": None,
+                "revenue_growth": _fin.get("revenue_growth"),
+                "fin_period": _fin.get("period"),
                 "margin_usage": margin_signal.get("usage_pct"),
                 "margin_level": margin_signal.get("level"),
                 "margin_penalty": margin_signal.get("penalty", 0),

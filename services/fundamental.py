@@ -25,7 +25,17 @@ def _normalize_dividend_yield(info: dict):
     return dy / 100 if dy > 0.5 else dy
 
 
-def analyze_fundamentals(info: dict, financials: dict) -> dict:
+def analyze_fundamentals(info: dict, financials: dict, stock_id: str = None) -> dict:
+    """
+    ⚠️ ROE／淨利率／營收成長／負債比**優先採用公開資訊觀測站的批次財報**
+    （`services/financials.py`），yfinance 只用來補缺。
+
+    為什麼：全市場掃描沒辦法逐檔抓 yfinance 財報（每檔 2.5 秒），所以那條路徑
+    只能用批次來源。若個股頁改用 yfinance，同一檔股票的體質分在兩頁就會不同
+    ——本專案反覆踩過這個坑。官方來源還有兩個好處：涵蓋 1959/1971 檔（99%）、
+    而且是 point-in-time 正確的當期累計數（yfinance 是 TTM，窗口不同，
+    台泥甚至連正負號都不一樣）。
+    """
     result = {}
 
     # From yfinance info
@@ -45,6 +55,22 @@ def analyze_fundamentals(info: dict, financials: dict) -> dict:
     result["52w_high"] = info.get("fiftyTwoWeekHigh")
     result["52w_low"] = info.get("fiftyTwoWeekLow")
     result["beta"] = info.get("beta")
+
+    # 官方批次財報覆蓋掉 yfinance 的對應欄位（全站同一把尺）
+    if stock_id:
+        try:
+            from services.financials import get_bulk_fundamentals
+            fin = get_bulk_fundamentals().get(stock_id) or {}
+        except Exception:
+            fin = {}
+        for k in ("roe", "profit_margin", "revenue_growth", "debt_to_equity"):
+            if fin.get(k) is not None:
+                result[k] = fin[k]
+        if fin.get("is_financial"):
+            # 金融業的負債權益比與一般產業不可比（存款即負債），不計分
+            result["debt_to_equity"] = None
+        if fin.get("period"):
+            result["fin_period"] = fin["period"]
 
     # Revenue trend from income statement
     income = financials.get("income_stmt")

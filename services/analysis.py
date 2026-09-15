@@ -89,7 +89,7 @@ def compute_scores(df, info, financials, stock_id, company_name, as_of_date=None
     as_of_str = as_of_date.strftime("%Y%m%d") if as_of_date else ""
 
     tech_score, tech_reasons = calculate_technical_score(df)
-    fundamentals = analyze_fundamentals(info, financials)
+    fundamentals = analyze_fundamentals(info, financials, stock_id)
     fund_score, fund_reasons = calculate_fundamental_score(info, fundamentals)
 
     if skip_news:

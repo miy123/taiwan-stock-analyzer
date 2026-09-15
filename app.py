@@ -40,7 +40,7 @@ from services.strategies import STRATEGIES, LABELS as STRAT_LABELS, \
     bar_note as strat_bar_note
 from services.ui import (
     overheat_badge, trend_cell, score_legend, bucket_table,
-    health_cell, potential_cell, divergence_note, health_grade,
+    health_cell, potential_cell, divergence_note, health_grade, health_explainer,
     strategy_caption, strategy_table, cross_evidence,
     hold_longer_note as _hold_longer_note, cmp_periods as _cmp_periods,
     trend_delta_badge,
@@ -626,7 +626,7 @@ def render_news_tab(stock_id: str, company_name: str):
 def render_fundamental_tab(stock_id: str, info: dict, financials: dict):
     st.subheader(f"基本面分析 — {resolve_company_name(stock_id, info)} ({stock_id})")
 
-    fundamentals = analyze_fundamentals(info, financials)
+    fundamentals = analyze_fundamentals(info, financials, stock_id)
 
     st.markdown("#### 關鍵財務指標")
     cols = st.columns(4)
@@ -1934,8 +1934,8 @@ def render_smart_screener_page():
             help="在所選策略之外**再加一條**「基本面要夠好」的條件"
                  "（營收成長／ROE／淨利率／負債／估值），"
                  "用來找『趨勢強且體質也好』的股票。\n\n"
-                 "⚠️ 只有**深度分析過**的股票能通過——全市場粗掃只有本益比／"
-                 "淨值比／殖利率，算不出體質。\n\n"
+                 "財報取自公開資訊觀測站的批次資料，涵蓋約 99% 的上市櫃股；"
+                 "少數取不到的會標「無財報資料」並一律不通過。\n\n"
                  "⚠️ 這條件**無法回測**（財報沒有歷史快照），下方實證數字不含它。",
         )
         health_bar = _health_opts[_health_label]
@@ -2137,11 +2137,9 @@ def render_smart_screener_page():
 
         # Shortlist on the signals that actually vary in the bulk pass
         prelim_key = sdef["prelim_key"]
-        # 體質門檻開著時多補幾檔：門檻是拿綜合評分在篩，而沒被深度分析的那批
-        # 只有粗估分數（與實算中位差 6 分、最大 15 分），深度分析過的越多越準。
+        # 體質分現在全市場都算得出來（批次財報），所以不必為了體質門檻多深度分析。
+        # 深度分析補的是新聞情緒與目標價，那兩項才是真的只能逐檔抓。
         n_enrich = min(int(top_n) * 2 + 6, 40)   # ~5s per deep analysis
-        if health_bar:
-            n_enrich = min(int(top_n) * 3 + 10, 60)
         shortlist = sorted(rows, key=lambda r: r.get(prelim_key, 0), reverse=True)[:n_enrich]
 
         status.markdown(
@@ -2342,9 +2340,9 @@ def render_smart_screener_page():
         _pass_h = sum(1 for r in _withfin if r.get("fund_score", 0) >= health_bar)
         st.warning(
             f"加上「{_health_label}」之後選不出標的。"
-            f"本次掃描有 **{len(_withfin)} 檔**取得完整財報（其餘只有估值面資料，"
-            f"算不出體質），其中 {_pass_h} 檔達標，但都不符合本策略的其他條件。\n\n"
-            "把門檻調低、或**重新掃描一次**（開著體質門檻掃描會深度分析更多檔）。"
+            f"本次掃描有 **{len(_withfin)} 檔**取得財報，其中 {_pass_h} 檔體質達標，"
+            "但都不符合本策略的其他條件。\n\n"
+            "把門檻調低或改選別的策略即可，**不需要重新掃描**。"
         )
         return
     if not view:
@@ -2445,6 +2443,9 @@ def render_smart_screener_page():
 
     with st.expander("📖 卡片上這些分數各自代表什麼？哪個能當選股指標？", expanded=False):
         st.markdown(score_legend())
+        st.markdown("---")
+        st.markdown("### 🩺 體質分怎麼算的")
+        st.markdown(health_explainer())
 
     # ── 題材/族群輪動 ─────────────────────────────────────────────────────────
     render_sector_view(results)
@@ -3135,6 +3136,8 @@ def render_portfolio_page():
     rank_by_long = rank_label.startswith("🏆")
     with st.expander("📖 這些分數與門檻是什麼意思？（實證說明）", expanded=False):
         st.markdown(score_legend())
+        with st.expander("🩺 體質分怎麼算的", expanded=False):
+            st.markdown(health_explainer())
         st.markdown("""
 ---
 **「趨勢結構分」怎麼算的？**
@@ -3717,7 +3720,7 @@ def render_stock_analysis(stock_id: str, period: str, as_of_date=None):
         render_fundamental_tab(stock_id, info, financials)
 
     with tab4:
-        fundamentals = analyze_fundamentals(info, financials)
+        fundamentals = analyze_fundamentals(info, financials, stock_id)
         render_target_price_tab(df, info, fundamentals, company_name)
 
     with tab5:
