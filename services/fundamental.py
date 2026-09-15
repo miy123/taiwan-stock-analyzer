@@ -104,7 +104,30 @@ def analyze_fundamentals(info: dict, financials: dict, stock_id: str = None) -> 
 
 def calculate_fundamental_score(info: dict, fundamentals: dict) -> tuple[int, list]:
     """
-    Returns (score 0-100, list of scoring reasons).
+    **體質分＝只看品質，不看估值。** Returns (score 0-100, reasons).
+
+    ## 為什麼把本益比與殖利率拿掉
+
+    品質（Quality）與價值（Value）在因子投資裡是**兩個獨立因子**，分開的理由
+    正是它們常常負相關——好公司通常貴。混成一個數字，兩個問題都答不清楚。
+    對本專案更有三個具體理由：
+
+    1. **這裡已經量過估值是負的**：`strategy_comparison.json` 的純低本益比
+       持有3個月超額 −4.57%、t=−3.96（顯著虧錢）。混進來等於讓體質分
+       獎勵一個自己量過會賠錢的因子。實測後果：亞泥品質 39 卻因本益比 9.67
+       加到 58，聯發科品質 60 卻因本益比 75 掉到 46——排序整個顛倒。
+    2. **估值在畫面上已經出現兩次**：卡片有獨立的本益比徽章，
+       `technical.overheat_flag()` 也用本益比 >40 發「利多已反映」警示。
+       拿掉不會少任何資訊。
+    3. **體質門檻是加掛在動能策略上的**。動能本來就會挑到漲多因此偏貴的股票，
+       帶估值的體質分會系統性扣它們分——等於用濾網抵銷主訊號，
+       正是本專案量過四次的「多加一層過濾更差」。
+
+    實測影響：含估值 vs 純品質 Spearman ρ=0.87，但**名次中位移動 80 名**、
+    前 10% 有 90 檔進出。不是小差別。
+
+    ⚠️ 殖利率也是價格掛勾的（殖利率 = 股利 ÷ 股價），所以它跟本益比一起歸在
+    估值那邊，不在體質分內。
 
     Bands are calibrated to the ACTUAL distribution of Taiwan large/mid caps
     (measured across the scan pool), not to absolute rules of thumb — the market
@@ -120,20 +143,6 @@ def calculate_fundamental_score(info: dict, fundamentals: dict) -> tuple[int, li
     """
     raw = 0.0
     reasons = []
-
-    # P/E — market p25≈15, p50≈19, p75≈36
-    pe = fundamentals.get("pe_ratio")
-    if pe is not None and pe > 0:
-        if pe < 12:
-            raw += 12; reasons.append(f"本益比 {pe:.1f} 顯著低於市場中位(19)，估值便宜 (+12)")
-        elif pe < 19:
-            raw += 6; reasons.append(f"本益比 {pe:.1f} 低於市場中位，估值合理 (+6)")
-        elif pe < 30:
-            raw += 0; reasons.append(f"本益比 {pe:.1f} 約在市場中上水準 (0)")
-        elif pe < 50:
-            raw -= 7; reasons.append(f"本益比 {pe:.1f} 偏高（市場前25%），估值偏貴 (-7)")
-        else:
-            raw -= 14; reasons.append(f"本益比 {pe:.1f} 極高，估值風險大 (-14)")
 
     # ROE — market p25≈9%, p50≈15.5%, p75≈23%
     roe = fundamentals.get("roe")
@@ -179,17 +188,6 @@ def calculate_fundamental_score(info: dict, fundamentals: dict) -> tuple[int, li
             raw += 5; reasons.append(f"淨利率 {m:.1f}%，優於市場中位 (+5)")
         elif m < 6:
             raw -= 6; reasons.append(f"淨利率 {m:.1f}%，獲利能力偏薄 (-6)")
-
-    # Dividend yield — fraction (normalised); market p50≈3.2%
-    div_yield = fundamentals.get("dividend_yield")
-    if div_yield is not None and div_yield > 0:
-        dy = div_yield * 100
-        if dy > 5:
-            raw += 7; reasons.append(f"殖利率 {dy:.2f}%，配息豐厚 (+7)")
-        elif dy > 3.5:
-            raw += 4; reasons.append(f"殖利率 {dy:.2f}%，優於市場中位(3.2%) (+4)")
-        elif dy > 2:
-            raw += 1; reasons.append(f"殖利率 {dy:.2f}% (+1)")
 
     # Debt / equity — market p50≈30, p75≈81
     d2e = fundamentals.get("debt_to_equity")
