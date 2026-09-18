@@ -24,11 +24,47 @@ from services.evidence import (
 HORIZON_ORDER = [("ultra_short", "極短"), ("short", "短"), ("medium", "中")]
 
 
-def pe_badge(pe, dividend_yield=None, highlight=False, min_width=88) -> str:
-    """本益比徽章（依高低變色），含殖利率。無資料時明確說明而非留白。"""
+def peer_pe_line(stock_id, pe, inline=False) -> str:
+    """
+    同業本益比對照（「同業 26.6 (+4%)」）—— 三頁共用的唯一實作。
+
+    同業＝官方產業別分類，取該產業的本益比**中位數**
+    （`services/sector.peer_pe`，資料來自已經在抓的兩份快照，不新增請求）。
+    同業檔數不足就回空字串，寧可不顯示。
+
+    ⚠️ 這一行刻意用**中性灰、不隨貴／便宜變色**。本專案量過純低本益比持有
+    3 個月超額 −4.57%、t=−3.96，把「比同業便宜」染成綠色等於在畫面上暗示
+    它是好事，與自己的實證矛盾。它只回答「這檔在同業裡站哪」，不做價值判斷。
+    """
+    if not stock_id:
+        return ""
+    try:
+        from services.sector import peer_pe
+        p = peer_pe(stock_id, pe)
+    except Exception:
+        return ""
+    if not p:
+        return ""
+    rel = p.get("rel_pct")
+    body = f"同業 {p['median']:.1f}" + (f" ({rel:+.0f}%)" if rel is not None else "")
+    tip = f"{p['industry']} {p['n']} 檔的本益比中位數。僅供定位參考，不進任何分數。"
+    tag = "span" if inline else "div"
+    pre = "　" if inline else ""
+    return f"{pre}<{tag} title='{tip}' style='color:#78909c;'>{body}</{tag}>"
+
+
+def pe_badge(pe, dividend_yield=None, highlight=False, min_width=88,
+             stock_id=None) -> str:
+    """
+    本益比徽章（依高低變色），含殖利率與同業對照。無資料時明確說明而非留白。
+
+    stock_id: 給了就多一行同業中位數（見 `peer_pe_line`）。虧損股也照樣顯示
+              同業——「本益比 —，同業 26.6」比單獨一個「—」有用得多。
+    """
+    peer = peer_pe_line(stock_id, pe)
     if pe is None or pe <= 0:
         return (f"<div style='min-width:{min_width}px;font-size:11px;color:#666;'>"
-                f"本益比 —<div>（虧損或無資料）</div></div>")
+                f"本益比 —<div>（虧損或無資料）</div>{peer}</div>")
     color = ("#4caf50" if pe < 12 else "#a9e34b" if pe < 20
              else "#ff9800" if pe < 35 else "#f44336")
     box = ("border:1px solid #ffd54f;border-radius:4px;padding:1px 4px;"
@@ -38,18 +74,19 @@ def pe_badge(pe, dividend_yield=None, highlight=False, min_width=88) -> str:
     return (
         f"<div style='min-width:{min_width}px;font-size:11px;color:#aaa;{box}'>"
         f"<div>本益比 <span style='color:{color};font-weight:800;font-size:14px;'>"
-        f"{pe:.1f}</span></div><div>{dy_txt}</div></div>"
+        f"{pe:.1f}</span></div><div>{dy_txt}</div>{peer}</div>"
     )
 
 
-def pe_inline(pe, dividend_yield=None) -> str:
+def pe_inline(pe, dividend_yield=None, stock_id=None) -> str:
     """單行版本的本益比（給持股卡片這種空間較窄的地方）。"""
+    peer = peer_pe_line(stock_id, pe, inline=True)
     if pe is None or pe <= 0:
-        return "<span style='color:#666;'>本益比 —（虧損或無資料）</span>"
+        return f"<span style='color:#666;'>本益比 —（虧損或無資料）</span>{peer}"
     color = ("#4caf50" if pe < 12 else "#a9e34b" if pe < 20
              else "#ff9800" if pe < 35 else "#f44336")
     dy = f"　殖利率 {dividend_yield * 100:.1f}%" if dividend_yield else ""
-    return f"本益比 <b style='color:{color};'>{pe:.1f}</b>{dy}"
+    return f"本益比 <b style='color:{color};'>{pe:.1f}</b>{dy}{peer}"
 
 
 def horizon_cells(horizon: dict, selected_key=None, show_legend=True,
@@ -255,23 +292,27 @@ def health_grade(fund_score) -> dict:
 def health_cell(fund_score, min_width=88, has_financials=True,
                 total_score=None) -> str:
     """
-    綜合評分 —— 顯示成**體質等級**，不是買賣動作。
+    基本面分 —— 顯示成**體質等級**，不是買賣動作。
 
     ⚠️ 這是使用者實際踩到的坑：卡片上「趨勢結構分 99 ★」旁邊緊接著一個
     「⛔ 建議出場」，而那個動作是從**綜合評分**算的（`_action_for(total_score)`），
     它的數字卻排在更右邊。等於把 A 的結論貼在 B 的數字旁邊，
     使用者只能問「到底該看哪個」。
 
-    體質是**基本面分**（營收成長／ROE／淨利率／負債／估值），不是綜合評分。
+    體質是**基本面分**（營收成長／ROE／淨利率／毛利率相對同業／負債），
+    **不含估值**（2026-09-15 移出），也不是綜合評分。
     綜合評分縮成底下一行小字，因為它混了 35% 技術分（與趨勢結構分重複）、
     15% 新聞與 15% 分析師目標價，當「體質」看名實不符。
 
     has_financials=False 會明講「無財報資料」而不是給一個看起來正常的數字。
-    全市場粗掃只有本益比／淨值比／殖利率，`calculate_fundamental_score` 缺項
-    就不加減分，於是**沒資料的股票會停在 50 分**，和「各項剛好市場中位」的 56
-    幾乎分不出來。實測粗掃 vs 實算：台積電 50→**80**、台泥 51→**27**、
-    聯發科 36→51，全距 54 分。不標出來的話，任何以基本面為條件的篩選
-    都會把「查無資料」當成「體質中等」放行。
+    `calculate_fundamental_score` 缺項就不加減分，於是**沒資料的股票會停在
+    50 分**，和「各項剛好市場中位」的 56 幾乎分不出來——不標出來的話，
+    任何以基本面為條件的篩選都會把「查無資料」當成「體質中等」放行。
+
+    ⚠️ 2026-09-15 改用公開資訊觀測站的批次財報之後，**粗掃也算得出體質分**
+    （涵蓋約 99%），所以 has_financials=False 的意思已經不是「還沒深度分析」，
+    而是「官方批次財報查無這一檔」。兩條路徑用同一個判準
+    （`fundamental.analyze_fundamentals` 回傳的 has_financials）。
     """
     if fund_score is None:
         return f"<div style='min-width:{min_width}px;'></div>"
@@ -279,8 +320,10 @@ def health_cell(fund_score, min_width=88, has_financials=True,
         return (f"<div style='min-width:{min_width}px;text-align:center;padding:5px 8px;'>"
                 f"<div style='font-size:20px;font-weight:800;color:#666;line-height:1;'>—</div>"
                 f"<div style='font-size:10px;color:#aaa;margin-top:2px;'>體質</div>"
-                f"<div style='font-size:9px;color:#ffa726;' title='全市場粗掃只有估值面"
-                f"資料，沒有 ROE／營收成長／淨利率，算不出體質。'>無財報資料</div></div>")
+                f"<div style='font-size:9px;color:#ffa726;' title='公開資訊觀測站的"
+                f"批次財報查無這一檔（全市場涵蓋約 99%），沒有 ROE／營收成長／淨利率／"
+                f"毛利率，算不出體質。不是「還沒深度分析」——粗掃也算得出體質分。'>"
+                f"無財報資料</div></div>")
     g = health_grade(fund_score)
     label, color = g["label"], g["color"]
     sub = ("" if total_score is None else
@@ -357,16 +400,73 @@ def divergence_note(trend_score, fund_score, has_financials=True) -> str:
             f"border-radius:4px;'>{icon} {txt}</div>")
 
 
+# 說明用的實例股票：體質優／中／弱各一檔，看得出分數跨度。
+# 台泥刻意留著——它是「水泥業同業不足 10 檔 → 毛利率那一項不計分」的例子。
+_HEALTH_EXAMPLES = [("2330", "台積電"), ("2454", "聯發科"), ("1101", "台泥")]
+
+
+def health_examples() -> str:
+    """
+    說明頁的實例 —— **即時算，不寫死**。
+
+    ⚠️ 這裡原本是一張手寫表（台積電 → 77、聯發科 → 60）。加入「毛利率（相對同業）」
+       之後實際分數變成 82 / 62，而畫面上的數字沒人會記得改——這正是本專案
+       已經犯過四次的「換了模型、文字沒跟著改」。`check_consistency.py` 只抓
+       回測數字與門檻數字，抓不到這一類，所以直接改成生成式。
+
+    走的路徑與 `universe.scan_universe` 逐字相同（官方批次財報 + 官方快照 +
+    `attach_peer_metrics`），所以這張表上的分數與卡片上的一定一致。
+    取不到資料時回傳空字串，寧可不顯示也不要印一組沒有根據的數字。
+    """
+    try:
+        from services.financials import get_bulk_fundamentals
+        from services.universe import get_full_market_snapshot
+        from services.fundamental import (
+            calculate_fundamental_score, attach_peer_metrics,
+        )
+        bulk = get_bulk_fundamentals()
+        snap = get_full_market_snapshot()
+    except Exception:
+        return ""
+
+    lines = []
+    for sid, name in _HEALTH_EXAMPLES:
+        fin = bulk.get(sid) or {}
+        meta = snap.get(sid) or {}
+        if not fin:
+            continue
+        fundamentals = {
+            "pe_ratio": meta.get("pe"), "pb_ratio": meta.get("pb"),
+            "dividend_yield": meta.get("dy"),
+            "roe": fin.get("roe"), "profit_margin": fin.get("profit_margin"),
+            "revenue_growth": fin.get("revenue_growth"),
+            "debt_to_equity": fin.get("debt_to_equity"),
+            "gross_margin": fin.get("gross_margin"),
+        }
+        try:
+            attach_peer_metrics(fundamentals, sid)
+            score, reasons = calculate_fundamental_score({}, fundamentals)
+        except Exception:
+            continue
+        detail = "　/　".join(reasons) if reasons else "各項皆無資料，停在中性 50"
+        lines.append(f"- **{sid} {name} → {score}**　{detail}")
+    return "\n".join(lines) + "\n" if lines else ""
+
+
 def health_explainer() -> str:
     """
     體質分怎麼算的 —— 使用者直接問過，寫在畫面上而不是只留在程式碼裡。
 
     等級界線由 HEALTH_BANDS 生成；因子點數表對應
     `fundamental.calculate_fundamental_score()`，改那邊的分級時要一起改這裡。
+
+    ⚠️ 加入「毛利率（相對同業）」後已重新量過：掃描池 875 檔的分位
+    （p25=36、中位=52、p75=64、p90=73）與加入前幾乎相同，
+    所以 HEALTH_BANDS **不需要**跟著調。
     """
     bands = "　→　".join(f"**{lab}** ≥{bar}" for bar, lab, _ in HEALTH_BANDS)
     return f"""
-**體質分＝四個「賺不賺錢」的因子，不含估值。**
+**體質分＝五個「賺不賺錢」的因子，不含估值。**
 
 每個因子對照**台股實際分位數**給正負點（不是課本上的絕對規則），加總成 raw，再：
 
@@ -379,9 +479,21 @@ def health_explainer() -> str:
 | ROE | p25≈9%、p50≈15.5%、p75≈23% | +14 ～ −16 |
 | 營收年增 | p25≈10%、p50≈23%、p75≈37% | +12 ～ −14 |
 | 淨利率 | p25≈7.6%、p50≈14.6%、p75≈28% | +10 ～ −14 |
+| **毛利率（相對同業）** | p25≈−8.7pp、p50≈0pp、p75≈+10.9pp、p90≈+23pp | +10 ～ −10 |
 | 負債權益比 | p50≈30、p75≈81 | +5 ～ −12 |
 
 等級（對齊全市場分位：中位 52、p75 64、p90 70）：{bands}
+
+### 毛利率為什麼要「相對同業」
+毛利率**極度吃產業**：產業中位數從生技醫療 41% 到電子通路 8.3%，差 33 個百分點；
+個股層級台積電 67% vs 鴻海 6.2%。直接套全市場級距等於系統性地獎勵半導體／生技、
+處罰通路組裝——那不是體質差，是商業模式不同（跟金融業不計負債權益比同一個道理）。
+所以這一項量的是「**在自己的產業裡贏不贏同業**」，單位是百分點。
+同業中位數取自官方產業別分類，檔數不足的產業不計分。
+
+已經有淨利率了為什麼還要它：毛利率在損益表**上半部**，不會被業外一次性損益汙染；
+而且它量的是相對位置，與淨利率的絕對水準是不同訊號。點數刻意給得比 ROE 小
+（±10 vs ±16），因為兩者仍有部分重疊。
 
 ### 為什麼不含本益比與殖利率
 品質與價值在因子投資裡是**兩個獨立因子**，分開的理由正是它們常常負相關
@@ -401,14 +513,9 @@ def health_explainer() -> str:
 鑑別力。改用市場分位當基準再壓縮之後，即使每項都拿滿也只到約 89 分，
 強者之間的排序才留得住。
 
-**實例**
-| | 台積電 → 77 | 聯發科 → 60 | 台泥 → 34 |
-|---|---|---|---|
-| ROE | 39.8%　前段 (+14) | 22.9%　優於中位 (+8) | 2.8%　偏低 (−8) |
-| 營收年增 | 39.3%　優於中位 (+7) | 5.8%　落後 (−3) | 2.7%　落後 (−3) |
-| 淨利率 | 53.2%　前段 (+10) | 16.1%　優於中位 (+5) | 4.6%　偏薄 (−6) |
-
-台積電本益比 27.9、聯發科 75.3，但**兩者都不影響體質分**——貴不貴請看本益比徽章。
+**實例**（即時算，不是寫死的；與卡片走同一條路徑）
+{health_examples()}
+本益比完全不影響上面任何一個數字——貴不貴請看本益比徽章。
 
 **三個限制**
 1. **50 分不是「中等」，是「什麼都沒加減」**。缺欄位就跳過不扣分，
@@ -469,10 +576,10 @@ def score_legend() -> str:
 | 卡片上的數字 | 代表什麼 | 能當選股指標嗎 |
 |---|---|---|
 | **趨勢結構分** ★ | 距季線／均線排列／季線斜率在**當日全市場的百分位**。80 分＝趨勢強度贏過八成股票 | {trend_line} |
-| **體質（基本面）** | ROE／營收成長／淨利率／負債，對照台股實際分位數校準。**不含估值** | 🟡 體質好不代表會漲——這是**風險面**，不是進場時機 |
+| **體質（基本面）** | ROE／營收成長／淨利率／**毛利率（相對同業）**／負債，對照台股實際分位數校準。**不含估值** | 🟡 體質好不代表會漲——這是**風險面**，不是進場時機 |
 | 本益比徽章 | 貴不貴（估值）。刻意與體質分開：好公司通常貴，混在一起兩個問題都答不清 | ⛔ 單獨用會虧錢（見策略對照表的超低本益比） |
 | 綜合評分（小字） | {_wnote}。有 35% 是技術分，與趨勢結構分重複計算同一件事 | {total_line} |
-| 潛力分 | 低基期×題材，找「還沒漲的」 | ⛔ 持有3個月{fmt(ct)} |
+| 潛力分 | 低基期／成長／上漲空間，找「還沒漲的」。**題材已不計分** | ⛔ 持有3個月{fmt(ct)} |
 | 極短／短／中 週期評分 | 各持有期的技術強弱（1–3天／1週／1個月） | 🟡 越短週期越弱，僅供參考 |
 | 本益比 | 估值 | ⛔ **單獨用會虧錢**：持有3個月{fmt(lp)} |
 | 融資使用率 | 籌碼風險 | ⛔ 回測顯示無選股訊號，只當**風險警示**用 |
@@ -497,10 +604,10 @@ def score_legend() -> str:
 它沒有進場時機的預測力，所以卡片上不會用它說「買進」或「出場」。
 兩者差距大時，卡片下方會直接寫出該怎麼讀，不必自己猜。
 
-⚠️ **體質只在深度分析過的股票上算得出來。** 全市場粗掃只有本益比／淨值比／
-殖利率，沒有 ROE／營收成長／淨利率，那些卡片會標「無財報資料」而不是給一個
-看起來正常的分數——因為缺項不加減分，沒資料的會停在 50 分，
-和「各項剛好市場中位」的 56 分幾乎分不出來。
+⚠️ **體質分全市場都算得出來**（公開資訊觀測站的批次財報，涵蓋約 99%），
+不必深度分析。少數查不到的會標「無財報資料」而不是給一個看起來正常的分數
+——因為缺項不加減分，沒資料的會停在 50 分，和「各項剛好市場中位」的 56 分
+幾乎分不出來。
 """
 
 

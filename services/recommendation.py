@@ -3,7 +3,9 @@ Recommendation engine.
 
 Weights (when target price available):
   Technical   35%  — RSI, MACD, KD, MA, Bollinger, volume
-  Fundamental 35%  — P/E, ROE, revenue growth, margin, dividend
+  Fundamental 35%  — ROE, revenue growth, profit margin, debt/equity
+                     (quality only — P/E and dividend yield were moved out of the
+                      score on 2026-09-15; see fundamental.calculate_fundamental_score)
   News        15%  — category-weighted sentiment
   Target Price 15% — upside/downside vs weighted target price
 
@@ -433,7 +435,7 @@ def build_rationale(rec: dict, volume_signal=None, margin_signal=None) -> dict:
     # Rank dimensions by how far they sit from neutral (50)
     dims = [
         ("技術面", rec.get("tech_score", 50), "均線/MACD/KD 等技術指標"),
-        ("基本面", rec.get("fund_score", 50), "本益比/ROE/營收成長等財務體質"),
+        ("基本面", rec.get("fund_score", 50), "ROE/營收成長/淨利率/負債等財務體質"),
         ("消息面", rec.get("news_score", 50), "近期新聞與催化劑"),
     ]
     if rec.get("tp_score") is not None:

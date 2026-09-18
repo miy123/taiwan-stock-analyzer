@@ -25,6 +25,8 @@
 ROE／淨利率／營收成長／負債比全市場逐檔都算得出來。
 """
 
+import threading
+
 import requests
 import streamlit as st
 import yfinance as yf
@@ -146,6 +148,20 @@ def get_full_market_snapshot(include_otc: bool = True) -> dict:
     return snap
 
 
+# 進度回呼刻意**不當參數傳**，而是放在 thread-local 裡。
+#
+# ⚠️ 這是一個真的踩到的坑：回呼是個 closure，無法被 st.cache_data 雜湊，
+#    所以先前寫成「有 progress_cb 就略過快取」。但 App 的全市場掃描**一律**
+#    帶著進度條回呼（app.render_smart_screener_page 的 `_cb`），於是
+#    `_download_history_cached` 從來沒有被呼叫過 —— 整個 persist="disk"
+#    快取對 App 是死的，每次按「開始掃描」都把全市場幾百 MB 重抓一遍。
+#    （CLAUDE.md 記的「冷啟 4.58s → 命中 0.01s」是直接呼叫量出來的，不是 App 路徑。）
+#
+#    放 thread-local 就不進快取鍵，命中時內層根本不執行、也就不會回報進度
+#    ——那沒關係，因為命中是瞬間的事，外層會直接把進度條補到 100%。
+_progress = threading.local()
+
+
 @st.cache_data(ttl=3600, show_spinner=False, persist="disk", max_entries=4)
 def _download_history_cached(codes_key: tuple, period: str, chunk: int,
                              otc_codes: frozenset):
@@ -156,9 +172,11 @@ def _download_history_cached(codes_key: tuple, period: str, chunk: int,
     導致每次重新掃描都把幾百 MB 的歷史資料重抓一遍。加上 persist="disk" 後，
     連 Streamlit 重啟都還留著，換策略／調流動性門檻都不必重抓。
 
-    參數必須是可雜湊的（tuple / frozenset），否則 st.cache_data 無法當快取鍵。
+    參數必須是可雜湊的（tuple / frozenset），否則 st.cache_data 無法當快取鍵；
+    進度回呼因此走 `_progress`（見上方說明）。
     """
-    return _do_download(list(codes_key), period, chunk, None,
+    return _do_download(list(codes_key), period, chunk,
+                        getattr(_progress, "cb", None),
                         lambda c: ".TWO" if c in otc_codes else ".TW")
 
 
@@ -170,13 +188,22 @@ def download_history_bulk(codes, period="2y", chunk=120, progress_cb=None,
 
     suffix_of: code → yfinance suffix. 上市為 '.TW'、上櫃為 '.TWO'；
                沒給就一律當上市（維持舊行為）。
-    use_cache: 走 st.cache_data（含硬碟持久化）。有進度回呼時自動略過快取，
-               因為進度回呼無法被雜湊，且第二次命中快取時也不需要進度條。
+    use_cache: 走 st.cache_data（含硬碟持久化）。**帶進度回呼也照樣走快取**
+               ——回呼放 thread-local，不進快取鍵（見 `_progress`）。
     """
-    if use_cache and progress_cb is None:
+    if use_cache:
         otc = frozenset(c for c in codes
                         if suffix_of and suffix_of(c) == ".TWO")
-        return _download_history_cached(tuple(sorted(codes)), period, chunk, otc)
+        _progress.cb = progress_cb
+        try:
+            frames = _download_history_cached(
+                tuple(sorted(codes)), period, chunk, otc)
+        finally:
+            _progress.cb = None
+        # 命中快取時內層沒跑，進度條會停在 0；直接補到底。
+        if progress_cb:
+            progress_cb(len(codes), len(codes))
+        return frames
     return _do_download(codes, period, chunk, progress_cb, suffix_of)
 
 
@@ -221,7 +248,11 @@ def scan_universe(min_turnover=1e7, period="2y", progress_cb=None, include_otc=T
     identical for every stock, so they don't distort the relative ranking; the
     finalists get the real values in the enrichment pass.
 
-    Returns list of row dicts (preliminary scores), plus the snapshot used.
+    Returns (rows, snapshot, frames)：
+      rows   — 每檔一筆的粗掃結果
+      snap   — 用到的全市場快照
+      frames — {code: 原始日線}。**一起回傳是為了讓深度分析階段不必再抓一次**，
+               順便保證兩條路徑吃的是同一根 K 線。
     """
     from services.technical import (
         calculate_indicators, calculate_technical_score, calculate_horizon_scores,
@@ -231,14 +262,13 @@ def scan_universe(min_turnover=1e7, period="2y", progress_cb=None, include_otc=T
     from services.scoring import (
         raw_factors as _raw_factors, score_cross_section, save_distribution,
     )
-    from services.fundamental import calculate_fundamental_score
+    from services.fundamental import calculate_fundamental_score, attach_peer_metrics
     from services.financials import get_bulk_fundamentals
-    from services.recommendation import (
-        generate_recommendation, generate_timeframe_recommendations,
-    )
+    from services.recommendation import generate_recommendation
     from services.potential import calculate_potential_score
     from services.margin import get_latest_margin_table, calculate_margin_signal
     from services.market import get_market_regime
+    from services.limit_up import streaks_from_closes, MAX_DAYS_AGO, MIN_STREAK
 
     # ⚠️ 一律以「最寬的門檻」下載**並評分**，使用者選的門檻在畫面端過濾。
     #
@@ -262,6 +292,14 @@ def scan_universe(min_turnover=1e7, period="2y", progress_cb=None, include_otc=T
     # 全市場財報（3 個批次端點，涵蓋 1959/1971 檔）。沒有它的話體質分只能靠
     # 本益比／淨值比／殖利率，全市場幾乎每一檔都會停在中性 50 分而標「無財報資料」。
     bulk_fin = get_bulk_fundamentals()
+    # 順手把這一期的財報落地。官方端點只給當期、補不回來，所以**唯一**能累積
+    # 歷史的方式就是每次看到就存（見 services/fin_history）。資料已經在手上，
+    # 零額外請求；同一期別重複存只是覆蓋同一個檔案。
+    try:
+        from services.fin_history import save_snapshot
+        save_snapshot(bulk_fin)
+    except Exception:
+        pass
     _, margin_table = get_latest_margin_table()
     regime = get_market_regime()
     rows = []
@@ -283,7 +321,11 @@ def scan_universe(min_turnover=1e7, period="2y", progress_cb=None, include_otc=T
                 "profit_margin": _fin.get("profit_margin"),
                 "revenue_growth": _fin.get("revenue_growth"),
                 "debt_to_equity": _fin.get("debt_to_equity"),
+                "gross_margin": _fin.get("gross_margin"),
             }
+            # 相對同業的欄位由共用實作補上，個股頁走的是
+            # analyze_fundamentals() → 同一個 attach_peer_metrics()
+            attach_peer_metrics(fundamentals, code)
             fund_score, _ = calculate_fundamental_score({}, fundamentals)
 
             volume_signal = analyze_volume_price(df)
@@ -297,14 +339,18 @@ def scan_universe(min_turnover=1e7, period="2y", progress_cb=None, include_otc=T
                 volume_signal=volume_signal, market_regime=regime,
             )
             horizon_tech = calculate_horizon_scores(df)
-            tfr = generate_timeframe_recommendations(
-                horizon_tech, fund_score, 50, target_upside_pct=None,
-                margin_signal=margin_signal, volume_signal=volume_signal,
-            )
             potential = calculate_potential_score(
                 df, {}, fundamentals, 50, {"positive": [], "negative": []}, None
             )
             risk = calculate_risk_plan(df)
+
+            # 連日漲停：我們手上就有這檔的日線，直接算。
+            # 先前這件事外包給 `get_limit_up_stocks()`，而它的候選池是
+            # 「今日漲停 + 31 檔熱門股 + 4 檔離線 fallback 上櫃表」，
+            # 所以「三天前連漲停、今天沒漲停」的股票永遠掃不到。
+            lu = streaks_from_closes(df["Close"])
+            is_lu = (lu["max_streak"] >= MIN_STREAK
+                     and lu["last_days_ago"] <= MAX_DAYS_AGO)
 
             close = float(df["Close"].iloc[-1])
             prev = float(df["Close"].iloc[-2]) if len(df) > 1 else close
@@ -317,10 +363,12 @@ def scan_universe(min_turnover=1e7, period="2y", progress_cb=None, include_otc=T
             # varying parts (低基期 / 技術 / 估值) instead, then enrich the top.
             lb = potential.get("low_base", 50)
             prelim_sleeper = 0.60 * lb + 0.25 * tech_score + 0.15 * fund_score
-            # 回測最佳策略（長線分 + 量價未轉弱）的初篩分數
-            long_sc = next((h["score"] for h in tfr if h["key"] == "long"), 50)
             v_adj = volume_signal.get("score_adj", 0)
-            prelim_bestproven = long_sc + (5 if v_adj >= 0 else -15)
+            # ⚠️ 這裡曾經有一個 `prelim_bestproven`，用 generate_timeframe_recommendations
+            #    的 long 分當初篩鍵。掃描時目標價為 None、權重重新正規化之後，
+            #    它實際上是 64% 基本面分 + 29% 純技術長線分，趨勢結構分佔 0%——
+            #    而以趨勢分排序的三個策略都指向它，等於深度分析挑的是另一批股票。
+            #    趨勢分本來就在這個函式結尾算好放進每一列，直接用 `trend_score` 即可。
             # 超低本益比：越低越前面（排序用負值）。排除 <3 倍者——多半是業外一次性
             # 收益灌大 EPS 造成的假低估（價值陷阱），而非真的便宜。
             _pe = meta.get("pe")
@@ -329,9 +377,9 @@ def scan_universe(min_turnover=1e7, period="2y", progress_cb=None, include_otc=T
             rows.append({
                 "prelim_sleeper": round(prelim_sleeper, 1),
                 "prelim_momentum": rec["total_score"],
-                "prelim_bestproven": round(prelim_bestproven, 1),
                 "prelim_lowpe": round(prelim_lowpe, 2),
-                # bestproven 的最終過濾需要它（先前只存在深度分析結果中）
+                # 量價方向。`bestproven` 策略整併掉之後目前沒有篩選條件在讀它，
+                # 但兩條路徑都有帶（app._analyze_one_stock 也有），保留當診斷欄位。
                 "volume_adj": v_adj,
                 "stock_id": code,
                 "company_name": meta.get("name") or code,
@@ -371,7 +419,10 @@ def scan_universe(min_turnover=1e7, period="2y", progress_cb=None, include_otc=T
                 "overheat": overheat_flag(pe=meta.get("pe"), r60=r60,
                                           news_score=None),
                 "turnover": meta.get("turnover"),
-                "is_limit_up": False, "max_streak": 0, "last_days_ago": 0,
+                "is_limit_up": is_lu,
+                "max_streak": lu["max_streak"],
+                "trailing_streak": lu["trailing_streak"],
+                "last_days_ago": lu["last_days_ago"],
                 "exchange": meta.get("market", "TWSE"), "limit_up_pct": None,
                 "preliminary": True,   # news / target price not yet fetched
             })
@@ -388,4 +439,4 @@ def scan_universe(min_turnover=1e7, period="2y", progress_cb=None, include_otc=T
         r.pop("_factors", None)
     save_distribution(facts)
 
-    return rows, snap
+    return rows, snap, frames

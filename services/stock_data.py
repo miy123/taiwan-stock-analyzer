@@ -110,15 +110,23 @@ def get_ticker_info(stock_id: str) -> dict:
 
 @st.cache_data(ttl=86400, show_spinner=False)
 def get_financials(stock_id: str) -> dict:
+    """
+    yfinance 財務報表 —— **只給個股分析頁的營收／淨利走勢圖用**。
+
+    ROE／淨利率／營收成長／負債比一律走公開資訊觀測站的批次財報
+    （services/financials.py），不從這裡拿，否則兩條路徑會是兩把尺。
+
+    ⚠️ 這裡原本還抓 balance_sheet / cash_flow / quarterly_balance 三張表，
+    每張都是一次獨立請求，但**全專案沒有任何地方讀它們**——
+    `fundamental.analyze_fundamentals()` 只讀 income_stmt 與 quarterly_income。
+    已移除；要加回來之前先確認真的有呼叫端。
+    """
     ticker = _get_ticker_symbol(stock_id)
     stock = yf.Ticker(ticker)
     try:
         return {
             "income_stmt": stock.financials,
-            "balance_sheet": stock.balance_sheet,
-            "cash_flow": stock.cashflow,
             "quarterly_income": stock.quarterly_financials,
-            "quarterly_balance": stock.quarterly_balance_sheet,
         }
     except Exception:
         return {}

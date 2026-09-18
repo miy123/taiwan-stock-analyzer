@@ -25,6 +25,27 @@ def _normalize_dividend_yield(info: dict):
     return dy / 100 if dy > 0.5 else dy
 
 
+def attach_peer_metrics(fundamentals: dict, stock_id) -> dict:
+    """
+    把「相對同業」的欄位補進 fundamentals —— **兩條路徑共用這一個實作**。
+
+    為什麼要獨立成函式：個股頁走 `analyze_fundamentals()`，全市場掃描
+    （`universe.scan_universe`）為了速度自己組 fundamentals dict，兩邊各算一次
+    就會有兩把尺——本專案在本益比與體質分上已經踩過兩次。
+
+    目前只有毛利率需要相對同業（它產業差異極大，見
+    `sector.industry_gross_margin`）。ROE／淨利率／營收成長的產業差異沒有
+    大到必須相對化，維持全市場級距。
+    """
+    from services.sector import peer_gross_margin
+    p = peer_gross_margin(stock_id, fundamentals.get("gross_margin"))
+    if p:
+        fundamentals["gross_margin_peer"] = p
+        if p.get("rel_pp") is not None:
+            fundamentals["gross_margin_rel_pp"] = p["rel_pp"]
+    return fundamentals
+
+
 def analyze_fundamentals(info: dict, financials: dict, stock_id: str = None) -> dict:
     """
     ⚠️ ROE／淨利率／營收成長／負債比**優先採用公開資訊觀測站的批次財報**
@@ -69,7 +90,8 @@ def analyze_fundamentals(info: dict, financials: dict, stock_id: str = None) -> 
             fin = get_bulk_fundamentals().get(stock_id) or {}
         except Exception:
             fin = {}
-        for k in ("roe", "profit_margin", "revenue_growth", "debt_to_equity"):
+        for k in ("roe", "profit_margin", "revenue_growth", "debt_to_equity",
+                  "gross_margin", "bvps"):
             if fin.get(k) is not None:
                 result[k] = fin[k]
         # 估值也走官方快照（證交所 BWIBBU／櫃買 peratio），與全市場掃描同一把尺。
@@ -94,6 +116,14 @@ def analyze_fundamentals(info: dict, financials: dict, stock_id: str = None) -> 
             result["debt_to_equity"] = None
         if fin.get("period"):
             result["fin_period"] = fin["period"]
+        # 「這一檔在官方批次財報裡有沒有資料」—— **兩條路徑的唯一判準**。
+        # `universe.scan_universe` 用的是同一個表達式（`bool(_fin)`）。
+        # 先前 `app._analyze_one_stock` 直接寫死 True，於是官方查無的那幾檔
+        # 在粗掃時標「無財報資料」、被深度分析之後卻變成一個看似正常的分數
+        # （分數其實是 yfinance 補的 TTM，跟全市場不是同一把尺），
+        # 體質門檻也會因此對同一檔給出前後不一的結論。
+        result["has_financials"] = bool(fin)
+        attach_peer_metrics(result, stock_id)
 
     # Revenue trend from income statement
     income = financials.get("income_stmt")
@@ -211,6 +241,35 @@ def calculate_fundamental_score(info: dict, fundamentals: dict) -> tuple[int, li
             raw += 5; reasons.append(f"淨利率 {m:.1f}%，優於市場中位 (+5)")
         elif m < 6:
             raw -= 6; reasons.append(f"淨利率 {m:.1f}%，獲利能力偏薄 (-6)")
+
+    # 毛利率 —— **相對同業**，不是絕對水準。
+    #
+    # 為什麼要相對：毛利率產業差異極大（產業中位數 生技醫療 41% vs 電子通路 8.3%，
+    # 差 33 個百分點；台積電 67% vs 鴻海 6.2%）。用全市場級距等於系統性地
+    # 獎勵半導體/生技、處罰通路組裝——那不是體質差，是商業模式不同，
+    # 跟金融業不計負債權益比是同一個道理。
+    #
+    # 為什麼還要它（已經有淨利率了）：毛利率在損益表**上半部**，不會被業外
+    # 一次性損益汙染；而且這裡量的是「在自己的產業裡贏不贏同業」，
+    # 與淨利率量的「絕對賺錢能力」是不同的訊號。點數刻意給得比 ROE 小
+    # （±10 vs ±16），因為兩者仍有部分重疊。
+    #
+    # 級距取自全市場實際分位（1903 檔：p10=−17.2、p25=−8.7、p50=0.0、
+    # p75=+10.9、p90=+23.1 百分點）。
+    gm_rel = fundamentals.get("gross_margin_rel_pp")
+    # 極端值防護：有公司毛利率是 −8860 百分點（營收趨近於零），
+    # 那是資料退化不是體質差，不要讓它主宰分數。
+    if gm_rel is not None and -100 <= gm_rel <= 100:
+        if gm_rel >= 23:
+            raw += 10; reasons.append(f"毛利率高出同業 {gm_rel:.0f} 個百分點，位居產業前段 (+10)")
+        elif gm_rel >= 11:
+            raw += 6; reasons.append(f"毛利率高出同業 {gm_rel:.0f} 個百分點 (+6)")
+        elif gm_rel >= 3:
+            raw += 2; reasons.append(f"毛利率略高於同業 {gm_rel:.0f} 個百分點 (+2)")
+        elif gm_rel <= -17:
+            raw -= 10; reasons.append(f"毛利率低於同業 {-gm_rel:.0f} 個百分點，產業後段 (-10)")
+        elif gm_rel <= -9:
+            raw -= 5; reasons.append(f"毛利率低於同業 {-gm_rel:.0f} 個百分點 (-5)")
 
     # Debt / equity — market p50≈30, p75≈81
     d2e = fundamentals.get("debt_to_equity")

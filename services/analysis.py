@@ -42,7 +42,8 @@ MARGIN_TREND_DAYS = 20
 PERIOD_ROWS = {"3mo": 63, "6mo": 126, "1y": 252, "2y": 504, "3y": 756}
 
 
-def prepare_frame(stock_id: str, as_of_date=None, use_intraday: bool = True):
+def prepare_frame(stock_id: str, as_of_date=None, use_intraday: bool = True,
+                  raw=None):
     """
     Fetch and prepare the scoring frame.
 
@@ -51,9 +52,19 @@ def prepare_frame(stock_id: str, as_of_date=None, use_intraday: bool = True):
       df_full  — the same frame WITHOUT truncation (for backtest verification)
       intraday — the intraday quote dict (or {})
       has_intraday — whether today's bar was patched with a live quote
+
+    raw: 呼叫端已經持有的日線（欄位需含 OHLCV）。全市場掃描已經批次下載過
+         每一檔的 2 年日線，深度分析階段若不傳進來就會**逐檔再抓一次**
+         （約 40 檔 × 1 秒），而且兩條路徑走的是不同的 yfinance 端點
+         （`yf.download` vs `Ticker.history`），K 線可能有細微差異。
+         回測模式需要 5 年，所以只在非回測時採用。
     """
     is_backtest = as_of_date is not None
-    raw = get_stock_data(stock_id, BACKTEST_PERIOD if is_backtest else SCORING_PERIOD)
+    if raw is not None and not is_backtest and not raw.empty:
+        raw = raw.copy()     # 呼叫端的快取字典沒有 st.cache_data 的複製保護
+    else:
+        raw = get_stock_data(stock_id,
+                             BACKTEST_PERIOD if is_backtest else SCORING_PERIOD)
     if raw is None or raw.empty:
         return None, None, {}, False
 

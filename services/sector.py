@@ -69,6 +69,125 @@ def get_industry_map() -> dict:
     return out
 
 
+# 同業本益比至少要幾檔才顯示。桶子太小，中位數就是一兩檔說了算——
+# 實測玻璃陶瓷全市場只有 5 檔，中位數 49.9 完全由極端值決定。
+PEER_MIN_N = 10
+
+
+def _median_by_industry(value_by_code, min_n=None) -> dict:
+    """
+    {產業: {median, n}} —— 產業分組取中位數的**唯一實作**。
+
+    一律用中位數而非平均：單一極端值（聯發科 73 倍本益比）就能把平均拉歪。
+    檔數不足 `min_n` 的產業直接不回傳，寧可不顯示也不要給一個由一兩檔
+    決定的「同業水準」。
+    """
+    min_n = PEER_MIN_N if min_n is None else min_n
+    ind = get_industry_map()
+    buckets = {}
+    for code, v in value_by_code.items():
+        meta = ind.get(code)
+        if not meta or meta["code"] in ("", "80") or v is None:   # 排除管理股票
+            continue
+        buckets.setdefault(meta["name"], []).append(v)
+    return {n: {"median": stat.median(x), "n": len(x)}
+            for n, x in buckets.items() if len(x) >= min_n}
+
+
+def _peer_of(stock_id, value, table, mode) -> dict:
+    """
+    單檔對照的共用骨架。取不到分類、或同業檔數不足就回 {}。
+
+    mode 決定「相對」怎麼表示，兩種單位不能混：
+      "rel_pct" —— 相對**比例**（%）。用在本益比：27.6 vs 中位 27.0 ＝ +2%。
+      "rel_pp"  —— 相對**百分點**。用在毛利率等本身就是比率的指標：
+                   低毛利產業 8.3% → 12% 是 +45%，但實質只差 3.7 個百分點，
+                   用比例會把低基期產業的差距誇大。
+    """
+    if not stock_id:
+        return {}
+    meta = get_industry_map().get(str(stock_id))
+    if not meta:
+        return {}
+    row = table.get(meta["name"])
+    if not row:
+        return {}
+    out = {"industry": meta["name"], "median": row["median"], "n": row["n"]}
+    if value is not None:
+        med = row["median"]
+        if mode == "rel_pct":
+            out["rel_pct"] = (value / med - 1) * 100 if med else None
+        else:
+            out["rel_pp"] = (value - med) * 100
+    return out
+
+
+@st.cache_data(ttl=43200, show_spinner=False)   # 12h —— 跟著財報走
+def industry_gross_margin() -> dict:
+    """
+    各產業的毛利率中位數 —— {產業: {median(分數), n}}。
+
+    為什麼一定要相對同業：毛利率**極度吃產業**。實測產業中位數
+    生技醫療 41.0% vs 電子通路 8.3%，差 33 個百分點；個股層級
+    台積電 67.0% vs 鴻海 6.2%。直接套全市場級距等於系統性地給
+    半導體／生技加分、給通路組裝扣分——正是本專案量過四次的
+    「多加一層濾網反而更差」。
+    """
+    from services.financials import get_bulk_fundamentals
+    return _median_by_industry(
+        {c: v.get("gross_margin") for c, v in get_bulk_fundamentals().items()})
+
+
+def peer_gross_margin(stock_id, gross_margin=None) -> dict:
+    """
+    這一檔的毛利率相對同業 —— {"industry", "median", "n", "rel_pp"}。
+
+    `rel_pp` 的單位是**百分點**（percentage point）：毛利率 12% 而同業中位
+    8.3% ＝ +3.7pp。用百分點而不是相對比例，是因為低毛利產業的比例變化會
+    被放大（8.3% → 12% 是 +45%，但實質差距只有 3.7 個百分點）。
+
+    金融業沒有毛利率，回 {}。
+    """
+    return _peer_of(stock_id, gross_margin, industry_gross_margin(), "rel_pp")
+
+
+@st.cache_data(ttl=10800, show_spinner=False)
+def industry_pe() -> dict:
+    """
+    各產業的本益比中位數 —— {產業名稱: {"median": float, "n": int}}。
+
+    資料**全部來自已經在抓的兩份快照**（證交所／櫃買的官方本益比 +
+    公開資訊觀測站的官方產業別），不新增任何請求。
+    實測：1494 檔有本益比且可分類，落在 33 個產業。
+
+    ⚠️ 一律用**中位數**，不要用平均：聯發科 73 倍一檔就能把半導體拉歪
+    （160 檔的中位數是 26.6）。
+
+    ⚠️ **只能顯示，不准進任何分數。** 本專案量過純低本益比持有 3 個月
+    超額 −4.57%、t=−3.96，2026-09-15 才把估值移出體質分。「相對同業」這個
+    版本從未回測過，讓它進計分等於把剛修掉的錯再犯一次。
+    """
+    from services.universe import get_full_market_snapshot
+    # >200 倍多半是獲利趨近於零的極端值，排掉再取中位數
+    return _median_by_industry({
+        c: (v.get("pe") if (v.get("pe") is not None and 0 < v["pe"] <= 200) else None)
+        for c, v in get_full_market_snapshot().items()})
+
+
+def peer_pe(stock_id, pe=None) -> dict:
+    """
+    這一檔的同業對照 —— {"industry", "median", "n", "rel_pct"}，取不到就回 {}。
+
+    `pe` 由呼叫端傳入（它手上那個已經是官方來源的本益比），
+    這裡不自己再查一次，免得同一檔在不同地方用到兩個本益比。
+
+    同業檔數不足 PEER_MIN_N 時**寧可不顯示**，不要給一個由一兩檔決定的
+    「同業水準」讓使用者誤以為有代表性。
+    """
+    return _peer_of(stock_id, pe if (pe is not None and pe > 0) else None,
+                    industry_pe(), "rel_pct")
+
+
 def analyse_sectors(rows, min_members=4):
     """
     以掃描結果（rows，須含 stock_id 與 potential.r60 等）計算族群動能。

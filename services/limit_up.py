@@ -1,9 +1,17 @@
 """
 Find Taiwan stocks with consecutive limit-up (連日漲停) momentum.
 
+⚠️ **全市場的連日漲停不是在這裡算的。** `universe.scan_universe()` 逐檔跑過
+2 年日線時就順手呼叫 `streaks_from_closes()` 算好了，涵蓋全上市櫃、零額外請求。
+
+這個模組現在負責的是**今日確認漲停**（證交所／櫃買當日清單才有當日漲幅，
+而 yfinance 日線會落後盤中），以及熱門股池模式那條不跑全市場掃描的路徑。
+
 Strategy:
   1. TWSE STOCK_DAY_ALL CSV + 櫃買日收盤 → 今日確認漲停股（上市＋上櫃）
   2. Candidate pool: today_lu + POPULAR_STOCKS + OTC_STOCKS
+     （⚠️ 這個池子**不是全市場**：OTC_STOCKS 只有 4 筆離線 fallback。
+      全市場覆蓋請走 scan_universe，不要再擴充這個池子。）
   3. yfinance batch-fetch 15-day history → compute streak metrics for every candidate
   4. Rank by (max_streak DESC, last_days_ago ASC, volume DESC)
 
@@ -21,6 +29,49 @@ import streamlit as st
 _HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; TW-Stock-Analyzer/1.0)"}
 _LIMIT_THRESHOLD = 9.5   # %; Taiwan daily limit is +10%, 9.5 catches near-limit too
 _MIN_VOLUME      = 100_000  # shares — filter out illiquid / suspended stocks
+
+# 這三個常數是「連日漲停」的定義，全站共用（universe.scan_universe 也讀它們），
+# 免得兩條路徑對「算不算漲停股」有兩套標準。
+LOOKBACK_DAYS = 15   # 往回看幾個交易日
+MAX_DAYS_AGO  = 5    # 最後一次漲停必須在幾個交易日內
+MIN_STREAK    = 2    # 至少連續幾天才算「連日漲停」
+
+
+def streak_metrics(pct_vals) -> dict:
+    """
+    由「日漲跌幅 %」序列算連續漲停指標 —— **唯一實作**。
+
+    抽出來是因為全市場掃描（`universe.scan_universe`）已經逐檔拿著 2 年日線，
+    直接呼叫這個函式就能把**全市場**的連日漲停算出來，不必為了候選池再下載一次。
+    先前候選池是 `今日漲停 + POPULAR_STOCKS(31) + OTC_STOCKS(4)`，而 OTC_STOCKS
+    自己的註解就寫明它只是離線 fallback——結果「近 5 個交易日內連日漲停、
+    但今天沒漲停」的股票根本進不了候選池，`MAX_DAYS_AGO` 這個設計形同虛設。
+
+    回傳 {max_streak, trailing_streak, last_days_ago}；從未漲停時 last_days_ago=999。
+    """
+    max_s = current = 0
+    for v in pct_vals:
+        if v >= _LIMIT_THRESHOLD:
+            current += 1
+            max_s = max(max_s, current)
+        else:
+            current = 0
+    last_ago = 999
+    for i, v in enumerate(reversed(pct_vals)):
+        if v >= _LIMIT_THRESHOLD:
+            last_ago = i
+            break
+    # current 跑完迴圈仍在手上 = 以最新一天結尾的連續天數
+    return {"max_streak": max_s, "trailing_streak": current,
+            "last_days_ago": last_ago}
+
+
+def streaks_from_closes(close_series, lookback: int = LOOKBACK_DAYS) -> dict:
+    """由收盤價 Series 直接算 —— 給已經持有日線的呼叫端（全市場掃描）用。"""
+    tail = close_series.tail(lookback + 1)
+    if len(tail) < 2:
+        return {"max_streak": 0, "trailing_streak": 0, "last_days_ago": 999}
+    return streak_metrics((tail.pct_change().dropna() * 100).tolist())
 
 
 # ── 1. TWSE today's data ──────────────────────────────────────────────────────
@@ -161,7 +212,7 @@ def _fetch_tpex_today() -> list:
 # ── 2. Streak computation via yfinance ────────────────────────────────────────
 
 @st.cache_data(ttl=1800, show_spinner=False)
-def _compute_streaks(stock_ids_tuple: tuple, lookback: int = 15) -> dict:
+def _compute_streaks(stock_ids_tuple: tuple, lookback: int = LOOKBACK_DAYS) -> dict:
     """
     Batch-fetch yfinance price history for stock_ids and return streak metrics.
 
@@ -204,30 +255,8 @@ def _compute_streaks(stock_ids_tuple: tuple, lookback: int = 15) -> dict:
             if len(series) < 2:
                 continue
 
-            pct_vals = (series.pct_change().dropna() * 100).tolist()
-
-            # Max streak and trailing streak (consecutive ending at latest day)
-            max_s = current = 0
-            for v in pct_vals:
-                if v >= _LIMIT_THRESHOLD:
-                    current += 1
-                    max_s = max(max_s, current)
-                else:
-                    current = 0
-            trailing = current  # still at end of loop = trailing streak
-
-            # Days since last limit-up
-            last_ago = None
-            for i, v in enumerate(reversed(pct_vals)):
-                if v >= _LIMIT_THRESHOLD:
-                    last_ago = i
-                    break
-
-            results[sid] = {
-                "max_streak":      max_s,
-                "trailing_streak": trailing,
-                "last_days_ago":   last_ago if last_ago is not None else 999,
-            }
+            results[sid] = streak_metrics(
+                (series.pct_change().dropna() * 100).tolist())
 
         return results
     except Exception:
@@ -236,11 +265,8 @@ def _compute_streaks(stock_ids_tuple: tuple, lookback: int = 15) -> dict:
 
 # ── 3. Main public function ───────────────────────────────────────────────────
 
-_MAX_DAYS_AGO = 5   # filter out stocks whose last limit-up was > 5 trading days ago
-
-
 @st.cache_data(ttl=1800, show_spinner=False)
-def get_limit_up_stocks(top_n: int = 30, min_streak: int = 2) -> list:
+def get_limit_up_stocks(top_n: int = 30, min_streak: int = MIN_STREAK) -> list:
     """
     Return stocks with consecutive limit-up (連日漲停) momentum.
 
@@ -248,7 +274,7 @@ def get_limit_up_stocks(top_n: int = 30, min_streak: int = 2) -> list:
       - Today's TWSE limit-up stocks (confirmed by TWSE CSV)
       - POPULAR_STOCKS + OTC_STOCKS (checked via yfinance history)
 
-    Recency filter: last limit-up must be within _MAX_DAYS_AGO trading days.
+    Recency filter: last limit-up must be within MAX_DAYS_AGO trading days.
 
     Today-correction: yfinance data lags the current session. For stocks
     confirmed today by TWSE CSV, we patch trailing_streak and last_days_ago
@@ -267,7 +293,7 @@ def get_limit_up_stocks(top_n: int = 30, min_streak: int = 2) -> list:
     today_ids   = set(today_by_id)
 
     candidate_ids = sorted(today_ids | set(POPULAR_STOCKS) | set(OTC_STOCKS))
-    streak_info   = _compute_streaks(tuple(candidate_ids), lookback=15)
+    streak_info   = _compute_streaks(tuple(candidate_ids), lookback=LOOKBACK_DAYS)
 
     results = []
     for sid, sdata in streak_info.items():
@@ -286,7 +312,7 @@ def get_limit_up_stocks(top_n: int = 30, min_streak: int = 2) -> list:
             last_ago = 0
 
         # ── Recency filter ────────────────────────────────────────────────────
-        if last_ago > _MAX_DAYS_AGO:
+        if last_ago > MAX_DAYS_AGO:
             continue
 
         # ── Min-streak filter ─────────────────────────────────────────────────

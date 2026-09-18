@@ -19,7 +19,8 @@ potential / is_limit_up / max_streak），交給 select() 挑前 10 名，
 再用 +20／+40／+60 交易日的實際報酬驗收。所有策略共用同一批日期、
 同一個等權基準 → 直接可比。
 
-Point-in-time：本益比用月度 EPS 快照 × 當日股價；漲停由當日價量判定；
+Point-in-time：本益比用月度 EPS 快照 × 當日股價；漲停由當日價量判定
+（呼叫 `limit_up.streaks_from_closes`，與 App 同一份定義與同一組常數）；
 族群動能由當日往前 60 日報酬算。都沒有用到未來資料。
 """
 
@@ -36,6 +37,7 @@ from services.scoring import raw_factors, pct_rank_column, FACTOR_WEIGHTS, BUY_B
 from services.potential import calculate_potential_score
 from services.histdata import build_eps_timeline, pe_from_timeline, CACHE_DIR
 from services.strategies import STRATEGIES, select
+from services.limit_up import streaks_from_closes, MAX_DAYS_AGO, MIN_STREAK
 from itertools import combinations
 
 MIN_HISTORY = 260
@@ -58,17 +60,18 @@ def _pct(c, n):
     return ((float(c.iloc[-1]) / p - 1) * 100) if p else None
 
 
-def _limit_up_streak(d, pos, lookback=10):
-    """近 lookback 日的漲停紀錄（台股漲跌幅上限 10%，取 9.5% 為門檻）。"""
-    streak = best = 0
-    for i in range(max(1, pos - lookback + 1), pos + 1):
-        prev, cur = float(d["Close"].iloc[i - 1]), float(d["Close"].iloc[i])
-        if prev and (cur / prev - 1) * 100 >= 9.5:
-            streak += 1
-            best = max(best, streak)
-        else:
-            streak = 0
-    return best
+def _limit_up_at(d, pos):
+    """
+    當日往前看的連日漲停指標 —— **直接呼叫 App 的唯一實作**
+    （`services/limit_up.streaks_from_closes`），不要在這裡再寫一份。
+
+    ⚠️ 這裡原本自己寫了一份：往回看 **10** 日、`is_limit_up = 漲停過就算`、
+       **沒有** recency 條件。而 App 的定義是「15 日內出現過 ≥2 連、且最後一次
+       在 5 個交易日內」（`limit_up.LOOKBACK_DAYS / MIN_STREAK / MAX_DAYS_AGO`）。
+       兩者選出來的根本不是同一批股票，於是畫面上那個「漲停動能」的實證數字，
+       量的並不是 App 實際在跑的策略——正是本模組開頭警告的「複製一份就會漂移」。
+    """
+    return streaks_from_closes(d["Close"].iloc[:pos + 1])
 
 
 def main():
@@ -163,13 +166,15 @@ def main():
                     sl, {}, {}, 50, {"positive": [], "negative": []}, None)
             except Exception:
                 continue
-            streak = _limit_up_streak(d, pos)
+            lu = _limit_up_at(d, pos)
             rows.append({
                 "stock_id": code,
                 "pe_ratio": pe_from_timeline(eps_tl, code, ds, close),
                 "potential": pot,
-                "is_limit_up": streak > 0,
-                "max_streak": streak,
+                # 判定條件與 App 逐字相同（universe.scan_universe 也是這兩行）
+                "is_limit_up": (lu["max_streak"] >= MIN_STREAK
+                                and lu["last_days_ago"] <= MAX_DAYS_AGO),
+                "max_streak": lu["max_streak"],
                 "total_score": 50,          # 綜合評分無法還原（含新聞/基本面），給中性值
                 "_fwd": fwd,
             })

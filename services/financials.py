@@ -33,6 +33,8 @@
 point-in-time 正確的。ROE 會依季別年化（×4/季別）。
 """
 
+import time
+
 import requests
 import streamlit as st
 
@@ -67,6 +69,11 @@ _NET_INCOME_FIELDS = ("淨利（淨損）歸屬於母公司業主", "淨利（�
 # 金控的資產負債表用「總額」而非「總計」，且沒有「合計」二字
 _EQUITY_FIELDS = ("歸屬於母公司業主之權益合計", "歸屬於母公司業主之權益", "權益總計", "權益總額")
 _LIAB_FIELDS = ("負債總計", "負債總額")
+_COST_FIELDS = ("營業成本",)
+# 「每股參考淨值」＝ 歸屬母公司權益 ÷ 流通股數，官方已經算好、且**已調整稀釋**。
+# 用它而不是權益總額：權益總額大只代表公司大，而現金增資也會讓它變大——
+# 那是稀釋不是變強（財務文獻裡「資產成長」本身是負向因子）。
+_BVPS_FIELDS = ("每股參考淨值",)
 _TOTAL_EQUITY_FIELDS = ("權益總計", "權益總額",
                         "歸屬於母公司業主之權益合計", "歸屬於母公司業主之權益")
 
@@ -100,15 +107,28 @@ def _pick(row, fields):
     return None
 
 
+# 單張表失敗時的重試次數。
+# ⚠️ 為什麼需要：`_fetch_all` 把失敗吞掉，而 `get_bulk_fundamentals` 有 12 小時
+#    快取——櫃買端點只要瞬斷一次，**半套結果就會被快取一整天**，
+#    全部上櫃股的體質分默默消失而畫面上看不出任何異常。
+#    實測就撞到過一次：每股淨值 1083/1967（只剩證交所），重跑就變 1967/1967。
+_RETRIES = 3
+_RETRY_SLEEP = 1.5
+
+
 def _fetch_all(urls) -> dict:
     """把多張表合併成 {公司代號: row}（row 會多帶一個 `_kind` 標明業別表）。
-    任何一張抓不到就跳過，不讓整批失敗。"""
+    單張表重試 `_RETRIES` 次仍失敗才跳過，不讓整批失敗。"""
     out = {}
     for u, kind in urls:
-        try:
-            rows = requests.get(u, timeout=_TIMEOUT, headers=_HEADERS).json()
-        except Exception:
-            continue
+        rows = None
+        for attempt in range(_RETRIES):
+            try:
+                rows = requests.get(u, timeout=_TIMEOUT, headers=_HEADERS).json()
+                break
+            except Exception:
+                if attempt < _RETRIES - 1:
+                    time.sleep(_RETRY_SLEEP * (attempt + 1))
         if not isinstance(rows, list):
             continue
         for d in rows:
@@ -127,9 +147,19 @@ def _fetch_all(urls) -> dict:
 @st.cache_data(ttl=43200, show_spinner=False)   # 12h —— 財報一季才更新一次
 def get_bulk_fundamentals() -> dict:
     """
-    全市場財報指標。回傳 {code: {roe, profit_margin, revenue_growth,
-    debt_to_equity, period}}，值皆為 yfinance 慣用的**分數**（0.15 = 15%），
+    全市場財報指標。回傳 {code: {roe, profit_margin, gross_margin, revenue_growth,
+    debt_to_equity, bvps, period}}，比率皆為 yfinance 慣用的**分數**（0.15 = 15%），
     好讓 `calculate_fundamental_score()` 不必分辨資料來源。
+
+    `gross_margin`（毛利率）＝（營業收入 − 營業成本）÷ 營業收入。
+    它在損益表的**上半部**，不像淨利率會被業外一次性損益汙染，是比較乾淨的
+    品質訊號。⚠️ 但它**極度吃產業**（實測產業中位數：生技醫療 41% vs
+    電子通路 8.3%，差 33 個百分點；台積電 67% vs 鴻海 6.2%），
+    所以計分時**一律相對同業**，不要直接套全市場級距——那會變成系統性地
+    給半導體/生技加分、給通路組裝扣分，正是本專案量過四次的
+    「多加一層濾網反而更差」。相對同業的中位數見 `sector.peer_gross_margin()`。
+
+    金融業沒有「營業成本」這個概念，`gross_margin` 一律 None。
     """
     inc = _fetch_all(_INCOME_URLS)
     bal = _fetch_all(_BALANCE_URLS)
@@ -151,10 +181,17 @@ def get_bulk_fundamentals() -> dict:
         eq = _pick(b, _EQUITY_FIELDS)
         liab = _pick(b, _LIAB_FIELDS)
         teq = _pick(b, _TOTAL_EQUITY_FIELDS)
+        cost = _pick(i, _COST_FIELDS)
 
         rec = {}
         if revenue and ni is not None:
             rec["profit_margin"] = ni / revenue
+        # 毛利率：金融業沒有營業成本的概念，不算（與負債權益比同樣的道理）
+        if revenue and cost is not None and i.get("_kind") not in _FINANCIAL:
+            rec["gross_margin"] = (revenue - cost) / revenue
+        bvps = _pick(b, _BVPS_FIELDS)
+        if bvps is not None:
+            rec["bvps"] = bvps
         if eq and ni is not None and q:
             # 累計數年化：第 2 季的累計淨利 ×2 才是年度水準
             rec["roe"] = (ni * (4.0 / q)) / eq
@@ -174,10 +211,3 @@ def get_bulk_fundamentals() -> dict:
             rec["period"] = f"{yr}Q{q}" if q else str(yr)
             out[code] = rec
     return out
-
-
-def coverage(snapshot_codes) -> tuple:
-    """(有財報的檔數, 總檔數) —— 畫面要說明涵蓋率時用。"""
-    f = get_bulk_fundamentals()
-    n = sum(1 for c in snapshot_codes if c in f)
-    return n, len(list(snapshot_codes))

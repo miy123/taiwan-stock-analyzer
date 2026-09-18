@@ -1,17 +1,50 @@
 """
-潛力潛伏股評分：找出「有話題、有前瞻、有潛力，但股價還沒漲起來」的個股。
+潛力潛伏股評分：找出「有成長、有上漲空間，但股價還沒漲起來」的個股。
 
 與主推薦相反 —— 主推薦獎勵「已經在漲」的技術強勢股；本評分反而要求股價「還在低基期、
-還沒噴出」，把已經大漲、過熱、逼近高點的股票濾掉。四個構面：
+還沒噴出」，把已經大漲、過熱、逼近高點的股票濾掉。三個構面：
 
-  話題 (buzz)     : 正面新聞情緒 + 催化劑（技術突破 / 大單 / 政策題材…）
   前瞻 (prospect) : 營收/獲利成長、預估獲利改善（forward vs trailing PE）
   潛力 (upside)   : 加權目標價相對現價的上漲空間
   低基期 (low_base): 股價位階低、未過熱、近期尚未大漲（本評分的關鍵閘門）
 
-總分 = 0.26 話題 + 0.22 前瞻 + 0.22 潛力 + 0.30 低基期
+總分 = 0.30 前瞻 + 0.30 潛力 + 0.40 低基期（見 WEIGHTS）
 「低基期」權重最高且含大幅負分，確保已大漲/逼近高點/超買的股票排不上來。
+
+## ⚠️ 「話題」(buzz) 已移出計分（2026-09-16）
+
+它原本佔 26%，內容是**消息面分 + 催化劑計數**。拿掉的理由：
+
+1. **程式並沒有真的在分析話題**。`news._detect_category()` 是對標題做
+   關鍵字分類，不是理解內容；把它當成一個佔四分之一權重的構面，
+   等於給一個粗略的字串比對過大的發言權。
+2. **新聞評分有反身性**（股價漲越兇 → 正面報導越多 → 分數越高），
+   專案已經因此把它在**排序主訊號裡的權重設為 0%**。
+   潛力分卻還給它 26%，兩邊標準不一致。
+3. **全市場掃描根本算不出它**：粗掃不抓新聞，buzz 對全市場**固定是 50**
+   （實測 881 檔相異值只有 [50]），完全不影響彼此排名，卻佔著 26% 的權重。
+
+比照 9/15 把估值移出體質分的作法：**分數裡拿掉，畫面上仍然顯示**
+（`buzz` / `buzz_reasons` / `pos_catalysts` 照常回傳），催化劑本身仍是有用的
+背景資訊，只是不再參與排序。畫面已標明它不計分。
+
+校準：粗掃 881 檔新舊排序 Spearman ρ=0.998、名次中位僅移動 4 名、前 30 名換 1 檔
+——因為 buzz 在粗掃路徑本來就是常數，差別會出現在**深度分析過**的股票上。
+中性點不變（三項權重和為 1，各項 50 分仍得 50）。
+
+## ⚠️ 入選旗標 `qualifies` 已移除（2026-09-16）
+
+它原本回傳一個布林值，畫面上是「🌱 潛伏」徽章與「✅ 符合潛伏股條件」。移除的理由
+見 `calculate_potential_score()` 裡的註解：它是與各策略 filters **平行的第二套
+結論**，門檻沒有回測支持，而且拿掉 buzz 前固定 0 檔、拿掉後會在 60% 的股票上亮。
+
+**「🌱 逆勢潛伏」策略不受影響** —— 它用自己的 filters（`low_base ≥45` 且
+`total ≥45`），實測前後都是 481 檔。要判斷某檔有沒有入選，一律看策略的
+「在各選股策略中的入選情形」，那是唯一出口。
 """
+
+# 構面權重 —— **唯一定義**。畫面說明請引用它，不要另外寫一組數字。
+WEIGHTS = {"prospect": 0.30, "upside": 0.30, "low_base": 0.40}
 
 
 def _pct_return(close, n):
@@ -44,8 +77,9 @@ def _upside_score(upside_pct):
 
 def calculate_potential_score(df, info, fundamentals, news_score, catalysts, target_upside):
     """
-    Returns a dict with sub-scores + a 'total', a 'qualifies' flag, position/RSI/return
-    diagnostics, per-dimension reasons, and a one-line 'summary'.
+    Returns a dict with sub-scores + a 'total', position/RSI/return diagnostics,
+    per-dimension reasons, and a one-line 'summary'.
+    （刻意**不回傳入選旗標**——判定一律交給策略自己的 filters，見下方說明。）
     """
     close = df["Close"]
     current = float(close.iloc[-1])
@@ -149,39 +183,35 @@ def calculate_potential_score(df, info, fundamentals, news_score, catalysts, tar
     low_base = max(0, min(100, low_base))
 
     # ── Total + qualification ─────────────────────────────────────────────────
-    total = 0.26 * buzz + 0.22 * prospect + 0.22 * upside_score + 0.30 * low_base
+    # ⚠️ buzz 不進總分（見模組說明）。三個構面權重和為 1，所以「各項都中性 50」
+    #    仍然得 50 分，與拿掉前的中性點一致。
+    total = (WEIGHTS["prospect"] * prospect
+             + WEIGHTS["upside"] * upside_score
+             + WEIGHTS["low_base"] * low_base)
     total = int(round(total))
 
-    qualifies = (
-        buzz >= 52
-        and low_base >= 55
-        and (prospect >= 52 or upside_score >= 60)
-        and pos < 0.85
-        and rsi < 72
-    )
-
-    # One-line summary
-    if qualifies:
-        summary = (
-            f"具題材與成長性，但股價仍在 52 週區間 {pos*100:.0f}% 低檔、"
-            f"RSI {rsi:.0f} 未過熱，近 60 日{'下跌' if (r60 or 0) < 0 else '僅漲'} "
-            f"{(r60 or 0):+.0f}%，屬尚未起漲的潛伏股。"
-        )
+    # 一句話定位 —— **只描述位階，不做入選／未入選的判定。**
+    #
+    # 先前這裡有一個 `qualifies` 旗標（🌱 潛伏徽章），問題有三：
+    #   1. 它是與各策略 filters **平行的第二套結論**，而本專案的規矩是
+    #      「篩選條件即說明」——判定只能有一個出口，就是策略自己的 filters。
+    #   2. 它的門檻從來沒有回測過（evidence.py 甚至量到低基期類超額為負）。
+    #   3. 拿掉 buzz 之後它會在全市場 60% 的股票上亮，等於沒有指示性；
+    #      而拿掉前是固定 0 檔。兩邊都是錯的。
+    # 「🌱 逆勢潛伏」策略不受影響——它用自己的 filters（low_base / total）。
+    bits = [f"52 週區間 {pos * 100:.0f}%", f"RSI {rsi:.0f}"]
+    if r60 is not None:
+        bits.append(f"近 60 日 {r60:+.0f}%")
+    if low_base >= 70:
+        tail = "位階偏低、尚未起漲"
+    elif low_base >= 50:
+        tail = "位階中性"
     else:
-        reasons_no = []
-        if buzz < 52:
-            reasons_no.append("題材不足")
-        if low_base < 55:
-            reasons_no.append("股價已漲/位階偏高")
-        if pos >= 0.85 or rsi >= 72:
-            reasons_no.append("已逼近高點或超買")
-        if prospect < 52 and upside_score < 60:
-            reasons_no.append("成長性與上漲空間皆不明顯")
-        summary = "未入選：" + "、".join(reasons_no or ["綜合條件不足"])
+        tail = "位階偏高或漲幅已大，追高風險較高"
+    summary = "、".join(bits) + f" —— {tail}。"
 
     return {
         "total": total,
-        "qualifies": qualifies,
         "buzz": int(buzz),
         "prospect": int(prospect),
         "upside_score": int(upside_score),

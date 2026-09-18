@@ -52,6 +52,9 @@ from services.portfolio import (
     get_holding, compute_position, portfolio_totals,
 )
 from services.technical import RISK_PER_TRADE_PCT as _RISK_PER_TRADE
+# 潛力分的構面權重只有一個定義（services/potential.WEIGHTS）——
+# 畫面上的權重說明由它生成，不要再寫死一組數字。
+from services.potential import WEIGHTS as _POT_W
 from services.market import get_market_regime, get_index_forward_return
 from services.analysis import prepare_frame, compute_scores, PERIOD_ROWS
 
@@ -65,6 +68,8 @@ from services.ui import HEALTH_BANDS as _HEALTH_BANDS
 from services.target_price import calculate_target_price
 from services.analyst_targets import get_analyst_targets
 from services.catalyst_impact import get_catalyst_impact
+from services.sector import peer_pe as _peer_pe
+from services.fin_history import trend as _fin_trend, stats as _fin_stats
 from services.article_fetch import fetch_article_excerpt
 from services.limit_up import get_limit_up_stocks
 from services.watchlist import (
@@ -636,6 +641,10 @@ def render_fundamental_tab(stock_id: str, info: dict, financials: dict):
         ("ROE", fundamentals.get("roe"), "{:.1%}"),
         ("ROA", fundamentals.get("roa"), "{:.1%}"),
         ("淨利率", fundamentals.get("profit_margin"), "{:.1%}"),
+        # 毛利率是**體質分的因子之一**（相對同業計分），不顯示的話使用者
+        # 看不到分數怎麼來的。來源與計分同一份（官方批次損益表）。
+        ("毛利率", fundamentals.get("gross_margin"), "{:.1%}"),
+        ("每股淨值", fundamentals.get("bvps"), "{:.2f}"),
         ("營業利益率", fundamentals.get("operating_margin"), "{:.1%}"),
         ("殖利率", fundamentals.get("dividend_yield"), "{:.2%}"),
         ("Beta", fundamentals.get("beta"), "{:.2f}"),
@@ -649,6 +658,71 @@ def render_fundamental_tab(stock_id: str, info: dict, financials: dict):
             display = fmt.format(value) if value is not None else "N/A"
             st.metric(label, display)
 
+    # 同業毛利率 —— 體質分算的就是這個「相對同業」的百分點差，
+    # 所以要跟分數一起看得到（絕對毛利率跨產業根本不能比）。
+    _gmp = fundamentals.get("gross_margin_peer") or {}
+    if _gmp.get("median") is not None:
+        _rel_pp = fundamentals.get("gross_margin_rel_pp")
+        _gm_rel = (f"，本檔 **{_rel_pp:+.1f}** 個百分點" if _rel_pp is not None
+                   else "，本檔無毛利率（金融業或無資料）")
+        st.caption(
+            f"🏭 **同業毛利率**：{_gmp['industry']} 共 {_gmp['n']} 檔，"
+            f"中位數 **{_gmp['median'] * 100:.1f}%**{_gm_rel}。"
+            "　體質分計的是這個**相對同業**的差距，不是絕對毛利率"
+            "（產業中位數從生技醫療 41% 到電子通路 8.3%，直接比等於獎勵特定產業）。"
+        )
+
+    # 同業本益比對照 —— 與卡片用同一份實作（services/sector.peer_pe），
+    # 所以個股頁與選股頁不可能出現兩個不同的「同業」。
+    _peer = _peer_pe(stock_id, fundamentals.get("pe_ratio"))
+    if _peer:
+        _rel = _peer.get("rel_pct")
+        _rel_txt = (f"，本檔 {_rel:+.0f}%" if _rel is not None
+                    else "，本檔無本益比（虧損或無資料）")
+        st.caption(
+            f"💡 **同業對照**：{_peer['industry']} 共 {_peer['n']} 檔，"
+            f"本益比中位數 **{_peer['median']:.1f}**{_rel_txt}。"
+            "　產業分類取自公開資訊觀測站官方資料，用中位數而非平均"
+            "（單一極端值會把平均拉歪）。"
+            "**這個對照只供定位參考、不進任何分數** —— 本專案回測過純低本益比"
+            "的持有報酬顯著為負，體質分也已把估值移出。"
+        )
+
+    # ── 財報趨勢（毛利率／每股淨值是不是越來越高）──────────────────────────
+    # ⚠️ 官方端點只給當期，所以這裡的歷史是**本專案自己每季累積**的
+    #    （services/fin_history）。期數不足時明說「還在累積」，
+    #    絕不拿 0 當「沒變化」——持股頁的趨勢分變化早就是這個規矩。
+    _ft = _fin_trend(stock_id)
+    _fstats = _fin_stats()
+    if _ft:
+        _parts = []
+        if _ft.get("gm_yoy_pp") is not None:
+            _parts.append(f"毛利率較 {_ft['yoy']} **{_ft['gm_yoy_pp']:+.1f}** 個百分點")
+        elif _ft.get("gm_delta_pp") is not None:
+            _parts.append(f"毛利率較 {_ft['prev']} **{_ft['gm_delta_pp']:+.1f}** 個百分點")
+        if _ft.get("bvps_yoy_pct") is not None:
+            _parts.append(f"每股淨值較 {_ft['yoy']} **{_ft['bvps_yoy_pct']:+.1f}%**")
+        elif _ft.get("bvps_delta_pct") is not None:
+            _parts.append(f"每股淨值較 {_ft['prev']} **{_ft['bvps_delta_pct']:+.1f}%**")
+        if _parts:
+            st.markdown("#### 📈 財報趨勢（自行累積）")
+            st.markdown("　".join("・" + x for x in _parts))
+            st.caption(
+                f"目前累積 {_ft['n_periods']} 期（最新 {_ft['current']}）。"
+                "每股淨值用「每股」而非權益總額——現金增資會讓權益總額變大，"
+                "那是稀釋不是變強。**這兩個趨勢都無法回測**"
+                "（官方端點只給當期，過去期別補不回來），僅供參考。"
+            )
+    elif _fstats.get("n_periods"):
+        st.caption(
+            f"📈 **財報趨勢累積中**：已存 {_fstats['n_periods']} 期"
+            f"（最新 {_fstats['latest']}，{_fstats['codes_latest']} 檔）。"
+            "官方端點只給當期、過去補不回來，所以毛利率與每股淨值的變化要等"
+            "**下一季財報公布**（約 2~3 個月）才會出現。"
+            "在那之前刻意不顯示，也不會拿 0 當「沒變化」。"
+        )
+
+    # 分隔線一律畫，不要跟著上面的條件式一起消失
     st.markdown("---")
 
     rev_hist = fundamentals.get("revenue_history")
@@ -1417,12 +1491,13 @@ def render_recommendation_tab(
             if eff:
                 st.caption(f"{eff['tag']} {eff['note']}")
 
-    # ── Potential (潛力) — borrowed from 智能選股 so the detail page explains
-    #    why this stock does (or doesn't) qualify as a 潛伏股 ──────────────────
+    # ── Potential (潛力) — 與智能選股共用同一份計分 ───────────────────────────
+    # ⚠️ 這裡刻意**不印「符合／未達潛伏股條件」**。那個判定來自已移除的
+    #    `potential.qualifies`，它是與各策略 filters 平行的第二套結論，
+    #    且門檻沒有實證支持。要看某檔有沒有入選，下方「在各選股策略中的
+    #    入選情形」才是唯一出口。
     st.markdown("---")
-    qual = potential.get("qualifies")
-    st.markdown(f"#### 🌱 潛力面：還有沒有上漲空間？　"
-                f"{'✅ 符合潛伏股條件' if qual else '❌ 未達潛伏股條件'}")
+    st.markdown("#### 🌱 潛力面：還有沒有上漲空間？")
     st.caption(
         "與上方「綜合評分」互補：綜合評分看『現在強不強』，潛力分看『還有沒有空間』。"
         "同一檔可能綜合分高但潛力低（已大漲），或反之。"
@@ -1431,23 +1506,32 @@ def render_recommendation_tab(
     with pc1:
         st.metric("潛力總分", potential.get("total", 0))
     with pc2:
-        st.metric("📰 話題", potential.get("buzz", 0), f"{potential.get('pos_catalysts',0)} 催化劑")
+        st.metric(f"🚀 前瞻 ×{_POT_W['prospect']:.0%}", potential.get("prospect", 0))
     with pc3:
-        st.metric("🚀 前瞻", potential.get("prospect", 0))
+        st.metric(f"💰 空間 ×{_POT_W['upside']:.0%}", potential.get("upside_score", 0))
     with pc4:
-        st.metric("💰 空間", potential.get("upside_score", 0))
-    with pc5:
-        st.metric("🌱 低基期", potential.get("low_base", 0),
+        st.metric(f"🌱 低基期 ×{_POT_W['low_base']:.0%}", potential.get("low_base", 0),
                   f"52週 {potential.get('position_pct', 0):.0f}%")
+    with pc5:
+        # 話題**不計分**，只當背景資訊。放在最後、標明不計分，
+        # 避免它長得跟另外三個計分構面一樣而被當成第四個依據。
+        st.metric("📰 話題（不計分）", potential.get("buzz", 0),
+                  f"{potential.get('pos_catalysts', 0)} 催化劑")
     st.markdown(f"""
-<div style="background:#161b26;border-left:4px solid {'#7986cb' if qual else '#546e7a'};
+<div style="background:#161b26;border-left:4px solid #7986cb;
             border-radius:6px;padding:10px 14px;margin:6px 0;">
   <span style="color:#cfd8dc;font-size:13px;">{potential.get('summary','')}</span>
 </div>""", unsafe_allow_html=True)
     with st.expander("潛力面各構面理由", expanded=False):
+        st.caption(
+            f"潛力總分 = 前瞻 {_POT_W['prospect']:.0%} + 空間 {_POT_W['upside']:.0%}"
+            f" + 低基期 {_POT_W['low_base']:.0%}。"
+            "**話題不在總分內**——它來自新聞標題的關鍵字分類，不是真的在分析題材，"
+            "且新聞評分有反身性（漲越多、正面報導越多），放進分數會獎勵已經漲完的股票。"
+        )
         pe1, pe2 = st.columns(2)
         with pe1:
-            st.markdown("**📰 話題**")
+            st.markdown("**📰 話題（不計分，僅供參考）**")
             for x in potential.get("buzz_reasons", []) or ["—"]:
                 st.markdown(f"　• {x}")
             st.markdown("**🚀 前瞻（成長）**")
@@ -1757,7 +1841,7 @@ def _forward_returns(df_full, as_of_last):
 
 
 def _analyze_one_stock(stock_id: str, period: str = None, limit_up_info=None,
-                       as_of_date=None, skip_news=False):
+                       as_of_date=None, skip_news=False, raw_df=None):
     """
     limit_up_info: dict from get_limit_up_stocks(), or None for regular pool stocks.
     as_of_date: when set, everything is computed as of that past date (backtest)
@@ -1767,11 +1851,18 @@ def _analyze_one_stock(stock_id: str, period: str = None, limit_up_info=None,
     always agree — see that module for why they used to diverge.
     """
     try:
-        df, df_full, _iq, _has_iq = prepare_frame(stock_id, as_of_date=as_of_date)
+        df, df_full, _iq, _has_iq = prepare_frame(stock_id, as_of_date=as_of_date,
+                                                  raw=raw_df)
         if df is None or df.empty or len(df) < 20:
             return None
         info = get_ticker_info(stock_id)
-        financials = get_financials(stock_id)
+        # ⚠️ 刻意不呼叫 get_financials()：它回傳的 income_stmt / quarterly_income
+        #    只被 `analyze_fundamentals` 用來產生 revenue_history 等**畫圖用**欄位，
+        #    而那些圖只出現在個股分析的基本面頁；這個函式回傳的 row 從來不帶它們。
+        #    ROE／淨利率／營收成長／負債比早已改走公開資訊觀測站的批次財報，
+        #    所以少抓這一份不會讓任何分數改變，卻省掉每檔約 2.5 秒
+        #    （全市場掃描的深度分析階段約 40 檔 → 省 1~2 分鐘）。
+        financials = {}
 
         # Chinese name first (yfinance returns English for TW stocks)
         company_name = resolve_company_name(stock_id, info, limit_up_info)
@@ -1799,10 +1890,11 @@ def _analyze_one_stock(stock_id: str, period: str = None, limit_up_info=None,
             "icon":         rec["icon"],
             "tech_score":   tech_score,
             "fund_score":   fund_score,
-            # 這條路徑一定抓了 yfinance 的完整財報（ROE／營收成長／淨利率…），
-            # 所以 fund_score 是**實算**的。全市場粗掃只有本益比／淨值比／殖利率，
-            # 算出來的分數會停在中性附近，兩者不可混為一談。
-            "has_financials": True,
+            # ⚠️ 不要寫死 True。判準是「官方批次財報有沒有這一檔」，
+            #    由 analyze_fundamentals 產出，掃描路徑用的是同一個表達式。
+            #    （2026-09-15 起粗掃也走批次財報，所以「有沒有深度分析」
+            #    早就不是這個旗標的意思了。）
+            "has_financials": bool(fundamentals.get("has_financials")),
             "news_score":   news_score,
             "target_price": tp.get("recommended_target"),
             "upside_pct":   tp.get("upside_pct"),
@@ -1812,7 +1904,10 @@ def _analyze_one_stock(stock_id: str, period: str = None, limit_up_info=None,
             # 統一在 analyze_fundamentals（官方優先、虧損為 None）。
             "pe_ratio":     fundamentals.get("pe_ratio"),
             "dividend_yield": fundamentals.get("dividend_yield"),  # normalised fraction
-            "revenue_growth": info.get("revenueGrowth"),
+            # 走 fundamentals：官方批次月營收（累計年增）優先、yfinance 只補缺。
+            # 直接讀 info 會讓這條路徑拿 yfinance 的 TTM，與全市場掃描不同把尺——
+            # 本益比就是這樣出過錯的。
+            "revenue_growth": fundamentals.get("revenue_growth"),
             # Margin (融資) chip-structure risk
             "margin_usage":   margin_signal.get("usage_pct"),
             "margin_level":   margin_signal.get("level"),
@@ -1926,7 +2021,6 @@ def render_smart_screener_page():
         top_n = st.selectbox("顯示前 N 名", [5, 10, 15, 20, 30], index=1)
         # 體質門檻 —— 加掛在**所選策略**上的額外條件（不是另一個策略）。
         # 排序仍由該策略有回測背書的訊號負責，這只是再濾掉體質不合格的。
-        # 選項界線取自 recommendation.BASE_THRESHOLDS，不另外寫一組數字。
         # 界線取自 ui.HEALTH_BANDS（基本面分的量表），不要沿用綜合評分的 68/58/48
         _health_opts = {"不設限": None}
         for _bar, _lab, _ in _HEALTH_BANDS[::-1]:
@@ -1934,7 +2028,9 @@ def render_smart_screener_page():
         _health_label = st.selectbox(
             "體質門檻", list(_health_opts), index=0, key="smart_health",
             help="在所選策略之外**再加一條**「基本面要夠好」的條件"
-                 "（營收成長／ROE／淨利率／負債／估值），"
+                 "（營收成長／ROE／淨利率／毛利率（相對同業）／負債權益比；"
+                 "**不含估值**——本益比與殖利率都跟股價掛勾，"
+                 "已另外用徽章與過熱警示呈現），"
                  "用來找『趨勢強且體質也好』的股票。\n\n"
                  "財報取自公開資訊觀測站的批次資料，涵蓋約 99% 的上市櫃股；"
                  "少數取不到的會標「無財報資料」並一律不通過。\n\n"
@@ -2131,7 +2227,8 @@ def render_smart_screener_page():
                           text=f"下載全市場歷史資料 {done}/{total}")
 
         status.markdown("📥 **第 1 階段**：批次下載全上市股票 2 年日線並計算指標…")
-        rows, _snap = scan_universe(min_turnover=min_turnover_yi * 1e8, progress_cb=_cb)
+        rows, _snap, _frames = scan_universe(
+            min_turnover=min_turnover_yi * 1e8, progress_cb=_cb)
         if not rows:
             prog.empty(); status.empty()
             st.error("全市場掃描失敗（證交所或 Yahoo 資料暫時不可用），請稍後再試或改用熱門股池。")
@@ -2142,7 +2239,14 @@ def render_smart_screener_page():
         # 體質分現在全市場都算得出來（批次財報），所以不必為了體質門檻多深度分析。
         # 深度分析補的是新聞情緒與目標價，那兩項才是真的只能逐檔抓。
         n_enrich = min(int(top_n) * 2 + 6, 40)   # ~5s per deep analysis
-        shortlist = sorted(rows, key=lambda r: r.get(prelim_key, 0), reverse=True)[:n_enrich]
+        # 初篩鍵與該策略的排序鍵同源（見 services/strategies.py 的說明），
+        # 否則深度分析補的會是另一批股票，畫面最前面那幾檔反而沒有新聞與目標價。
+        # 缺值排最後，不要讓 None 進到比較裡。
+        shortlist = sorted(
+            rows,
+            key=lambda r: (r.get(prelim_key) if r.get(prelim_key) is not None
+                           else float("-inf")),
+            reverse=True)[:n_enrich]
 
         status.markdown(
             f"🔬 **第 2 階段**：已完整分析 **{len(rows)}** 檔上市股，"
@@ -2152,7 +2256,8 @@ def render_smart_screener_page():
         for i, r in enumerate(shortlist):
             sid = r["stock_id"]
             status.markdown(f"🔬 深度分析 **{sid} {r['company_name']}** ({i+1}/{len(shortlist)})")
-            full = _analyze_one_stock(sid, skip_news=skip_news)
+            full = _analyze_one_stock(sid, skip_news=skip_news,
+                                      raw_df=_frames.get(sid))
             enriched.append(full if full else r)
             seen.add(sid)
             prog.progress(0.45 + 0.55 * (i + 1) / len(shortlist))
@@ -2170,24 +2275,46 @@ def render_smart_screener_page():
                 continue
             base = by_id.get(full["stock_id"], {})
             merged = {**base, **full}
-            for k in ("trend_score", "trend_pcts", "exchange", "turnover"):
+            # ⚠️ 這幾個欄位**掃描算得比較準**，不能讓深度分析的預設值蓋掉。
+            #    連日漲停是掃描用同一份 2 年日線算的（全上市櫃涵蓋）；
+            #    `_analyze_one_stock` 在全市場路徑收到的 limit_up_info 是 None，
+            #    於是回傳 is_limit_up=False / max_streak=0 / last_days_ago=0。
+            #    `{**base, **full}` 會讓那組預設值蓋掉真值 →
+            #    ① 前 N 名（正好就是被深度分析的那批）在「漲停動能」全部消失；
+            #    ② last_days_ago=0 的意思是「今日漲停」，比缺值更糟。
+            for k in ("trend_score", "trend_pcts", "exchange", "turnover",
+                      "is_limit_up", "max_streak", "trailing_streak",
+                      "last_days_ago"):
                 if base.get(k) is not None:
                     merged[k] = base[k]
             merged["enriched"] = True
+            # base 帶著 `preliminary: True`，而 full 沒有這個鍵，
+            # `{**base, **full}` 會原封不動留著它 → 深度分析過的列也被當成粗掃。
+            merged["preliminary"] = False
             by_id[full["stock_id"]] = merged
         results_all = list(by_id.values())
 
-        # 漲停標記套用到**全部**股票，不是只有深度分析過的
+        # 全市場的連日漲停在掃描時就用同一份日線算好了
+        # （services/limit_up.streaks_from_closes），這裡只補「今日確認漲停」：
+        # yfinance 的日線落後當日盤中，證交所／櫃買的今日清單才是 ground truth，
+        # 而且只有它有當日漲幅與正確的交易所別。
         try:
             lu_map = {x["stock_id"]: x for x in get_limit_up_stocks(top_n=30)}
             for row in results_all:
                 lu = lu_map.get(row.get("stock_id"))
-                if lu:
-                    row.update({"is_limit_up": True,
-                                "limit_up_pct": lu.get("change_pct"),
-                                "max_streak": lu.get("max_streak", 0),
-                                "last_days_ago": lu.get("last_days_ago", 0),
-                                "exchange": lu.get("exchange", row.get("exchange"))})
+                if not lu:
+                    continue
+                _ago = row.get("last_days_ago")
+                _ago = 999 if _ago is None else _ago
+                row.update({
+                    "is_limit_up": True,
+                    "limit_up_pct": lu.get("change_pct"),
+                    # 取較強／較近的一邊：掃描看得到完整 15 天，今日清單看得到今天
+                    "max_streak": max(lu.get("max_streak", 0) or 0,
+                                      row.get("max_streak", 0) or 0),
+                    "last_days_ago": min(lu.get("last_days_ago", 999) or 999, _ago),
+                    "exchange": lu.get("exchange") or row.get("exchange"),
+                })
         except Exception:
             pass
 
@@ -2306,7 +2433,6 @@ def render_smart_screener_page():
 
     # ── Summary strip (always shows both lenses) ──────────────────────────────
     buy_ct     = sum(1 for r in results if r["total_score"] >= buy_bar)
-    sleeper_ct = sum(1 for r in results if (r.get("potential") or {}).get("qualifies"))
     lu_ct      = sum(1 for r in results if r.get("is_limit_up"))
     scanned = st.session_state.get(cache_key + "_scanned")
     cols_m = st.columns(4)
@@ -2322,7 +2448,10 @@ def render_smart_screener_page():
         st.metric(f"綜合評分達買進線（≥{buy_bar}）", buy_ct,
                   f"/{len(results)} 檔" + (f"（{_enr} 檔深度分析）" if _enr else ""))
     with cols_m[2]:
-        st.metric("潛伏股（題材未漲）", sleeper_ct, "支")
+        # 先前這格是「潛伏股（題材未漲）」，數的是已移除的 potential.qualifies。
+        # 改放連日漲停：掃描現在逐檔算全市場（services/limit_up.streaks_from_closes），
+        # 這個數字才真的有涵蓋率；`lu_ct` 本來就算好了卻沒人用。
+        st.metric("連日漲停", lu_ct, "支")
     with cols_m[3]:
         st.metric("符合此策略", len(view),
                   f"含體質門檻" if health_bar else "支")
@@ -2800,17 +2929,31 @@ def _render_smart_card(rank, r, strategy, horizon_key=None):
     #    推導出來的買賣動作，卡片上已改由 health_cell 顯示體質等級。
     current = r["current_price"]; chg = r["change_pct"]
     chg_color = "#f03e3e" if chg >= 0 else "#2f9e44"
+    # ⚠️ 全市場掃描只對初篩最前的數十檔補齊新聞與目標價，其餘幾百檔的
+    #    消息面是**佔位的中性 50**、目標價根本還沒算。這和已經修掉的
+    #    `has_financials` 是同一類問題：50 不能同時代表「中性」與「沒抓」，
+    #    否則使用者看不出該不該信這個數字，而綜合評分裡有 15% 新聞 + 15% 目標價。
+    prelim = bool(r.get("preliminary"))
     upside = r.get("upside_pct")
-    up_color = "#4caf50" if (upside or 0) >= 0 else "#f44336"
-    upside_str = f"{upside:+.1f}%" if upside is not None else "N/A"
+    up_color = "#78909c" if prelim else ("#4caf50" if (upside or 0) >= 0 else "#f44336")
+    upside_str = ("尚未計算" if prelim
+                  else (f"{upside:+.1f}%" if upside is not None else "N/A"))
     pos = p.get("position_pct")
     pos_val = pos if pos is not None else 50
     r60 = p.get("r60")
     r60_str = f"近60日 {r60:+.0f}%" if r60 is not None else ""
-    qualifies = p.get("qualifies")
     pot_total = p.get("total", 0)
     comb = r.get("combined_score", 0)
     t_w = r["tech_score"]; f_w = r["fund_score"]; n_w = r["news_score"]
+    n_str = "—" if prelim else str(n_w)
+    n_bar = 0.0 if prelim else n_w * 1.2
+    prelim_badge = ("<span title='新聞情緒與目標價只對初篩最前的數十檔逐檔補齊。"
+                    "這一檔的消息面是佔位的中性 50、目標價尚未計算，"
+                    "所以綜合評分只是半成品——趨勢結構分不含這兩項，不受影響。' "
+                    "style='font-size:11px;background:#263238;color:#90a4ae;"
+                    "border:1px solid #37474f;border-radius:4px;padding:1px 6px;"
+                    "margin-left:6px;white-space:nowrap;'>◷ 未深度分析</span>"
+                    ) if prelim else ""
     rank_emoji = ["🥇", "🥈", "🥉"][rank - 1] if rank <= 3 else f"#{rank}"
 
     # Limit-up badge
@@ -2835,10 +2978,6 @@ def _render_smart_card(rank, r, strategy, horizon_key=None):
                         f"border:1px solid {mb_color};border-radius:4px;padding:1px 6px;"
                         f"margin-left:6px;white-space:nowrap;'>💳 融資 {m_usage:.0f}%</span>")
 
-    # Sleeper tag
-    sleeper_badge = ("<span style='font-size:11px;background:#1a237e;color:#9fa8da;border-radius:4px;"
-                     "padding:1px 6px;margin-left:6px;white-space:nowrap;'>🌱 潛伏</span>") if qualifies else ""
-
     # 三個分數，排序用的那個加框加 ★。**每一格都自己帶用途說明**，
     # 不要再出現「大數字旁邊一個孤零零的動作詞」——先前綜合評分的動作詞
     # （建議出場／偏多買進）緊貼在趨勢分右邊，數字卻在更右邊，
@@ -2855,7 +2994,7 @@ def _render_smart_card(rank, r, strategy, horizon_key=None):
 
     # 本益比（共用元件，三頁一致）
     pe_html = pe_badge(r.get("pe_ratio"), r.get("dividend_yield"),
-                       highlight=(strategy == "lowpe"))
+                       highlight=(strategy == "lowpe"), stock_id=r.get("stock_id"))
 
     # 四格週期分數（共用元件）
     horizon_html = horizon_cells(r.get("horizon"), selected_key=horizon_key)
@@ -2875,7 +3014,7 @@ def _render_smart_card(rank, r, strategy, horizon_key=None):
     <div style="min-width:150px;">
       <div style="font-size:17px;font-weight:900;">{r['stock_id']}
         <span style="font-size:13px;font-weight:600;color:#ccc;">{r['company_name']}</span></div>
-      <div style="font-size:12px;">{overheat_badge(r.get("overheat"))}{lu_badge}{margin_badge}{sleeper_badge}</div>
+      <div style="font-size:12px;">{overheat_badge(r.get("overheat"))}{lu_badge}{margin_badge}{prelim_badge}</div>
     </div>
     <div style="min-width:78px;">
       <div style="font-size:15px;font-weight:700;">TWD {current:.2f}</div>
@@ -2900,11 +3039,11 @@ def _render_smart_card(rank, r, strategy, horizon_key=None):
     <div style="min-width:120px;font-size:11px;color:#aaa;">
       <div>技 <span style="color:#74c0fc;font-weight:700;">{t_w}</span>
            基 <span style="color:#a9e34b;font-weight:700;">{f_w}</span>
-           息 <span style="color:#ffd43b;font-weight:700;">{n_w}</span></div>
+           息 <span style="color:#ffd43b;font-weight:700;">{n_str}</span></div>
       <div style="display:flex;gap:2px;margin-top:3px;">
         <div style="background:#74c0fc;width:{t_w*1.2:.0f}px;height:5px;border-radius:2px;"></div>
         <div style="background:#a9e34b;width:{f_w*1.2:.0f}px;height:5px;border-radius:2px;"></div>
-        <div style="background:#ffd43b;width:{n_w*1.2:.0f}px;height:5px;border-radius:2px;"></div>
+        <div style="background:#ffd43b;width:{n_bar:.0f}px;height:5px;border-radius:2px;"></div>
       </div>
     </div>
   </div>
@@ -2918,7 +3057,7 @@ def _render_smart_card(rank, r, strategy, horizon_key=None):
                 st.markdown(f"🌱 **潛力面**：{summary}")
             ec1, ec2 = st.columns(2)
             with ec1:
-                st.markdown("**📰 話題**")
+                st.markdown("**📰 話題（不計分，僅供參考）**")
                 for x in p.get("buzz_reasons", []) or ["—"]:
                     st.markdown(f"　• {x}")
                 st.markdown("**🚀 前瞻（成長）**")
@@ -3031,7 +3170,7 @@ def render_cross_screen_page():
     ctx = {"buy_bar": buy_bar, "horizon_key": None, "trend_bar": TREND_BUY_BAR,
            "health_bar": _hb}
     if _hb:
-        st.caption(f"⚠️ 已沿用智能選股頁的體質門檻（綜合評分 ≥ {_hb}）。"
+        st.caption(f"⚠️ 已沿用智能選股頁的體質門檻（基本面分 ≥ {_hb}）。"
                    "下方各策略的實證數字**不含**這個條件——它無法回測。")
 
     picks, ranks = {}, {}
@@ -3426,7 +3565,8 @@ def render_portfolio_page():
             trend_html = trend_cell(r.get("trend_score"), primary=rank_by_long)
             rr_txt = (f"風報比 <b style='color:#fafafa;'>{rr:.2f}</b>　停損 {abs(stop_pct):.1f}%"
                       if rr is not None and stop_pct is not None else "")
-            pe_txt = pe_inline(r.get("pe_ratio"), r.get("dividend_yield"))
+            pe_txt = pe_inline(r.get("pe_ratio"), r.get("dividend_yield"),
+                               stock_id=r.get("stock_id"))
             # 實證區間徽章（共用元件）
             # ⚠️ `evidence_badge()` 查的是**趨勢分**的分桶表，必須餵趨勢分。
             #    先前餵的是離散長線分（例：94），於是同一張卡片上「趨勢結構分」
@@ -3501,7 +3641,11 @@ def render_portfolio_page():
                         break
                 if cands:
                     _bb = trend_buy_bar()
+                    # ⚠️ `trend_bar` 一定要傳：`_f_trend_bar` 沒收到就會退回
+                    #    `scoring.BUY_BAR`，現在剛好同值所以看不出來，但選股頁與
+                    #    交叉篩選頁都有傳，哪天買進線變成動態的這頁就會悄悄不一致。
                     _ctx = {"buy_bar": _bb, "horizon_key": None,
+                            "trend_bar": TREND_BUY_BAR,
                             "health_bar": st.session_state.get("smart_health_bar")}
                     with st.expander(f"🔍 {sid} 在各選股策略中的入選情形", expanded=False):
                         st.caption("與智能選股頁**完全相同的條件**逐條檢核，"

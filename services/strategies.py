@@ -97,10 +97,13 @@ def _f_health_bar(r, ctx):
     bar = ctx.get("health_bar")
     v = r.get("fund_score", 0)
     # 沒有真的財報時一律不通過。`calculate_fundamental_score` 缺項就不加減分，
-    # 於是粗掃的股票會停在中性 50——「查無資料」跟「體質中等」分數長得一樣。
+    # 於是查無資料的股票會停在中性 50——「查無資料」跟「體質中等」分數長得一樣。
     # 不擋掉的話，門檻 ≤50 會把整批沒資料的當成合格放行。
+    #
+    # ⚠️ 理由字串不要再寫「粗掃算不出體質」：2026-09-15 改用批次財報之後
+    #    全市場約 99% 都算得出來，走到這裡代表**官方批次財報查無這一檔**。
     if not r.get("has_financials"):
-        return False, "尚未取得財報（粗掃只有估值面資料，算不出體質）"
+        return False, "官方批次財報查無這一檔，算不出體質"
     return v >= bar, f"基本面分 {v} ≥ 體質門檻 {bar:.0f}"
 
 
@@ -187,6 +190,16 @@ def _f_trend_bar(r, ctx):
     return _trend(r) >= bar, f"趨勢結構分 {_trend(r):.0f} ≥ 買進線 {bar:.0f}"
 
 
+# ⚠️ **`prelim_key` 必須和 `sort_key` 量的是同一件事。**
+# 它決定「哪些股票會被補齊新聞與目標價」（每檔約 5 秒，只做前數十名），
+# 挑錯就等於畫面上排最前面的那幾檔反而沒有被深度分析。
+#
+# 這裡曾經三個策略都指向 `prelim_bestproven`，而那個值來自
+# `generate_timeframe_recommendations()` 的 long 分——掃描時目標價為 None、
+# 權重重新正規化之後，它實際上是 **64% 基本面分 + 29% 純技術長線分**，
+# 趨勢結構分佔 0%。實測：純技術 94／基本面 30 得 50 分，
+# 純技術 50／基本面 80 卻得 69 分，排序幾乎是反過來的。
+# 這三個策略的 `sort_key` 都是 `_trend`，所以初篩鍵一律用 `trend_score`。
 STRATEGIES = [
     {
         "key": "trend", "label": "📈 趨勢結構分（主力）",
@@ -196,7 +209,7 @@ STRATEGIES = [
         "note": (f"分數就是百分位，{BUY_BAR:.0f} 分代表趨勢強度"
                  f"排在全市場前 {100 - BUY_BAR:.0f}%"),
         "sort_desc": "**連續趨勢結構分**（距季線／均線排列／季線斜率的橫斷面百分位）",
-        "prelim_key": "prelim_bestproven", "color": "#66bb6a",
+        "prelim_key": "trend_score", "color": "#66bb6a",
         "evidence_model": "T1 趨勢(連續)", "evidence_run": "factor_3y",
         "metric": _trend,
         "filters": [("趨勢結構分達買進線", _f_trend_bar)],
@@ -206,7 +219,7 @@ STRATEGIES = [
         "key": "sectorhot", "label": "🏭 強勢族群＋趨勢分",
         "caption": "限動能前5強族群　（同次回測不如純趨勢分）",
         "sort_desc": "**趨勢結構分**（限動能前5強族群）",
-        "prelim_key": "prelim_bestproven", "color": "#26a69a",
+        "prelim_key": "trend_score", "color": "#26a69a",
         "evidence_model": "強勢族群+長線分", "evidence_run": "main_3y",
         "metric": _trend,
         "filters": [("屬於前5強族群", _f_hot_sector),
@@ -230,7 +243,7 @@ STRATEGIES = [
         "sort_desc": "**連續漲停天數 → 趨勢結構分**",
         # 初篩鍵決定「哪些股票會被補齊新聞/財報」。用 total_score 與漲停毫無關係，
         # 改用趨勢分初篩鍵，至少讓被深度分析的是趨勢也不差的漲停股。
-        "prelim_key": "prelim_bestproven", "color": None,
+        "prelim_key": "trend_score", "color": None,
         "evidence_model": None, "evidence_run": "main_3y",
         "metric": _trend,
         "filters": [("近期連日漲停", _f_is_limitup)],
@@ -239,7 +252,9 @@ STRATEGIES = [
     {
         "key": "contrarian", "label": "🌱 逆勢潛伏（低基期）",
         "caption": "低基期且有題材　⛔前後半段皆為負",
-        "sort_desc": "**潛力分**（低基期 × 題材）",
+        # 「題材」（buzz）2026-09-16 已移出潛力分的計分（見 potential.WEIGHTS），
+        # 排序說明不可以再寫它——這一行是選股頁「排序依據：」直接印出去的字。
+        "sort_desc": "**潛力分**（低基期 40% × 前瞻 30% × 上漲空間 30%）",
         "prelim_key": "prelim_sleeper", "color": "#7986cb",
         "evidence_model": "潛力潛伏", "evidence_run": "main_3y",
         "metric": lambda r: (r.get("potential") or {}).get("total", 0),

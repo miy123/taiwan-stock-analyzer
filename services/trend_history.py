@@ -71,7 +71,3 @@ def delta_for(stock_id: str, current, prev_scores: dict):
     if old is None:
         return None
     return float(current) - float(old)
-
-
-def snapshot_count() -> int:
-    return len(_load())

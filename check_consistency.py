@@ -281,7 +281,7 @@ def check_pages(stock_id):
     # core 用的是舊分布、頁面用的是新分布，比出來的差異是測試自己造成的。
     # （這個順序問題在 save_distribution 沒有清掉記憶體快取時被掩蓋住了——
     #   當時掃描後的新分布根本不會生效，兩邊剛好都用舊的。）
-    rows, _ = scan_universe(min_turnover=5e7)
+    rows, _, _ = scan_universe(min_turnover=5e7)
     scan_row = next((r for r in rows if r["stock_id"] == stock_id), None)
 
     df, _, _, _ = prepare_frame(stock_id)
