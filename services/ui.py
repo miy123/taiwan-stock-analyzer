@@ -740,6 +740,44 @@ def cross_evidence(keys, hold_days: int = 60) -> str:
     return head + "\n".join(lines) + tail
 
 
+def pe_addon_note(strategy_key: str, hold_days: int = 60) -> str:
+    """
+    加掛估值門檻對**這個策略**的實際影響 —— 一句話，由實證檔生成。
+
+    這個條件與體質門檻不同：它**量得出來**（本益比在回測裡是 point-in-time 的），
+    所以不能只寫「影響未知」就算了，要把量到的數字講出來。
+    查無資料時明說沒量過，不要沉默。
+    """
+    from services.evidence import addon_pe_stats
+    a = addon_pe_stats(strategy_key, hold_days)
+    lab = {20: "1個月", 40: "2個月", 60: "3個月"}.get(hold_days, f"{hold_days}日")
+    if not a:
+        return ("這個條件**尚未在本策略上量過**，加了之後的表現是未知數。")
+    d = a.get("delta_vs_base")
+    if d is None:
+        return "這個條件在本策略上**樣本不足**，量不出可靠的影響。"
+    # `lowpe` 策略本身的篩選就是同一個條件，疊上去差值必然是 0——
+    # 印「提高 0.00 個百分點」是畫面在講廢話，直接說清楚。
+    if abs(d) < 0.005:
+        return ("本策略的篩選條件**本來就是**「本益比低於同業」，"
+                "再疊一次不會改變任何結果。")
+    arrow = "拖低" if d < 0 else "提高"
+    body = (f"這個條件**量得出來**：疊在本策略上，持有{lab}的超額報酬變成 "
+            f"**{a['excess']:+.2f}%**（t={a.get('t', 0):+.2f}），比不加它"
+            f"{arrow} **{abs(d):.2f} 個百分點**，平均選到 {a.get('avg_picks', 0):.1f} 檔。")
+    # ⚠️ 平均檔數太少時，那個「比較好」多半是雜訊，不能就這樣印出去。
+    #    實測「漲停動能＋估值門檻」平均只選到 0.6 檔（大部分期別根本選不到），
+    #    數字看起來最漂亮，其實是每期押 0~1 檔的結果。
+    #    ⚠️ 期數一律從實證檔讀，不要寫死——check_consistency 檢查 1 會抓。
+    from services.evidence import total_periods
+    picks, per = a.get("avg_picks") or 0, a.get("periods") or 0
+    tot = total_periods()
+    if picks < 2 or (tot and per < tot * 0.45):
+        body += (f"　⚠️ 但**樣本太薄**（{tot or '—'} 期裡只有 {per} 期選得到標的、"
+                 f"平均 {picks:.1f} 檔），這個差異比較可能是雜訊而不是效果。")
+    return body
+
+
 def hold_longer_note() -> str:
     """「抱越久超額越大」的證據 —— 取最高分區間在各持有期的超額，由資料生成。"""
     from services.evidence import trend_bucket_rows

@@ -253,6 +253,32 @@ def cross_stats(key_a: str, key_b: str, hold_days: int = 60) -> dict:
     return {}
 
 
+def total_periods() -> int:
+    """策略對照回測的總期數 —— 畫面要講「N 期裡只有 M 期」時用，不要寫死。"""
+    return load_strategy_comparison().get("generated_periods") or 0
+
+
+def addon_pe_stats(key: str, hold_days: int = 60) -> dict:
+    """
+    「加掛估值門檻」疊在某個策略上的實證（strategy_comparison.py 的 addon_pe 段）。
+
+    回傳含 `excess` / `t` / `delta_vs_base`（與該策略原本定義的差，負值＝被拖低）
+    / `avg_picks` / `bar`。查無回 {}。
+
+    ⚠️ 體質門檻沒有對應的東西是**刻意的**：財報沒有歷史快照，量不出來。
+       估值門檻量得到，是因為本益比在回測裡是 point-in-time 算出來的。
+    """
+    d = load_strategy_comparison().get("addon_pe", {}).get(key) or {}
+    if not d:
+        return {}
+    out = dict(d.get(f"h{hold_days}") or {})
+    if not out:
+        return {}
+    out["avg_picks"] = d.get("avg_picks")
+    out["bar"] = d.get("bar")
+    return out
+
+
 def cross_top_n() -> int:
     return load_strategy_comparison().get("cross_screen", {}).get(
         "top_n_per_strategy", 20)

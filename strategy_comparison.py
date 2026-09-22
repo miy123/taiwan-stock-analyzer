@@ -41,6 +41,7 @@ from services.histdata import build_eps_timeline, pe_from_timeline, CACHE_DIR
 from services.strategies import STRATEGIES, select
 from services.limit_up import streaks_from_closes, MAX_DAYS_AGO, MIN_STREAK
 from services.sector import pe_medians, rel_pe_pct, get_industry_map
+from services.strategies import PE_DISCOUNT_PCT
 from itertools import combinations
 
 MIN_HISTORY = 260
@@ -134,6 +135,8 @@ def main():
     CROSS_N = 20
     pairs = list(combinations(keys, 2))
     res = {k: {h: [] for h in FWD} for k in keys}
+    addon = {k: {h: [] for h in FWD} for k in keys}      # 疊上估值門檻後
+    addon_n = defaultdict(list)
     cross = {f"{a}+{b}": {h: [] for h in FWD} for a, b in pairs}
     cross_n = defaultdict(list)
     picked_n = defaultdict(list)
@@ -209,6 +212,21 @@ def main():
         dates_used.append(date)
         bench = {h: float(np.mean([r["_fwd"][h] for r in rows])) for h in FWD}
         ctx = {"buy_bar": 58, "horizon_key": None, "trend_bar": BUY_BAR}
+
+        # 估值門檻是使用者可以疊在**任一策略**上的加掛條件，所以每個策略都要量
+        # 「加了它會怎樣」。體質門檻量不出來（財報沒有歷史快照），
+        # 但估值門檻吃的 `pe_rel_pct` 在這裡是 point-in-time 算出來的，量得到。
+        ctx_pe = {**ctx, "pe_bar": PE_DISCOUNT_PCT}
+        for sdef in STRATEGIES:
+            try:
+                sel_pe = select(sdef, rows, ctx_pe)[:args.topn]
+            except Exception:
+                sel_pe = []
+            addon_n[sdef["key"]].append(len(sel_pe))
+            if sel_pe:
+                for h in FWD:
+                    r = float(np.mean([x["_fwd"][h] for x in sel_pe]))
+                    addon[sdef["key"]][h].append(r - bench[h])
 
         topsets = {}
         for sdef in STRATEGIES:
@@ -315,6 +333,31 @@ def main():
                 "second_half": round(float(np.mean(b)), 2),
             }
 
+    # ── 加掛估值門檻的影響 ───────────────────────────────────────────────
+    print()
+    print("=" * 100)
+    print(f"加掛「估值門檻：本益比低於同業 {abs(PE_DISCOUNT_PCT):.0f}%」之後（疊在每個策略上）")
+    print("=" * 100)
+    print(f"{'策略':<22}{'平均檔數':>8}"
+          + "".join(f"{'+' + str(h) + '日':>10}{'差':>9}" for h in FWD))
+    addon_out = {}
+    for kk in keys:
+        rec = {"bar": PE_DISCOUNT_PCT,
+               "avg_picks": round(float(np.mean(addon_n[kk])), 1),
+               "periods_with_picks": len(addon[kk][20])}
+        line = f"{label_of[kk]:<22}{np.mean(addon_n[kk]):>8.1f}"
+        for h in FWD:
+            xs, base = addon[kk][h], res[kk][h]
+            if len(xs) < 20:
+                line += f"{'樣本不足':>10}{'':>9}"
+                continue
+            m, d = float(np.mean(xs)), float(np.mean(xs)) - float(np.mean(base))
+            line += f"{m:>+9.2f}%{d:>+8.2f}%"
+            rec[f"h{h}"] = {"excess": round(m, 2), "t": round(_t(xs), 2),
+                            "delta_vs_base": round(d, 2), "periods": len(xs)}
+        print(line)
+        addon_out[kk] = rec
+
     payload = {
         "generated_periods": len(dates_used),
         "date_range": [str(dates_used[0].date()), str(dates_used[-1].date())],
@@ -323,6 +366,9 @@ def main():
                    "直接呼叫 services/strategies.select()，測的就是 App 實跑的定義"),
         "strategies": out,
         "cross_screen": {"top_n_per_strategy": CROSS_N, "pairs": cross_out},
+        # 使用者加選的估值門檻疊在每個策略上的實際影響。
+        # 畫面上的說明由它生成（`app._pe_evidence_note`），不要寫死。
+        "addon_pe": addon_out,
     }
     with open("strategy_comparison.json", "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, indent=2)

@@ -41,7 +41,7 @@ from services.strategies import STRATEGIES, LABELS as STRAT_LABELS, \
 from services.ui import (
     overheat_badge, trend_cell, score_legend, bucket_table,
     health_cell, potential_cell, divergence_note, health_grade, health_explainer,
-    strategy_caption, strategy_table, cross_evidence,
+    strategy_caption, strategy_table, cross_evidence, pe_addon_note,
     hold_longer_note as _hold_longer_note, cmp_periods as _cmp_periods,
     trend_delta_badge,
     pe_badge, pe_inline, horizon_cells, evidence_badge, rr_cell,
@@ -65,6 +65,7 @@ from services.scoring import BUY_BAR as TREND_BUY_BAR
 # 先前 app.py 三處各自寫死 58／48，改了模型就對不上。
 from services.recommendation import buy_threshold as total_buy_threshold
 from services.ui import HEALTH_BANDS as _HEALTH_BANDS
+from services.strategies import PE_BANDS as _PE_BANDS
 from services.target_price import calculate_target_price
 from services.analyst_targets import get_analyst_targets
 from services.catalyst_impact import get_catalyst_impact
@@ -2042,6 +2043,24 @@ def render_smart_screener_page():
         )
         health_bar = _health_opts[_health_label]
         st.session_state["smart_health_bar"] = health_bar
+        # 估值門檻 —— 與體質門檻同一種東西（加掛在所選策略上），所以放在一起。
+        # 界線取自 strategies.PE_BANDS，與 `lowpe` 策略共用同一張表。
+        _pe_opts = {"不設限": None}
+        for _b, _lab in _PE_BANDS:
+            _pe_opts[_lab] = _b
+        _pe_label = st.selectbox(
+            "估值門檻（相對同業）", list(_pe_opts), index=0, key="smart_pe",
+            help="在所選策略之外**再加一條**「本益比要比同業便宜」的條件。\n\n"
+                 "比的是**官方產業別的同業中位數**，不是絕對倍數——絕對門檻"
+                 "（例如 12 倍以下）量到的其實是「哪些產業本來就便宜」，"
+                 "半導體與電子零組件的中位數都接近 29 倍，再便宜也進不去。\n\n"
+                 "虧損股（沒有本益比）與同業檔數不足的一律不通過。\n\n"
+                 "⚠️ 這個條件**本身是負向的**：同場回測裡「相對同業便宜」是"
+                 "五個策略中最差的一個。疊在動能類策略上很可能拖低報酬，"
+                 "實際影響見下方選股頁的說明。",
+        )
+        pe_bar = _pe_opts[_pe_label]
+        st.session_state["smart_pe_bar"] = pe_bar
         skip_news = st.checkbox(
             "⚡ 略過新聞分析", value=False, key="smart_skipnews",
             help=("新聞抓取是掃描最慢的一環（每檔約 6 秒），略過可快 2–3 倍。"
@@ -2109,13 +2128,17 @@ def render_smart_screener_page():
     {_h60_txt}
   </span>
 </div>""", unsafe_allow_html=True)
-        if health_bar:
+        if health_bar or pe_bar is not None:
+            _added = "、".join(
+                x for x in (("體質門檻" if health_bar else None),
+                            ("估值門檻" if pe_bar is not None else None)) if x)
+            _why = ("體質門檻**量不出成績**——財報沒有歷史快照可還原，"
+                    "回測時每一檔都只能給中性值。" if health_bar else "")
+            _pe_why = (pe_addon_note(strategy, 60) if pe_bar is not None else "")
             st.caption(
                 "↑ 這份數字是本策略**原本的定義**跑出來的"
                 f"（{_cmp_periods() or '—'} 期、同一批換股日、同一個等權基準），"
-                "**不含你加上的體質門檻**——綜合評分含新聞與財報，"
-                "沒有歷史快照可還原，回測時每一檔都只能給中性值，"
-                "所以這個條件**量不出成績**。加了它之後的實際表現是未知數。"
+                f"**不含你加上的{_added}**。" + _why + _pe_why
             )
         else:
             st.caption(
@@ -2179,7 +2202,7 @@ def render_smart_screener_page():
         st.caption(f"❔ 此策略尚未納入策略對照回測（{ev_v['note']}）")
 
     # 說明文字全部來自策略表（services/strategies.py），不再散落
-    st.caption(f"📋 {strat_bar_note(sdef, {'health_bar': health_bar})}"
+    st.caption(f"📋 {strat_bar_note(sdef, {'health_bar': health_bar, 'pe_bar': pe_bar})}"
                f"　｜　排序依據：{sdef['sort_desc']}")
 
     # ── 分數門檻實證：幾分以上才值得買 ────────────────────────────────────────
@@ -2433,7 +2456,8 @@ def render_smart_screener_page():
     # 不再有一長串 if-elif —— 新增策略只要在表裡加一筆。
     view = strat_select(sdef, results, {"buy_bar": buy_bar, "horizon_key": horizon_key,
                                         "trend_bar": TREND_BUY_BAR,
-                                        "health_bar": health_bar})
+                                        "health_bar": health_bar,
+                                        "pe_bar": pe_bar})
 
     # ── Summary strip (always shows both lenses) ──────────────────────────────
     buy_ct     = sum(1 for r in results if r["total_score"] >= buy_bar)
@@ -2457,8 +2481,9 @@ def render_smart_screener_page():
         # 這個數字才真的有涵蓋率；`lu_ct` 本來就算好了卻沒人用。
         st.metric("連日漲停", lu_ct, "支")
     with cols_m[3]:
-        st.metric("符合此策略", len(view),
-                  f"含體質門檻" if health_bar else "支")
+        _extra = "、".join(x for x in (("體質" if health_bar else None),
+                                       ("估值" if pe_bar is not None else None)) if x)
+        st.metric("符合此策略", len(view), f"含{_extra}門檻" if _extra else "支")
     if scanned:
         st.caption(
             f"🌏 本次**完整分析了 {scanned} 檔上市櫃股**（技術／量價／低基期／融資／估值／風報比 逐檔實算），"
@@ -2470,6 +2495,17 @@ def render_smart_screener_page():
             f"不是在別的策略挑剩的名單裡挑。"
         )
 
+    if not view and pe_bar is not None:
+        _withpe = [r for r in results if r.get("pe_rel_pct") is not None]
+        _pass_p = sum(1 for r in _withpe if r["pe_rel_pct"] <= pe_bar)
+        st.warning(
+            f"加上「{_pe_label}」之後選不出標的。"
+            f"本次掃描有 **{len(_withpe)} 檔**算得出相對同業本益比"
+            f"（其餘是虧損股或同業檔數不足），其中 {_pass_p} 檔達門檻，"
+            "但都不符合本策略的其他條件。\n\n"
+            "把門檻放寬或改選別的策略即可，**不需要重新掃描**。"
+        )
+        return
     if not view and health_bar:
         _withfin = [r for r in results if r.get("has_financials")]
         _pass_h = sum(1 for r in _withfin if r.get("fund_score", 0) >= health_bar)
@@ -3174,11 +3210,15 @@ def render_cross_screen_page():
     # 體質門檻與流動性／排除上櫃一樣，沿用智能選股頁當下的設定，
     # 否則兩頁都宣稱「同一批結果、同一套條件」卻不是同一套。
     _hb = st.session_state.get("smart_health_bar")
+    _pb = st.session_state.get("smart_pe_bar")
     ctx = {"buy_bar": buy_bar, "horizon_key": None, "trend_bar": TREND_BUY_BAR,
-           "health_bar": _hb}
+           "health_bar": _hb, "pe_bar": _pb}
     if _hb:
         st.caption(f"⚠️ 已沿用智能選股頁的體質門檻（基本面分 ≥ {_hb}）。"
                    "下方各策略的實證數字**不含**這個條件——它無法回測。")
+    if _pb is not None:
+        st.caption(f"⚠️ 已沿用智能選股頁的估值門檻（本益比相對同業 ≤ {_pb:+.0f}%）。"
+                   "下方各策略的實證數字**不含**這個條件；它單獨的影響見選股頁。")
 
     picks, ranks = {}, {}
     for k in picked:
@@ -3653,7 +3693,8 @@ def render_portfolio_page():
                     #    交叉篩選頁都有傳，哪天買進線變成動態的這頁就會悄悄不一致。
                     _ctx = {"buy_bar": _bb, "horizon_key": None,
                             "trend_bar": TREND_BUY_BAR,
-                            "health_bar": st.session_state.get("smart_health_bar")}
+                            "health_bar": st.session_state.get("smart_health_bar"),
+                            "pe_bar": st.session_state.get("smart_pe_bar")}
                     with st.expander(f"🔍 {sid} 在各選股策略中的入選情形", expanded=False):
                         st.caption("與智能選股頁**完全相同的條件**逐條檢核，"
                                    "所以這裡的結果一定和選股頁一致。")

@@ -60,10 +60,15 @@ def _f_hot_sector(r, ctx):
 
 
 # ── 超低本益比：相對同業，不是絕對倍數 ──────────────────────────────────────
-# 便宜多少才算。取自全市場實際分位（1525 檔可算相對值：p10=−49、p25=−28、
-# p50=+2），−30% 大約是「比同業便宜的那四分之一」，候選 350 檔，
-# 與舊的絕對 3–12 倍規則（339 檔）規模相當，回測結果因此可比。
-PE_DISCOUNT_PCT = -30
+# 門檻選項 —— **唯一定義**，策略與加掛門檻共用這一張表。
+# 單位是「相對同業中位數的 %」，負值＝比同業便宜。
+# 界線取自全市場實際分位（1525 檔可算相對值：p10=−49、p25=−28、p50=+2）。
+PE_BANDS = [(-50, "低於同業 50% 以上"), (-30, "低於同業 30% 以上"),
+            (-20, "低於同業 20% 以上"), (0, "低於同業")]
+
+# `lowpe` 策略自己的門檻，取 PE_BANDS 裡的一段（≈比同業便宜的那四分之一）。
+# 寫成從表裡取，才不會哪天調了選項卻忘了調策略。
+PE_DISCOUNT_PCT = PE_BANDS[1][0]
 
 
 def _f_pe_vs_peer(r, ctx):
@@ -73,16 +78,11 @@ def _f_pe_vs_peer(r, ctx):
     ⚠️ 為什麼改：絕對 3–12 倍這條規則量的其實是「產業」不是「便宜」。
        實測它選出的 339 檔裡建材營造 41、金融保險 17、紡織 16——
        那些產業的本益比本來就低，等於每一期都在買同一批傳產，
-       而真正「在自己產業裡被低估」的半導體/電子零組件一檔都選不到。
+       而真正「在自己產業裡被低估」的半導體/電子零組件一檔都選不到
+       （那兩個產業的中位數是 28.8 / 28.5，再便宜也到不了 12 倍）。
        改成相對同業之後，同一天選出的 350 檔分散在各產業。
     """
-    rel = r.get("pe_rel_pct")
-    if rel is None:
-        return False, "同業檔數不足或本檔無本益比，算不出相對同業"
-    peer = (r.get("pe_peer") or {}).get("median")
-    peer_txt = f"（本檔 {r.get('pe_ratio'):.1f}　同業中位 {peer:.1f}）" if peer else ""
-    return rel <= PE_DISCOUNT_PCT, \
-        f"本益比比同業低 {abs(PE_DISCOUNT_PCT):.0f}% 以上（本檔 {rel:+.0f}%）{peer_txt}"
+    return _pe_below_peer(r, PE_DISCOUNT_PCT)
 
 
 def _f_pe_floor(r, ctx):
@@ -90,6 +90,34 @@ def _f_pe_floor(r, ctx):
     pe = r.get("pe_ratio")
     ok = pe is not None and pe >= 3
     return ok, f"絕對本益比 ≥3 倍（本檔：{f'{pe:.1f}' if pe else '無'}）"
+
+
+def _pe_below_peer(r, bar):
+    """
+    「本益比低於同業 N%」的**唯一判斷**——策略與加掛門檻共用，
+    所以兩邊的定義與說明文字不可能不一致。
+
+    ⚠️ 算不出相對同業時一律**不通過**，理由要講清楚是哪一種：
+       虧損股沒有本益比、或同業檔數不足 `PEER_MIN_N`。
+       這與 `_f_health_bar` 對「查無財報」的處理是同一個原則——
+       缺資料不能當成合格放行。
+    """
+    rel = r.get("pe_rel_pct")
+    if rel is None:
+        pe = r.get("pe_ratio")
+        why = ("本檔無本益比（虧損或無資料）" if not pe
+               else "同業檔數不足，算不出同業中位數")
+        return False, f"算不出相對同業——{why}"
+    peer = (r.get("pe_peer") or {}).get("median")
+    peer_txt = (f"（本檔 {r['pe_ratio']:.1f}　同業中位 {peer:.1f}）"
+                if peer and r.get("pe_ratio") else "")
+    return rel <= bar, \
+        f"本益比相對同業 {rel:+.0f}% ≤ {bar:+.0f}%{peer_txt}"
+
+
+def _f_pe_bar(r, ctx):
+    """使用者加選的估值門檻。界線來自 ctx['pe_bar']（PE_BANDS 的其中一段）。"""
+    return _pe_below_peer(r, ctx.get("pe_bar"))
 
 
 def _f_is_limitup(r, ctx):
@@ -144,6 +172,10 @@ def filters_for(sdef, ctx):
     fs = list(sdef["filters"])
     if ctx.get("health_bar"):
         fs.append(("基本面達體質門檻", _f_health_bar))
+    # ⚠️ 一定要用 `is not None`：0 是合法門檻（「低於同業」＝ rel ≤ 0%），
+    #    寫成 `if ctx.get("pe_bar"):` 會讓那一檔選項靜靜失效。
+    if ctx.get("pe_bar") is not None:
+        fs.append(("本益比低於同業", _f_pe_bar))
     return fs
 
 

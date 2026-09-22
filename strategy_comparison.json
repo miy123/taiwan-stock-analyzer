@@ -287,5 +287,122 @@
         "vs_best_solo_h60": 0.98
       }
     }
+  },
+  "addon_pe": {
+    "trend": {
+      "bar": -30,
+      "avg_picks": 10.0,
+      "periods_with_picks": 139,
+      "h20": {
+        "excess": 0.65,
+        "t": 1.48,
+        "delta_vs_base": -1.07,
+        "periods": 139
+      },
+      "h40": {
+        "excess": 1.41,
+        "t": 1.74,
+        "delta_vs_base": -2.33,
+        "periods": 139
+      },
+      "h60": {
+        "excess": 2.8,
+        "t": 2.62,
+        "delta_vs_base": -3.77,
+        "periods": 139
+      }
+    },
+    "sectorhot": {
+      "bar": -30,
+      "avg_picks": 6.8,
+      "periods_with_picks": 136,
+      "h20": {
+        "excess": -0.01,
+        "t": -0.03,
+        "delta_vs_base": -1.68,
+        "periods": 136
+      },
+      "h40": {
+        "excess": 1.35,
+        "t": 1.54,
+        "delta_vs_base": -2.47,
+        "periods": 136
+      },
+      "h60": {
+        "excess": 1.94,
+        "t": 1.89,
+        "delta_vs_base": -4.21,
+        "periods": 136
+      }
+    },
+    "lowpe": {
+      "bar": -30,
+      "avg_picks": 10.0,
+      "periods_with_picks": 139,
+      "h20": {
+        "excess": -1.55,
+        "t": -4.88,
+        "delta_vs_base": 0.0,
+        "periods": 139
+      },
+      "h40": {
+        "excess": -2.63,
+        "t": -4.78,
+        "delta_vs_base": 0.0,
+        "periods": 139
+      },
+      "h60": {
+        "excess": -4.04,
+        "t": -5.45,
+        "delta_vs_base": 0.0,
+        "periods": 139
+      }
+    },
+    "limitup": {
+      "bar": -30,
+      "avg_picks": 0.6,
+      "periods_with_picks": 44,
+      "h20": {
+        "excess": 6.51,
+        "t": 2.27,
+        "delta_vs_base": 2.49,
+        "periods": 44
+      },
+      "h40": {
+        "excess": 9.0,
+        "t": 2.07,
+        "delta_vs_base": 3.92,
+        "periods": 44
+      },
+      "h60": {
+        "excess": 7.02,
+        "t": 1.3,
+        "delta_vs_base": 2.15,
+        "periods": 44
+      }
+    },
+    "contrarian": {
+      "bar": -30,
+      "avg_picks": 10.0,
+      "periods_with_picks": 139,
+      "h20": {
+        "excess": -0.87,
+        "t": -2.83,
+        "delta_vs_base": 0.48,
+        "periods": 139
+      },
+      "h40": {
+        "excess": -1.6,
+        "t": -2.73,
+        "delta_vs_base": 1.07,
+        "periods": 139
+      },
+      "h60": {
+        "excess": -2.84,
+        "t": -3.82,
+        "delta_vs_base": 0.7,
+        "periods": 139
+      }
+    }
   }
 }
