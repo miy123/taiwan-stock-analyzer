@@ -26,6 +26,7 @@ ROE／淨利率／營收成長／負債比全市場逐檔都算得出來。
 """
 
 import threading
+import time
 
 import requests
 import streamlit as st
@@ -44,6 +45,32 @@ _HEADERS = {"User-Agent": "Mozilla/5.0"}
 SCAN_FLOOR_TURNOVER = 1e7
 
 
+# 端點瞬斷時的重試 —— 與 `financials._fetch_all` 同一個理由，同一組參數。
+#
+# ⚠️ 為什麼非要有：這幾份快照都被 `@st.cache_data(ttl=10800)` 包著，
+#    任何一次瞬斷都會讓**半套結果被快取三小時**，而畫面上完全看不出異常。
+#    實際撞到過：`get_full_market_snapshot()` 只回上市那半邊，於是
+#    `sector.industry_pe()` 的電子零組件同業中位數從 28.5 變成 30.7
+#    （＝只算上市的值），而 `lowpe` 策略的篩選與排序整個吃這個中位數。
+#    財報那邊 2026-09-16 已經為了完全相同的失敗模式加過重試。
+_RETRIES = 3
+_RETRY_SLEEP = 1.5
+
+
+def _get_json(url, timeout=30):
+    """抓 JSON，失敗重試 `_RETRIES` 次（遞增退避）。全部失敗回 None。"""
+    for attempt in range(_RETRIES):
+        try:
+            r = requests.get(url, timeout=timeout, headers=_HEADERS).json()
+            if r:
+                return r
+        except Exception:
+            pass
+        if attempt < _RETRIES - 1:
+            time.sleep(_RETRY_SLEEP * (attempt + 1))
+    return None
+
+
 def _f(v):
     try:
         x = float(str(v).replace(",", "").strip())
@@ -60,8 +87,11 @@ def get_listed_snapshot() -> dict:
     ETFs / warrants / 受益證券 are excluded (only 4-digit codes are kept).
     """
     out = {}
+    rows = _get_json(_DAY_ALL)
+    if not rows:
+        return {}
     try:
-        for d in requests.get(_DAY_ALL, timeout=30, headers=_HEADERS).json():
+        for d in rows:
             code = str(d.get("Code", "")).strip()
             # Common stocks are 1101–9999; codes starting with 0 are ETFs (0050…)
             if len(code) != 4 or not code.isdigit() or code.startswith("0"):
@@ -77,7 +107,7 @@ def get_listed_snapshot() -> dict:
         return {}
 
     try:
-        for d in requests.get(_BWIBBU, timeout=30, headers=_HEADERS).json():
+        for d in (_get_json(_BWIBBU) or []):
             code = str(d.get("Code", "")).strip()
             if code in out:
                 out[code]["pe"] = _f(d.get("PEratio"))
@@ -102,10 +132,7 @@ def get_otc_snapshot() -> dict:
     必須只取最新一天，否則同一檔會出現多筆而互相覆蓋成舊價。
     """
     out = {}
-    try:
-        rows = requests.get(_TPEX_DAY, timeout=40, headers=_HEADERS).json()
-    except Exception:
-        return {}
+    rows = _get_json(_TPEX_DAY, timeout=40)
     if not rows:
         return {}
 
@@ -126,7 +153,7 @@ def get_otc_snapshot() -> dict:
         }
 
     try:
-        for d in requests.get(_TPEX_PER, timeout=40, headers=_HEADERS).json():
+        for d in (_get_json(_TPEX_PER, timeout=40) or []):
             code = str(d.get("SecuritiesCompanyCode", "")).strip()
             if code in out:
                 out[code]["pe"] = _f(d.get("PriceEarningRatio"))
@@ -369,10 +396,14 @@ def scan_universe(min_turnover=1e7, period="2y", progress_cb=None, include_otc=T
             #    它實際上是 64% 基本面分 + 29% 純技術長線分，趨勢結構分佔 0%——
             #    而以趨勢分排序的三個策略都指向它，等於深度分析挑的是另一批股票。
             #    趨勢分本來就在這個函式結尾算好放進每一列，直接用 `trend_score` 即可。
-            # 超低本益比：越低越前面（排序用負值）。排除 <3 倍者——多半是業外一次性
-            # 收益灌大 EPS 造成的假低估（價值陷阱），而非真的便宜。
+            # 超低本益比：改成**相對同業**之後，初篩鍵也要跟著換成相對值——
+            # `prelim_key` 必須和 `sort_key` 量同一件事（第四輪稽核的教訓）。
+            # 仍保留「絕對 <3 倍不算」：那多半是業外一次性收益灌大 EPS 造成的
+            # 假低估（價值陷阱），不是真的便宜。
             _pe = meta.get("pe")
-            prelim_lowpe = (-_pe if (_pe is not None and 3 <= _pe <= 100) else -9999)
+            _pe_rel = fundamentals.get("pe_rel_pct")
+            prelim_lowpe = (-_pe_rel if (_pe_rel is not None and _pe and _pe >= 3)
+                            else -9999)
 
             rows.append({
                 "prelim_sleeper": round(prelim_sleeper, 1),
@@ -396,6 +427,9 @@ def scan_universe(min_turnover=1e7, period="2y", progress_cb=None, include_otc=T
                 "has_financials": bool(_fin),
                 "target_price": None, "upside_pct": None,
                 "pe_ratio": meta.get("pe"), "dividend_yield": meta.get("dy"),
+                # 相對同業的本益比（lowpe 策略的篩選與排序都吃它）。
+                # 由 attach_peer_metrics 算好，與個股頁同一個實作。
+                "pe_rel_pct": fundamentals.get("pe_rel_pct"),
                 "revenue_growth": _fin.get("revenue_growth"),
                 "fin_period": _fin.get("period"),
                 "margin_usage": margin_signal.get("usage_pct"),

@@ -19,7 +19,9 @@ potential / is_limit_up / max_streak），交給 select() 挑前 10 名，
 再用 +20／+40／+60 交易日的實際報酬驗收。所有策略共用同一批日期、
 同一個等權基準 → 直接可比。
 
-Point-in-time：本益比用月度 EPS 快照 × 當日股價；漲停由當日價量判定
+Point-in-time：本益比用月度 EPS 快照 × 當日股價，**同業中位數也用同一天的那批
+本益比現算**（`sector.pe_medians`，與 App 同一個實作），不是拿今天的中位數回套；
+漲停由當日價量判定
 （呼叫 `limit_up.streaks_from_closes`，與 App 同一份定義與同一組常數）；
 族群動能由當日往前 60 日報酬算。都沒有用到未來資料。
 """
@@ -38,6 +40,7 @@ from services.potential import calculate_potential_score
 from services.histdata import build_eps_timeline, pe_from_timeline, CACHE_DIR
 from services.strategies import STRATEGIES, select
 from services.limit_up import streaks_from_closes, MAX_DAYS_AGO, MIN_STREAK
+from services.sector import pe_medians, rel_pe_pct, get_industry_map
 from itertools import combinations
 
 MIN_HISTORY = 260
@@ -123,6 +126,7 @@ def main():
     rebal = list(range(start_i, end_i, args.every))
     print(f"換股日 {len(rebal)} 個（{common[start_i].date()} ~ {common[end_i].date()}）\n")
 
+    imap = get_industry_map()
     keys = [s["key"] for s in STRATEGIES]
     # 交叉篩選：同時擠進兩個策略前 N 名的股票。使用者會用這個選股，
     # 那就必須知道它到底有沒有比單一策略好——本專案已三次驗證「多加一層過濾更差」，
@@ -190,6 +194,17 @@ def main():
             r["trend_score"] = sum(ranks[f][i] * w
                                    for f, w in FACTOR_WEIGHTS.items()) / tw
             r["above_ma120"] = facts[i].get("dist_ma120")
+
+        # 相對同業的本益比 —— 和趨勢分一樣是**當日橫斷面**，所以也只能等
+        # 這一天的 rows 都建好才算得出來。用的是同一天的 point-in-time 本益比
+        # （月度 EPS 快照 × 當日股價），沒有前視偏誤。
+        # 分組與中位數走 `sector.pe_medians()`，與 App 即時路徑同一個實作。
+        med = pe_medians({r["stock_id"]: r["pe_ratio"] for r in rows})
+        for r in rows:
+            ind = (imap.get(r["stock_id"]) or {}).get("name")
+            row_med = med.get(ind) or {}
+            r["pe_peer"] = ({"industry": ind, **row_med} if row_med else {})
+            r["pe_rel_pct"] = rel_pe_pct(r["pe_ratio"], row_med.get("median"))
 
         dates_used.append(date)
         bench = {h: float(np.mean([r["_fwd"][h] for r in rows])) for h in FWD}

@@ -1905,6 +1905,8 @@ def _analyze_one_stock(stock_id: str, period: str = None, limit_up_info=None,
             # 走 fundamentals 而不是直接讀 info：本益比的來源與虧損處理
             # 統一在 analyze_fundamentals（官方優先、虧損為 None）。
             "pe_ratio":     fundamentals.get("pe_ratio"),
+            # 相對同業的本益比 —— 與掃描路徑同一個實作（attach_peer_metrics）
+            "pe_rel_pct":   fundamentals.get("pe_rel_pct"),
             "dividend_yield": fundamentals.get("dividend_yield"),  # normalised fraction
             # 走 fundamentals：官方批次月營收（累計年增）優先、yfinance 只補缺。
             # 直接讀 info 會讓這條路徑拿 yfinance 的 TTM，與全市場掃描不同把尺——
@@ -3155,10 +3157,13 @@ def render_cross_screen_page():
             "至少命中幾個策略", min_value=2, max_value=len(picked),
             value=len(picked), key="cross_minhits",
             help="等於策略數＝嚴格交集；調低就是「多數共識」。"
-                 "交集越嚴格標的越少，但實證上並不會因此更準（見下方）。",
+                 "交集越嚴格標的越少；有沒有因此更準請看下方那張表——"
+                 "它跨次回測會變號，不要當成定論。",
         )
 
-    with st.expander("⚠️ 先看這個：交集實測比單押更差", expanded=True):
+    # 標題刻意中性：交集到底較好較差會**跨次回測變號**，結論由 cross_evidence()
+    # 從實證檔生成，標題不要先替它下判斷。
+    with st.expander("⚠️ 先看這個：交集到底有沒有比單押更好", expanded=True):
         _ce = cross_evidence(picked, 60)
         if _ce:
             st.markdown(_ce)

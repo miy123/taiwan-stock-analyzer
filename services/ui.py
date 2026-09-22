@@ -682,15 +682,20 @@ def cross_evidence(keys, hold_days: int = 60) -> str:
     交叉篩選的實證 —— 逐組報出「交集 vs 單獨用較強的那個」。
 
     使用者要用這個選股，就必須看到它到底有沒有比較好。
-    實測結果是**每一組可測的交集都比較差**（第四次驗證「多加一層過濾更差」），
-    所以這裡不是裝飾，是必要的揭露。
+
+    ⚠️ **結語一定要由資料生成，不要寫死。** 這裡原本寫死「每一組可測的交集
+    都比較差」，2026-09-22 重跑後 `趨勢∩族群` 變成 +8.65% vs 單獨 +6.57%
+    （交集反而贏），寫死的那句話就當場變成畫面自己打自己。
+    而且**兩次跑出來的方向相反**（上一次是 +6.29% vs +6.81%，交集較差），
+    代表這個組合的估計本身不穩定——所以結語只陳述「這次幾組贏、幾組輸」，
+    不下「交集比較好／比較差」的通則。
     """
     from itertools import combinations
     from services.evidence import cross_stats, strategy_stats, cross_top_n
     from services.strategies import STRATEGIES
     label = {s["key"]: s["label"] for s in STRATEGIES}
     n = cross_top_n()
-    lines, any_row = [], False
+    lines, any_row, deltas = [], False, []
     for a, b in combinations(keys, 2):
         c = cross_stats(a, b, hold_days)
         if not c or not c.get("periods"):
@@ -702,6 +707,7 @@ def cross_evidence(keys, hold_days: int = 60) -> str:
         sb = strategy_stats(b, hold_days).get("excess", 0)
         best = max(sa, sb)
         d = c["excess"] - best
+        deltas.append(d)
         lines.append(
             f"| {label.get(a, a)} ∩ {label.get(b, b)} | {c['periods']} 期"
             f"（平均 {c.get('avg_picks', 0):.1f} 檔）| **{c['excess']:+.2f}%** | "
@@ -713,11 +719,23 @@ def cross_evidence(keys, hold_days: int = 60) -> str:
     head = (f"每個策略取前 {n} 名取交集，持有{lab}的超額報酬：\n\n"
             f"| 組合 | 有交集期數 | 交集超額 | 單獨用較強的那個 | 差異 |\n"
             f"|---|---|---|---|---|\n")
-    tail = ("\n\n**實測：每一組可測的交集都輸給「單獨用較強的那一個」。**"
-            "這是本專案第四次得到「多加一層過濾會更差」的結果"
-            "（前三次：族群濾網、低波動濾網、四重確認）。\n\n"
+    # 結語由上表的實際差異生成。寫死會出事：不同次回測方向會變號。
+    win = sum(1 for d in deltas if d > 0)
+    tot = len(deltas)
+    if tot and win == 0:
+        verdict = ("**這次每一組可測的交集都輸給「單獨用較強的那一個」。**"
+                   "本專案先前也多次量到「多加一層過濾會更差」"
+                   "（族群濾網、低波動濾網、四重確認）。")
+    elif tot and win == tot:
+        verdict = f"**這次 {tot} 組交集全部贏過「單獨用較強的那一個」。**"
+    elif tot:
+        verdict = (f"**這次 {tot} 組裡有 {win} 組贏過「單獨用較強的那一個」、"
+                   f"{tot - win} 組較差。**")
+    tail = (f"\n\n{verdict}\n\n"
+            "⚠️ 這些數字**跨次執行會變號**（同一組 趨勢∩族群 在兩次回測裡一次較差、"
+            "一次較好），交集期數又比單押少，估計本來就比較不穩。"
             "→ 交叉篩選適合用來**找共識標的、縮小研究範圍**，"
-            "但不要期待它比單押最強的策略賺更多。"
+            "不要憑這張表斷定它一定比單押強或弱。"
             if any_row else "")
     return head + "\n".join(lines) + tail
 

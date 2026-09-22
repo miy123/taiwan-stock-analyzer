@@ -59,10 +59,37 @@ def _f_hot_sector(r, ctx):
     return name in hot, f"屬於動能前5強族群（本檔：{name or '未分類'}）"
 
 
-def _f_pe_band(r, ctx):
+# ── 超低本益比：相對同業，不是絕對倍數 ──────────────────────────────────────
+# 便宜多少才算。取自全市場實際分位（1525 檔可算相對值：p10=−49、p25=−28、
+# p50=+2），−30% 大約是「比同業便宜的那四分之一」，候選 350 檔，
+# 與舊的絕對 3–12 倍規則（339 檔）規模相當，回測結果因此可比。
+PE_DISCOUNT_PCT = -30
+
+
+def _f_pe_vs_peer(r, ctx):
+    """
+    本益比要**比同業便宜**，不是絕對數字低。
+
+    ⚠️ 為什麼改：絕對 3–12 倍這條規則量的其實是「產業」不是「便宜」。
+       實測它選出的 339 檔裡建材營造 41、金融保險 17、紡織 16——
+       那些產業的本益比本來就低，等於每一期都在買同一批傳產，
+       而真正「在自己產業裡被低估」的半導體/電子零組件一檔都選不到。
+       改成相對同業之後，同一天選出的 350 檔分散在各產業。
+    """
+    rel = r.get("pe_rel_pct")
+    if rel is None:
+        return False, "同業檔數不足或本檔無本益比，算不出相對同業"
+    peer = (r.get("pe_peer") or {}).get("median")
+    peer_txt = f"（本檔 {r.get('pe_ratio'):.1f}　同業中位 {peer:.1f}）" if peer else ""
+    return rel <= PE_DISCOUNT_PCT, \
+        f"本益比比同業低 {abs(PE_DISCOUNT_PCT):.0f}% 以上（本檔 {rel:+.0f}%）{peer_txt}"
+
+
+def _f_pe_floor(r, ctx):
+    """絕對 <3 倍不算 —— 多半是業外一次性收益灌大 EPS 的假低估（價值陷阱）。"""
     pe = r.get("pe_ratio")
-    ok = pe is not None and 3 <= pe <= 12
-    return ok, f"本益比 3–12 倍（本檔：{pe if pe else '無'}）"
+    ok = pe is not None and pe >= 3
+    return ok, f"絕對本益比 ≥3 倍（本檔：{f'{pe:.1f}' if pe else '無'}）"
 
 
 def _f_is_limitup(r, ctx):
@@ -227,15 +254,19 @@ STRATEGIES = [
         "sort_key": lambda r, c: _trend(r),
     },
     {
-        "key": "lowpe", "label": "💎 超低本益比",
-        "caption": "本益比最低的便宜股　⛔回測為負且不穩定",
-        "note": "排除 <3 倍者——多半是業外一次性收益灌大 EPS 的假低估",
-        "sort_desc": "**本益比由低到高**",
+        "key": "lowpe", "label": "💎 相對同業便宜",
+        "caption": "本益比比同業低的股票",
+        "note": ("比的是**同業中位數**，不是絕對倍數——絕對規則量到的其實是"
+                 "「哪些產業本來就便宜」。排除 <3 倍者：多半是業外一次性收益"
+                 "灌大 EPS 的假低估"),
+        "sort_desc": "**本益比相對同業的折價幅度**（折價最多的排前面）",
         "prelim_key": "prelim_lowpe", "color": "#ffd54f",
-        "evidence_model": "P1 純低本益比", "evidence_run": "factor_3y",
-        "metric": lambda r: r.get("pe_ratio") or 0,
-        "filters": [("本益比 3–12 倍", _f_pe_band)],
-        "sort_key": lambda r, c: -(r.get("pe_ratio") or 999),
+        "evidence_model": None, "evidence_run": "factor_3y",
+        "metric": lambda r: r.get("pe_rel_pct") or 0,
+        "filters": [(f"本益比比同業低 {abs(PE_DISCOUNT_PCT):.0f}% 以上", _f_pe_vs_peer),
+                    ("絕對本益比 ≥3 倍", _f_pe_floor)],
+        "sort_key": lambda r, c: -(r.get("pe_rel_pct") if r.get("pe_rel_pct")
+                                   is not None else 9999),
     },
     {
         "key": "limitup", "label": "🔥 漲停動能",

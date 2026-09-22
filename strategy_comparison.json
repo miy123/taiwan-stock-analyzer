@@ -1,8 +1,8 @@
 {
   "generated_periods": 139,
   "date_range": [
-    "2023-08-11",
-    "2026-06-18"
+    "2023-08-15",
+    "2026-06-23"
   ],
   "topn": 10,
   "method": "同一次回測、同一批換股日、同一個當日等權基準；直接呼叫 services/strategies.select()，測的就是 App 實跑的定義",
@@ -11,38 +11,38 @@
       "periods_with_picks": 139,
       "avg_picks": 10.0,
       "h20": {
-        "excess": 1.92,
-        "t": 2.59,
+        "excess": 1.72,
+        "t": 2.31,
         "beat_rate": 56.1,
         "periods": 139,
-        "net_excess": 1.33
+        "net_excess": 1.14
       },
       "h40": {
-        "excess": 4.2,
-        "t": 3.69,
-        "beat_rate": 61.9,
+        "excess": 3.74,
+        "t": 3.32,
+        "beat_rate": 55.4,
         "periods": 139,
-        "net_excess": 3.61
+        "net_excess": 3.16
       },
       "h60": {
-        "excess": 6.81,
-        "t": 5.06,
-        "beat_rate": 60.4,
+        "excess": 6.57,
+        "t": 5.22,
+        "beat_rate": 61.2,
         "periods": 139,
-        "net_excess": 6.23
+        "net_excess": 5.99
       },
       "walk_forward": {
         "h20": {
-          "first_half": 1.53,
-          "second_half": 2.3
+          "first_half": 2.04,
+          "second_half": 1.41
         },
         "h40": {
-          "first_half": 2.87,
-          "second_half": 5.51
+          "first_half": 3.46,
+          "second_half": 4.03
         },
         "h60": {
-          "first_half": 3.45,
-          "second_half": 10.13
+          "first_half": 4.1,
+          "second_half": 9.02
         }
       }
     },
@@ -50,38 +50,38 @@
       "periods_with_picks": 139,
       "avg_picks": 10.0,
       "h20": {
-        "excess": 1.74,
-        "t": 2.63,
-        "beat_rate": 57.6,
+        "excess": 1.67,
+        "t": 2.43,
+        "beat_rate": 56.8,
         "periods": 139,
-        "net_excess": 1.15
+        "net_excess": 1.08
       },
       "h40": {
-        "excess": 3.52,
-        "t": 3.08,
-        "beat_rate": 53.2,
+        "excess": 3.82,
+        "t": 3.4,
+        "beat_rate": 58.3,
         "periods": 139,
-        "net_excess": 2.94
+        "net_excess": 3.24
       },
       "h60": {
-        "excess": 5.81,
-        "t": 3.81,
-        "beat_rate": 54.0,
+        "excess": 6.15,
+        "t": 4.3,
+        "beat_rate": 57.6,
         "periods": 139,
-        "net_excess": 5.22
+        "net_excess": 5.57
       },
       "walk_forward": {
         "h20": {
-          "first_half": 0.96,
-          "second_half": 2.51
+          "first_half": 1.19,
+          "second_half": 2.14
         },
         "h40": {
-          "first_half": 0.21,
-          "second_half": 6.79
+          "first_half": 1.54,
+          "second_half": 6.07
         },
         "h60": {
-          "first_half": -0.59,
-          "second_half": 12.11
+          "first_half": 1.48,
+          "second_half": 10.76
         }
       }
     },
@@ -89,77 +89,77 @@
       "periods_with_picks": 139,
       "avg_picks": 10.0,
       "h20": {
-        "excess": -2.13,
-        "t": -4.74,
-        "beat_rate": 33.1,
+        "excess": -1.55,
+        "t": -4.88,
+        "beat_rate": 28.8,
         "periods": 139,
-        "net_excess": -2.72
+        "net_excess": -2.13
       },
       "h40": {
-        "excess": -3.77,
-        "t": -4.67,
-        "beat_rate": 38.8,
+        "excess": -2.63,
+        "t": -4.78,
+        "beat_rate": 36.7,
         "periods": 139,
-        "net_excess": -4.35
+        "net_excess": -3.22
       },
       "h60": {
-        "excess": -5.45,
-        "t": -4.9,
-        "beat_rate": 46.0,
+        "excess": -4.04,
+        "t": -5.45,
+        "beat_rate": 37.4,
         "periods": 139,
-        "net_excess": -6.04
+        "net_excess": -4.62
       },
       "walk_forward": {
         "h20": {
-          "first_half": 0.1,
-          "second_half": -4.34
+          "first_half": 0.11,
+          "second_half": -3.18
         },
         "h40": {
-          "first_half": 1.08,
-          "second_half": -8.54
+          "first_half": 0.71,
+          "second_half": -5.92
         },
         "h60": {
-          "first_half": 1.73,
-          "second_half": -12.54
+          "first_half": 1.17,
+          "second_half": -9.18
         }
       }
     },
     "limitup": {
-      "periods_with_picks": 135,
-      "avg_picks": 5.2,
+      "periods_with_picks": 134,
+      "avg_picks": 5.4,
       "h20": {
-        "excess": 3.72,
-        "t": 3.14,
-        "beat_rate": 55.6,
-        "periods": 135,
-        "net_excess": 3.14
+        "excess": 4.02,
+        "t": 3.63,
+        "beat_rate": 58.2,
+        "periods": 134,
+        "net_excess": 3.43
       },
       "h40": {
-        "excess": 3.95,
-        "t": 2.5,
-        "beat_rate": 54.8,
-        "periods": 135,
-        "net_excess": 3.37
+        "excess": 5.07,
+        "t": 3.15,
+        "beat_rate": 59.0,
+        "periods": 134,
+        "net_excess": 4.49
       },
       "h60": {
-        "excess": 3.59,
-        "t": 1.89,
-        "beat_rate": 50.4,
-        "periods": 135,
-        "net_excess": 3.01
+        "excess": 4.86,
+        "t": 2.56,
+        "beat_rate": 54.5,
+        "periods": 134,
+        "net_excess": 4.28
       },
       "walk_forward": {
         "h20": {
-          "first_half": 2.42,
-          "second_half": 5.0
+          "first_half": 2.37,
+          "second_half": 5.67
         },
         "h40": {
-          "first_half": 1.82,
-          "second_half": 6.05
+          "first_half": 2.63,
+          "second_half": 7.51
         },
         "h60": {
-          "first_half": 0.67,
-          "second_half": 6.47
+          "first_half": 3.15,
+          "second_half": 6.58
         }
       }
     },
@@ -167,38 +167,38 @@
       "periods_with_picks": 139,
       "avg_picks": 10.0,
       "h20": {
-        "excess": -1.89,
-        "t": -4.91,
-        "beat_rate": 27.3,
+        "excess": -1.35,
+        "t": -3.8,
+        "beat_rate": 35.3,
         "periods": 139,
-        "net_excess": -2.48
+        "net_excess": -1.93
       },
       "h40": {
-        "excess": -3.52,
-        "t": -5.43,
-        "beat_rate": 28.8,
+        "excess": -2.68,
+        "t": -4.29,
+        "beat_rate": 33.1,
         "periods": 139,
-        "net_excess": -4.1
+        "net_excess": -3.26
       },
       "h60": {
-        "excess": -4.59,
-        "t": -5.71,
-        "beat_rate": 31.7,
+        "excess": -3.54,
+        "t": -3.94,
+        "beat_rate": 32.4,
         "periods": 139,
-        "net_excess": -5.18
+        "net_excess": -4.12
       },
       "walk_forward": {
         "h20": {
-          "first_half": -1.61,
-          "second_half": -2.17
+          "first_half": -0.95,
+          "second_half": -1.74
         },
         "h40": {
-          "first_half": -2.82,
-          "second_half": -4.21
+          "first_half": -1.45,
+          "second_half": -3.89
         },
         "h60": {
-          "first_half": -2.84,
-          "second_half": -6.32
+          "first_half": -1.65,
+          "second_half": -5.4
         }
       }
     }
@@ -207,104 +207,84 @@
     "top_n_per_strategy": 20,
     "pairs": {
       "trend+sectorhot": {
-        "periods": 135,
-        "avg_picks": 8.7,
+        "periods": 134,
+        "avg_picks": 8.6,
         "h20": {
-          "excess": 1.74,
-          "t": 2.19,
-          "periods": 135
+          "excess": 1.55,
+          "t": 1.86,
+          "periods": 134
         },
         "h40": {
-          "excess": 3.92,
-          "t": 2.91,
-          "periods": 135
+          "excess": 4.75,
+          "t": 3.68,
+          "periods": 134
         },
         "h60": {
-          "excess": 6.29,
-          "t": 3.4,
-          "periods": 135
+          "excess": 8.65,
+          "t": 5.28,
+          "periods": 134
         },
-        "vs_best_solo_h60": -0.52
+        "vs_best_solo_h60": 2.08
       },
       "trend+limitup": {
         "periods": 65,
         "avg_picks": 2.1,
         "h20": {
-          "excess": 2.08,
-          "t": 1.25,
+          "excess": 2.22,
+          "t": 1.32,
           "periods": 65
         },
         "h40": {
-          "excess": 2.94,
-          "t": 1.08,
+          "excess": 3.65,
+          "t": 1.51,
           "periods": 65
         },
         "h60": {
-          "excess": 4.67,
-          "t": 1.24,
+          "excess": 5.27,
+          "t": 1.78,
           "periods": 65
         },
-        "vs_best_solo_h60": -2.15
-      },
-      "sectorhot+lowpe": {
-        "periods": 25,
-        "avg_picks": 0.7,
-        "h20": {
-          "excess": -0.87,
-          "t": -0.57,
-          "periods": 25
-        },
-        "h40": {
-          "excess": -3.15,
-          "t": -2.14,
-          "periods": 25
-        },
-        "h60": {
-          "excess": -6.15,
-          "t": -2.69,
-          "periods": 25
-        },
-        "vs_best_solo_h60": -11.96
+        "vs_best_solo_h60": -1.3
       },
       "sectorhot+limitup": {
-        "periods": 51,
+        "periods": 46,
         "avg_picks": 1.5,
         "h20": {
-          "excess": 0.59,
-          "t": 0.28,
-          "periods": 51
+          "excess": 1.1,
+          "t": 0.52,
+          "periods": 46
         },
         "h40": {
-          "excess": 2.74,
-          "t": 0.88,
-          "periods": 51
+          "excess": 2.69,
+          "t": 0.85,
+          "periods": 46
         },
         "h60": {
-          "excess": 3.32,
-          "t": 0.76,
-          "periods": 51
+          "excess": 4.89,
+          "t": 1.11,
+          "periods": 46
         },
-        "vs_best_solo_h60": -2.49
+        "vs_best_solo_h60": -1.26
       },
       "lowpe+contrarian": {
-        "periods": 64,
-        "avg_picks": 1.6,
+        "periods": 39,
+        "avg_picks": 1.0,
         "h20": {
-          "excess": -3.4,
-          "t": -4.24,
-          "periods": 64
+          "excess": -0.71,
+          "t": -0.96,
+          "periods": 39
         },
         "h40": {
-          "excess": -6.18,
-          "t": -3.64,
-          "periods": 64
+          "excess": -1.6,
+          "t": -1.12,
+          "periods": 39
         },
         "h60": {
-          "excess": -8.72,
-          "t": -3.86,
-          "periods": 64
+          "excess": -2.56,
+          "t": -1.42,
+          "periods": 39
         },
-        "vs_best_solo_h60": -4.13
+        "vs_best_solo_h60": 0.98
       }
     }
   }

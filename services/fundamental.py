@@ -33,16 +33,34 @@ def attach_peer_metrics(fundamentals: dict, stock_id) -> dict:
     （`universe.scan_universe`）為了速度自己組 fundamentals dict，兩邊各算一次
     就會有兩把尺——本專案在本益比與體質分上已經踩過兩次。
 
-    目前只有毛利率需要相對同業（它產業差異極大，見
-    `sector.industry_gross_margin`）。ROE／淨利率／營收成長的產業差異沒有
-    大到必須相對化，維持全市場級距。
+    目前有兩項需要相對同業：
+      · **毛利率**（產業差異極大，見 `sector.industry_gross_margin`）→ 進體質分
+      · **本益比**（`lowpe` 策略改成「相對同業便宜」之後排序與篩選都吃它）
+        ⚠️ 本益比的相對值**只給 lowpe 策略用，不進任何分數**——
+        體質分 2026-09-15 已把估值移出，不要從這裡偷渡回去。
+
+    ROE／淨利率／營收成長的產業差異沒有大到必須相對化，維持全市場級距。
     """
-    from services.sector import peer_gross_margin
-    p = peer_gross_margin(stock_id, fundamentals.get("gross_margin"))
+    # 資料來源半套時 sector 會 raise（見 `_require_full_market`）——接住它，
+    # 讓「同業那一行不顯示」而不是讓整條計分路徑掛掉。**不要改成靜靜回填 0**：
+    # 缺值與 0 在這裡是兩件事（0% ＝「跟同業一樣貴」）。
+    from services.sector import peer_gross_margin, peer_pe
+    try:
+        p = peer_gross_margin(stock_id, fundamentals.get("gross_margin"))
+    except Exception:
+        p = None
     if p:
         fundamentals["gross_margin_peer"] = p
         if p.get("rel_pp") is not None:
             fundamentals["gross_margin_rel_pp"] = p["rel_pp"]
+    try:
+        q = peer_pe(stock_id, fundamentals.get("pe_ratio"))
+    except Exception:
+        q = None
+    if q:
+        fundamentals["pe_peer"] = q
+        if q.get("rel_pct") is not None:
+            fundamentals["pe_rel_pct"] = q["rel_pct"]
     return fundamentals
 
 

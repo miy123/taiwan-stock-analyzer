@@ -69,6 +69,33 @@ def get_industry_map() -> dict:
     return out
 
 
+# 全市場（上市 1085 + 上櫃 891）約 1976 檔，批次財報約 1967 檔。
+# 少於這個數字幾乎一定是某一邊的端點瞬斷，只拿到半套。
+_MIN_FULL_MARKET = 1500
+
+
+def _require_full_market(d, who):
+    """
+    半套快照**不可以**拿來算同業中位數 —— 寧可整個不算。
+
+    ⚠️ 這兩個函式都被 `@st.cache_data(ttl=43200/10800)` 包著，
+       所以一旦用半套資料算出中位數，那組錯的數字會被快取好幾個小時，
+       而畫面上完全看不出異常。實際撞到過：上櫃那半邊沒回來時，
+       電子零組件的同業中位數從 28.5 變成 30.7（＝只算上市的值），
+       而 `lowpe` 策略的篩選與排序整個吃這個中位數。
+
+    刻意用 raise 而不是回 {}：`st.cache_data` **不會快取例外**，
+    所以下一次 rerun 會重試；回 {} 反而會把「算不出來」也快取起來。
+    呼叫端（`attach_peer_metrics` / `ui.peer_pe_line`）都會接住，
+    結果是同業那一行不顯示、`lowpe` 明講「算不出相對同業」，
+    而不是拿一組偏掉的中位數去選股。
+    """
+    if len(d) < _MIN_FULL_MARKET:
+        raise RuntimeError(
+            f"{who}: 只拿到 {len(d)} 檔（預期 ≥{_MIN_FULL_MARKET}），"
+            "資料來源可能瞬斷，不以半套資料計算同業中位數")
+
+
 # 同業本益比至少要幾檔才顯示。桶子太小，中位數就是一兩檔說了算——
 # 實測玻璃陶瓷全市場只有 5 檔，中位數 49.9 完全由極端值決定。
 PEER_MIN_N = 10
@@ -134,8 +161,10 @@ def industry_gross_margin() -> dict:
     「多加一層濾網反而更差」。
     """
     from services.financials import get_bulk_fundamentals
+    bulk = get_bulk_fundamentals()
+    _require_full_market(bulk, "industry_gross_margin")
     return _median_by_industry(
-        {c: v.get("gross_margin") for c, v in get_bulk_fundamentals().items()})
+        {c: v.get("gross_margin") for c, v in bulk.items()})
 
 
 def peer_gross_margin(stock_id, gross_margin=None) -> dict:
@@ -149,6 +178,40 @@ def peer_gross_margin(stock_id, gross_margin=None) -> dict:
     金融業沒有毛利率，回 {}。
     """
     return _peer_of(stock_id, gross_margin, industry_gross_margin(), "rel_pp")
+
+
+# 本益比超過這個倍數多半是獲利趨近於零的極端值，取中位數前先排掉。
+_PE_CAP = 200
+
+
+def pe_medians(pe_by_code, min_n=None) -> dict:
+    """
+    {產業: {median, n}} —— 由「一批本益比」算各產業中位數。
+
+    **即時與回測共用這一個實作**：`industry_pe()` 餵今天的官方快照，
+    `strategy_comparison.py` 餵每個換股日的 point-in-time 本益比。
+    兩邊因此用同一套清理規則（排除非正值與 >_PE_CAP 倍）與同一個 `PEER_MIN_N`。
+
+    ⚠️ 不要在回測裡自己再寫一份 —— 漲停的定義就是這樣漂移掉的
+    （見 `strategy_comparison._limit_up_at` 與第五輪稽核）。
+    """
+    return _median_by_industry(
+        {c: (p if (p is not None and 0 < p <= _PE_CAP) else None)
+         for c, p in pe_by_code.items()}, min_n=min_n)
+
+
+def rel_pe_pct(pe, median):
+    """
+    本益比相對同業中位數的百分比 —— **唯一實作**，便宜是負值
+    （−40 ＝ 比同業便宜四成）。
+
+    用相對比例而不是百分點（毛利率走的是百分點），因為本益比沒有上限、
+    量級跨產業差很多：半導體中位 28 倍與金融 13.5 倍，差 5 倍與差 5 個「點」
+    完全是兩回事。
+    """
+    if pe is None or pe <= 0 or not median:
+        return None
+    return (pe / median - 1) * 100
 
 
 @st.cache_data(ttl=10800, show_spinner=False)
@@ -168,10 +231,9 @@ def industry_pe() -> dict:
     版本從未回測過，讓它進計分等於把剛修掉的錯再犯一次。
     """
     from services.universe import get_full_market_snapshot
-    # >200 倍多半是獲利趨近於零的極端值，排掉再取中位數
-    return _median_by_industry({
-        c: (v.get("pe") if (v.get("pe") is not None and 0 < v["pe"] <= 200) else None)
-        for c, v in get_full_market_snapshot().items()})
+    snap = get_full_market_snapshot()
+    _require_full_market(snap, "industry_pe")
+    return pe_medians({c: v.get("pe") for c, v in snap.items()})
 
 
 def peer_pe(stock_id, pe=None) -> dict:
