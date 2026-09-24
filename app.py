@@ -42,7 +42,7 @@ from services.ui import (
     overheat_badge, trend_cell, score_legend, bucket_table,
     health_cell, potential_cell, divergence_note, health_grade, health_explainer,
     strategy_caption, strategy_table, cross_evidence, pe_addon_note,
-    backtest_method_note, nonoverlap_note,
+    backtest_method_note, nonoverlap_note, dist_basis_note,
     hold_longer_note as _hold_longer_note, cmp_periods as _cmp_periods,
     trend_delta_badge,
     pe_badge, pe_inline, horizon_cells, evidence_badge, rr_cell,
@@ -1307,9 +1307,15 @@ def render_recommendation_tab(
             st.warning("尚未跑過全市場掃描，無法算出這檔在市場中的百分位。"
                        "請先到 **🎯 智能選股** 掃描一次。")
         else:
+            # 基準日一定要講：趨勢分的意思是「贏過**當天**全市場幾 %」，
+            # 拿一份舊分布算出來的名次看起來一樣正常（見 ui.dist_basis_note）。
+            _basis = dist_basis_note()
+            if _tr.get("outdated"):
+                st.warning(_basis)
             st.caption(
                 f"分數＝距季線／均線排列／季線斜率在**全市場的百分位**，"
-                f"{_long_sc:.0f} 分代表趨勢強度贏過 {_long_sc:.0f}% 的股票。\n\n"
+                f"{_long_sc:.0f} 分代表趨勢強度贏過 {_long_sc:.0f}% 的股票。"
+                + ("" if _tr.get("outdated") else f"　{_basis}") + "\n\n"
                 + threshold_note(20)
             )
             for _w in (a.get("trend_why") or []):

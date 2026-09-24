@@ -41,6 +41,7 @@
 滾動走查換模型 +5.97%，同期間從頭到尾固定用趨勢分 +8.16%。不要做模型切換。
 """
 
+import datetime as _dt
 import json
 from pathlib import Path
 
@@ -164,7 +165,12 @@ def save_distribution(rows_factors):
             # 存 101 個分位點就夠還原百分位，不必存整份原始資料
             dist[f] = [float(np.percentile(vals, p)) for p in range(101)]
     if dist:
-        payload = {"factors": dist, "n": len(rows_factors)}
+        # ⚠️ `asof` 是必要的，不是裝飾。這份分布是**某一天**的全市場橫斷面，
+        #    而趨勢分的意思是「贏過當天全市場幾 %」。沒有日期的話，一份幾個月前
+        #    的分布會被當成基準**靜靜沿用**，畫面上完全看不出來——那正是本模組
+        #    自己寫的「寧可明講也不要給一個假的排名」要防的事。
+        payload = {"factors": dist, "n": len(rows_factors),
+                   "asof": _dt.date.today().isoformat()}
         _dist_cache = payload          # 同一行程內立即生效，不必等重啟
         try:
             DIST_PATH.write_text(json.dumps(payload))
@@ -200,24 +206,54 @@ def _pct_of(breaks, v):
     return float(min(max(idx, 0), 100))
 
 
+# 分布幾天以內算新鮮。市場結構不會一天變一次，但拿一個月前的橫斷面當
+# 「贏過全市場幾 %」的基準就不誠實了。超過就標 outdated（**不是**隱藏分數——
+# 隱藏會讓個股頁變成廢頁；做法是照樣給分，但畫面明講基準是哪一天的）。
+DIST_FRESH_DAYS = 7
+
+
+def distribution_age():
+    """
+    (asof, age_days) —— 目前分布的基準日與距今幾天。沒有分布回 (None, None)。
+
+    舊版的 `market_distribution.json` 沒有 `asof` 欄位，這時回 age_days=None，
+    畫面會說「基準日未知」而不是假裝它是今天的。
+    """
+    d = load_distribution()
+    asof = d.get("asof")
+    if not asof:
+        return None, None
+    try:
+        return asof, (_dt.date.today() - _dt.date.fromisoformat(asof)).days
+    except ValueError:
+        return asof, None
+
+
 def score_single(df):
     """
     單檔評分（個股分析／我的持股用）。對照最近一次全市場掃描的分布。
 
-    回傳 {score, percentiles, factors, stale}。
-    stale=True 代表還沒跑過全市場掃描，分數只能給中性 50——
-    寧可明講也不要拿手邊 9 檔股票算百分位、給出一個假的排名。
+    回傳 {score, percentiles, factors, stale, asof, age_days, outdated}。
+      stale=True    還沒跑過全市場掃描 → 分數 None。
+                    寧可明講也不要拿手邊 9 檔股票算百分位、給出一個假的排名。
+      outdated=True 有分布，但它是 `DIST_FRESH_DAYS` 天以前的。分數照給，
+                    但呼叫端**必須把基準日顯示出來**——趨勢分講的是
+                    「贏過**當天**全市場幾 %」，基準日不講清楚就是另一種假排名。
     """
     raw = raw_factors(df)
     dist = load_distribution().get("factors") or {}
     if not dist:
-        return {"score": None, "percentiles": {}, "factors": raw, "stale": True}
+        return {"score": None, "percentiles": {}, "factors": raw, "stale": True,
+                "asof": None, "age_days": None, "outdated": False}
     pcts = {f: _pct_of(dist.get(f), raw.get(f)) for f in FACTOR_WEIGHTS}
     total_w = sum(FACTOR_WEIGHTS.values())
     s = sum(pcts[f] * w for f, w in FACTOR_WEIGHTS.items()) / total_w
+    asof, age = distribution_age()
     return {"score": round(float(s), 1),
             "percentiles": {f: round(v, 1) for f, v in pcts.items()},
-            "factors": raw, "stale": False}
+            "factors": raw, "stale": False,
+            "asof": asof, "age_days": age,
+            "outdated": (age is None or age > DIST_FRESH_DAYS)}
 
 
 def explain(percentiles):

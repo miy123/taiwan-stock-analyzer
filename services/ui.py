@@ -741,6 +741,32 @@ def cross_evidence(keys, hold_days: int = 60) -> str:
     return head + "\n".join(lines) + tail
 
 
+def dist_basis_note() -> str:
+    """
+    趨勢分是對照**哪一天**的全市場分布算的 —— 三頁共用。
+
+    ⚠️ 為什麼一定要顯示：趨勢結構分的定義是「贏過**當天**全市場幾 %」。
+    分布檔（market_distribution.json）先前**沒有存日期**，`score_single()`
+    也只判斷「檔案在不在」，於是一份幾個月前的分布會被靜靜當成基準用，
+    畫面上完全看不出來。那與 `scoring` 自己寫的「寧可明講也不要給一個
+    假的排名」互相矛盾。
+
+    分數照給、不隱藏（隱藏會讓個股頁變成廢頁），但基準日必須寫出來。
+    """
+    from services.scoring import distribution_age, DIST_FRESH_DAYS
+    asof, age = distribution_age()
+    if asof is None:
+        return ("⚠️ 這份全市場分布**沒有記錄基準日**（在加上日期之前就存下來的）。"
+                "請到 **🎯 智能選股** 重新掃描一次，之後就會顯示基準日。")
+    if age is None:
+        return f"⚠️ 全市場分布的基準日 `{asof}` 無法解讀，建議重新掃描。"
+    if age > DIST_FRESH_DAYS:
+        return (f"⚠️ 趨勢分對照的是 **{asof}**（{age} 天前）那一天的全市場分布。"
+                f"超過 {DIST_FRESH_DAYS} 天就不宜再當成「目前」的排名——"
+                "請到 **🎯 智能選股** 重新掃描。")
+    return f"對照 **{asof}** 的全市場分布（{age} 天前）。"
+
+
 def backtest_method_note(hold_days: int = 60) -> str:
     """
     回測怎麼做的、哪裡不能盡信 —— 三頁共用，**全部由實證檔生成**。

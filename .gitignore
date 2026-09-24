@@ -20,3 +20,9 @@ venv/
 
 # 個人資料：趨勢分歷史快照
 trend_history.json
+
+# 全市場橫斷面分布：每次掃描都會重寫，而且是「某一天」的快照
+# （趨勢分＝贏過當天全市場幾 %）。追蹤它只會讓 git status 常態是髒的，
+# 而且全新 clone 會拿到一份過期的基準日。沒有檔案時個股頁會誠實顯示
+# 「尚未掃描」，那才是正確行為（見 services/scoring.score_single）。
+market_distribution.json

@@ -29,7 +29,7 @@
 
 用法：
     python3 check_consistency.py            # 兩項都跑
-    python3 check_consistency.py --numbers  # 只掃寫死數字（快，不用渲染頁面）
+    python3 check_consistency.py --numbers  # 只掃靜態檢查（快，不用渲染頁面）
 """
 
 import argparse
@@ -178,6 +178,73 @@ def scan_hardcoded_thresholds():
                 row = (rel, lineno, frag.replace("\n", " ").strip())
                 if row not in hits:
                     hits.append(row)
+    return hits
+
+
+# ── 檢查 4：CLAUDE.md 提到的識別字是否還存在 ───────────────────────────────
+#
+# 為什麼需要：CLAUDE.md 是寫給後續開發者／AI 的指示，裡面有大量
+# 「一律用某某函式」「改某某常數的時候要…」這種祈使句。程式改名或刪掉之後，
+# 那些句子不會自己更新，於是文件開始指揮人去用一個不存在的函式。
+# 實際抓到過：
+#   · 「新增任何用長線分排序的地方，一律用 `_long_key`」——`_long_key` 早已刪除
+#   · 共用元件清單裡的 `long_threshold()`——已改名為 `ui.buy_bar()`，
+#     而且舊的那個回傳的是分桶轉正點而非買進線，正是它造成過一個 bug
+#
+# 判定「已刪除」的敘述不算違規：句子裡出現下列任一個詞就跳過，
+# 因為那是在記錄歷史，不是在指揮。
+_DOC_OK_WORDS = ("已刪", "已移除", "不存在", "舊名", "曾叫", "曾經", "先前",
+                 "原本", "已改名", "已收斂", "已失效", "已整併", "改成",
+                 "無呼叫端", "死碼")
+# Python 內建與外部套件的名字不在本專案定義，不該被當成失效引用
+_DOC_IGNORE = {"bool", "min", "max", "sorted", "len", "dict", "list", "set",
+               "int", "float", "str", "round", "abs", "sum", "local", "range",
+               "tuple", "frozenset", "print", "open", "isinstance"}
+
+
+def _defined_names() -> set:
+    """本專案所有 top-level 與 class 內定義的函式／類別／常數名。"""
+    out = set()
+    for f in list(ROOT.glob("*.py")) + list(ROOT.glob("services/*.py")):
+        try:
+            tree = ast.parse(f.read_text(encoding="utf-8"))
+        except (SyntaxError, UnicodeDecodeError):
+            continue
+        for n in ast.walk(tree):
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                out.add(n.name)
+            elif isinstance(n, ast.Assign):
+                out.update(t.id for t in n.targets if isinstance(t, ast.Name))
+            elif isinstance(n, ast.AnnAssign) and isinstance(n.target, ast.Name):
+                out.add(n.target.id)
+            elif isinstance(n, ast.ImportFrom):     # from x import y as z
+                out.update((a.asname or a.name) for a in n.names)
+            elif isinstance(n, ast.Import):
+                out.update((a.asname or a.name).split(".")[0] for a in n.names)
+    return out
+
+
+def scan_doc_refs():
+    """回傳 [(行號, 識別字, 該行內容), ...] —— CLAUDE.md 指到但程式裡沒有的。"""
+    doc_path = ROOT / "CLAUDE.md"
+    try:
+        doc = doc_path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return []
+    defined = _defined_names()
+    hits, lines = [], doc.splitlines()
+    for i, line in enumerate(lines, 1):
+        if any(w in line for w in _DOC_OK_WORDS):
+            continue
+        names = set()
+        for m in re.finditer(r"`([A-Za-z_][\w.]*)\(\)?[^`]*`", line):
+            names.add(m.group(1).split(".")[-1])
+        for m in re.finditer(r"`([A-Z][A-Z0-9_]{3,})`", line):
+            names.add(m.group(1))
+        for n in sorted(names):
+            if n in _DOC_IGNORE or n in defined:
+                continue
+            hits.append((i, n, line.strip()))
     return hits
 
 
@@ -360,6 +427,20 @@ def main():
               f"（見 ui.threshold_note / bucket_table / strategy_caption）。")
     else:
         print("  ✅ 沒有寫死的回測數字")
+
+    print("\n" + "=" * 78)
+    print("檢查 4：CLAUDE.md 是否指到已經不存在的函式／常數")
+    print("=" * 78)
+    dhits = scan_doc_refs()
+    if dhits:
+        failed = True
+        for ln, name, text in dhits:
+            print(f"  ❌ CLAUDE.md:{ln}  `{name}` 在程式裡找不到")
+            print(f"     {text[:90]}")
+        print(f"\n  共 {len(dhits)} 處。改名或刪除函式時，CLAUDE.md 的祈使句要一起改"
+              f"（若只是記錄歷史，句子裡寫「已刪」「舊名」等字樣即可跳過）。")
+    else:
+        print("  ✅ CLAUDE.md 沒有指到不存在的東西")
 
     print("\n" + "=" * 78)
     print("檢查 2：門檻數字是否寫死（一律要用變數插值）")
