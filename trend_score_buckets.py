@@ -13,38 +13,31 @@
 
 import argparse
 import json
-import math
 from collections import defaultdict
 
 import numpy as np
 
-from services.universe import get_listed_snapshot, download_history_bulk
+from services.universe import download_history_bulk
 from services.technical import calculate_indicators
 from services.scoring import raw_factors, pct_rank_column, FACTOR_WEIGHTS
+from services.backtest_stats import (
+    t_stat, t_newey_west, nonoverlap, pit_universe, listed_pool,
+)
 
 MIN_HISTORY = 260
 FWD = [20, 40, 60]
 
 
-def _t(xs):
-    if len(xs) < 3:
-        return 0.0
-    m, sd = float(np.mean(xs)), float(np.std(xs, ddof=1))
-    return m / (sd / math.sqrt(len(xs))) if sd else 0.0
-
-
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--stocks", type=int, default=400)
+    ap.add_argument("--pool", type=int, default=0)      # 0 ＝全部上市
+    ap.add_argument("--stocks", type=int, default=400)   # 每期可投資前 N 檔
     ap.add_argument("--every", type=int, default=5)
     ap.add_argument("--years", type=float, default=3.0)
     ap.add_argument("--min-turnover", type=float, default=1e7)
     args = ap.parse_args()
 
-    snap = get_listed_snapshot()
-    codes = [c for c, _ in sorted(snap.items(),
-                                  key=lambda kv: -(kv[1].get("turnover") or 0))
-             ][:args.stocks]
+    codes = listed_pool(args.pool)
     frames = download_history_bulk(codes, period="5y", chunk=120)
     enriched = {}
     for c, d in frames.items():
@@ -75,18 +68,13 @@ def main():
         date = common[di]
         if k % 20 == 0:
             print(f"  {k}/{len(dates)}  {date.date()}", flush=True)
+        # 可投資範圍由**當日**流動性決定（不是用今天的成交金額回頭挑池子）
         day = []
-        for code, d in enriched.items():
-            pos = d.index.searchsorted(date, side="right") - 1
-            if pos < MIN_HISTORY or pos >= len(d):
-                continue
-            if abs((d.index[pos] - date).days) > 7:
-                continue
+        for _to, code, pos in pit_universe(enriched, date, MIN_HISTORY,
+                                           args.min_turnover, args.stocks):
+            d = enriched[code]
             sl = d.iloc[:pos + 1]
             close = float(sl["Close"].iloc[-1])
-            v20 = sl["Vol_MA20"].iloc[-1] if "Vol_MA20" in sl else None
-            if v20 != v20 or not v20 or close * float(v20) < args.min_turnover:
-                continue
             fwd, ok = {}, True
             for h in FWD:
                 if pos + h >= len(d):
@@ -137,7 +125,8 @@ def main():
             win = 100 * sum(1 for x in series if x > 0) / len(series)
             mark = "  ⬅ 買進線" if b[0] == 70 else ""
             print(f"{b[0]:>4}-{b[1] if b[1] <= 100 else 100:<5} {len(series):>6} "
-                  f"{np.mean(a):>+8.2f}% {np.mean(series):>+8.2f}% {_t(series):>7.2f} "
+                  f"{np.mean(a):>+8.2f}% {np.mean(series):>+8.2f}% "
+                  f"{t_newey_west(series, h / args.every - 1):>7.2f} "
                   f"{win:>10.0f}%{mark}")
         # 單調性
         pts = [(b[0], float(np.mean(list(obs[h][b].values()))))
@@ -153,7 +142,15 @@ def main():
             print(f"  超額報酬轉正的最低區間：{min(pos)} 分以上")
 
     # 落地供 App 引用 —— UI 不該再寫死任何分桶數字（寫死的那份已經過期兩次了）
-    out = {"periods": len(dates), "buckets": {}}
+    out = {"periods": len(dates), "buckets": {},
+           # 方法與限制跟著檔案走，畫面才引用得到（見 ui.backtest_method_note）
+           "every": args.every,
+           "universe": {"pool": len(codes), "per_period_cap": args.stocks,
+                        "selection": "每個取樣日各自用當日往前 20 日的平均成交金額排序取前 N 檔"},
+           "caveats": {
+               "t_stat": "t 值為 Newey-West（已修正重疊視窗高估）；t_raw 為未修正的舊算法",
+               "survivorship": "股票池取自今天仍在上市的公司，期間內已下市者不在樣本中，數字偏樂觀",
+           }}
     for h in FWD:
         rows = []
         for b in BUCKETS:
@@ -164,7 +161,10 @@ def main():
                 "range": f"{b[0]}-{min(b[1], 100)}", "lo": b[0], "hi": min(b[1], 100),
                 "excess": round(float(np.mean(series)), 2),
                 "abs_return": round(float(np.mean(list(absr[h][b].values()))), 2),
-                "t": round(_t(series), 2),
+                # 對外一律 Newey-West（重疊視窗）；t_raw 僅供對照
+                "t": round(t_newey_west(series, h / args.every - 1), 2),
+                "t_raw": round(t_stat(series), 2),
+                "nonoverlap": nonoverlap(series, h / args.every),
                 "beat_rate": round(100 * sum(1 for x in series if x > 0) / len(series), 1),
                 "periods": len(series),
             })

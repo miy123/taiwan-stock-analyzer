@@ -28,12 +28,11 @@ Point-in-time：本益比用月度 EPS 快照 × 當日股價，**同業中位�
 
 import argparse
 import json
-import math
 from collections import defaultdict
 
 import numpy as np
 
-from services.universe import get_listed_snapshot, download_history_bulk
+from services.universe import download_history_bulk
 from services.technical import calculate_indicators
 from services.scoring import raw_factors, pct_rank_column, FACTOR_WEIGHTS, BUY_BAR
 from services.potential import calculate_potential_score
@@ -42,6 +41,9 @@ from services.strategies import STRATEGIES, select
 from services.limit_up import streaks_from_closes, MAX_DAYS_AGO, MIN_STREAK
 from services.sector import pe_medians, rel_pe_pct, get_industry_map
 from services.strategies import PE_DISCOUNT_PCT
+from services.backtest_stats import (
+    t_stat, t_newey_west, nonoverlap, pit_universe, listed_pool,
+)
 from itertools import combinations
 
 MIN_HISTORY = 260
@@ -50,69 +52,8 @@ ROUND_TRIP_COST = 0.585
 TOPN_DEFAULT = 10
 
 
-def _t(xs):
-    """
-    一般 t 值 —— **只在視窗不重疊時可以照字面解讀**。
-
-    ⚠️ 本回測每 `--every` 個交易日換一次股，但持有 `h` 天，所以相鄰
-    `h/every` 個期別的持有區間大幅重疊，139 個觀測**不是獨立樣本**。
-    直接用這個 t 會系統性高估顯著性。對外報告一律用 `_t_nw()`。
-    """
-    if len(xs) < 3:
-        return 0.0
-    m, sd = float(np.mean(xs)), float(np.std(xs, ddof=1))
-    return m / (sd / math.sqrt(len(xs))) if sd else 0.0
-
-
-def _t_nw(xs, lag):
-    """
-    Newey-West t 值 —— 重疊視窗的標準修正（Bartlett kernel）。
-
-    `lag` 取 `持有天數 / 換股間隔 − 1`：那正是還會與當期重疊的期別數
-    （每 5 天換股、持有 60 天 → lag=11）。自我相關被算進標準誤裡，
-    t 因此會比 `_t()` 小，那才是誠實的數字。
-
-    平均值本身是無偏的，重疊不影響它；被高估的只有顯著性。
-    """
-    n = len(xs)
-    if n < 3:
-        return 0.0
-    x = np.asarray(xs, dtype=float)
-    e = x - x.mean()
-    var = float(e @ e) / n
-    for l in range(1, min(int(lag), n - 1) + 1):
-        w = 1.0 - l / (lag + 1.0)                 # Bartlett 權重
-        var += 2.0 * w * float(e[l:] @ e[:-l]) / n
-    if var <= 0:
-        return 0.0
-    return float(x.mean()) / math.sqrt(var / n)
-
-
-def _nonoverlap(xs, stride):
-    """
-    完全不重疊的子樣本檢驗。
-
-    每隔 `stride` 期取一個（stride = 持有天數 / 換股間隔），得到互不重疊的
-    序列。`stride` 種起始位移各是一個獨立子樣本，**全部都算**再報 t 的範圍
-    ——只報其中一個等於挑對自己有利的那條。
-
-    回傳 {n, t_min, t_med, t_max}；平均值與全樣本相同，故不重複回傳。
-    """
-    stride = max(1, int(stride))
-    ts, ns = [], []
-    for off in range(stride):
-        sub = xs[off::stride]
-        if len(sub) < 3:
-            continue
-        ts.append(_t(sub))
-        ns.append(len(sub))
-    if not ts:
-        return {}
-    ts.sort()
-    return {"n": int(np.median(ns)), "subsamples": len(ts),
-            "t_min": round(ts[0], 2),
-            "t_med": round(float(np.median(ts)), 2),
-            "t_max": round(ts[-1], 2)}
+# 統計工具一律走 services/backtest_stats（唯一實作），這裡不再自己寫一份。
+_t, _t_nw, _nonoverlap = t_stat, t_newey_west, nonoverlap
 
 
 def _pct(c, n):
@@ -152,10 +93,7 @@ def main():
     print(f"設定: 前{args.stocks}檔 / 每{args.every}日換股 / 近{args.years}年 / "
           f"選前{args.topn}名\n")
 
-    snap = get_listed_snapshot()
-    _ranked = [c for c, _ in sorted(snap.items(),
-                                    key=lambda kv: -(kv[1].get("turnover") or 0))]
-    codes = _ranked if args.pool <= 0 else _ranked[:args.pool]
+    codes = listed_pool(args.pool)
     frames = download_history_bulk(codes, period="5y", chunk=120)
     enriched = {}
     for c, d in frames.items():
@@ -216,22 +154,8 @@ def main():
         #    前視偏誤：2023 年冷門、後來才變熱門的股票會被放進池子，而
         #    「後來變熱門」常常就是因為它漲了很多。現在改成每個換股日各自用
         #    當日往前 20 日的平均成交金額排序取前 `--stocks` 檔。
-        cand = []
-        for code, d in enriched.items():
-            pos = d.index.searchsorted(date, side="right") - 1
-            if pos < MIN_HISTORY or pos >= len(d):
-                continue
-            if abs((d.index[pos] - date).days) > 7:
-                continue
-            v20 = d["Vol_MA20"].iloc[pos] if "Vol_MA20" in d else None
-            if v20 != v20 or not v20:
-                continue
-            to = float(d["Close"].iloc[pos]) * float(v20)
-            if to < args.min_turnover:
-                continue
-            cand.append((to, code, pos))
-        cand.sort(reverse=True)
-        cand = cand[:args.stocks]
+        cand = pit_universe(enriched, date, MIN_HISTORY,
+                            args.min_turnover, args.stocks)
 
         rows, facts = [], []
         for _to, code, pos in cand:

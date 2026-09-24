@@ -15,7 +15,6 @@ import argparse
 import statistics as stat
 import sys
 
-import yfinance as yf
 
 sys.path.insert(0, ".")
 
@@ -24,7 +23,9 @@ from services.technical import (
     analyze_volume_price,
 )
 from services.potential import calculate_potential_score
-from services.universe import get_listed_snapshot, download_history_bulk
+from services.universe import download_history_bulk
+# 本腳本只報勝率與平均（沒有 t 檢定），所以只需要池子的共用實作。
+from services.backtest_stats import listed_pool
 
 FWD = (5, 20, 60)
 HZ_NAME = {5: "1週", 20: "1個月", 60: "3個月"}
@@ -52,14 +53,13 @@ SCORE_TYPES = {
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--stocks", type=int, default=450)
+    ap.add_argument("--pool", type=int, default=0)      # 0 ＝全部上市
     ap.add_argument("--every", type=int, default=5)
     ap.add_argument("--years", type=float, default=5.0)
     args = ap.parse_args()
 
     print("① 下載資料…")
-    snap = get_listed_snapshot()
-    ranked = sorted(snap.items(), key=lambda kv: -(kv[1].get("turnover") or 0))
-    codes = [c for c, _ in ranked[:args.stocks]]
+    codes = listed_pool(args.pool)
     frames = download_history_bulk(codes, period="5y", chunk=120)
 
     print("② 計算指標…")

@@ -1,1257 +1,2389 @@
 {
   "meta": {
-    "generated": "2026-09-04",
+    "generated": "2026-09-24",
     "script": "backtest_research.py",
-    "universe": "450 檔流動上市股（近20日均額 ≥2000萬）",
-    "method": "每5交易日換股，等權買進各模型前10名；每個換股日聚合為1個觀測以避免重疊窗灌水；扣除來回交易成本0.585%（手續費0.1425%×2 + 證交稅0.3%）",
+    "universe": "全部上市（下載 1085 檔）；每期取近20日均額 ≥2000萬且流動性前 400 名",
+    "method": "每 5 交易日換股，等權買進各模型前 10 名；每個換股日聚合為 1 個觀測；t 值為 Newey-West（lag = 持有天數/換股間隔 − 1，修正重疊視窗）；扣除來回交易成本 0.585%",
     "signals_tested": "僅價量核心（技術/四週期/量價/低基期/ATR風報比/大盤環境）",
     "signals_excluded": "基本面、新聞情緒、分析師目標價（無歷史快照，納入會造成前視偏誤）",
-    "regime_note": "by_regime_1m 為持有1個月、依當日大盤環境（加權指數 vs 季線與其斜率）分組的超額報酬。關鍵發現：動能類模型在多頭極強、空頭仍為正；而低基期/潛力類在多頭為負、**空頭反而轉正**——策略有效性取決於市場環境，不該一概而論。",
-    "benchmark": "當日全體合格股票等權平均報酬（等同『隨便買』）",
-    "key_metric": "excess_return = 組合報酬 − 基準；正值才代表選股排序有價值",
-    "significance": "t_stat 絕對值 ≥1.96 視為統計顯著",
-    "caveats": [
-      "測試期涵蓋多頭124期／震盪28期／空頭27期，已做分環境檢驗（見 by_regime_1m）",
-      "空頭樣本僅27期，分環境結論的統計力較弱，方向性參考為主",
-      "存活者偏誤：以現存上市股回測，已下市公司不在樣本內，絕對報酬偏樂觀",
-      "60日窗在5日換股下仍有重疊，t值略微高估顯著性",
-      "基本面與新聞的貢獻未被驗證（既非有效也非無效）"
-    ],
-    "latest_run": "factor_3y"
+    "caveats": {
+      "t_stat": "t 值為 Newey-West，已修正重疊視窗高估；t_raw 為未修正的舊算法",
+      "survivorship": "股票池取自今天仍在上市的公司，期間內已下市者不在樣本中，數字偏樂觀"
+    }
   },
   "runs": {
     "main_3y": {
-      "label": "近5年（主測試）",
-      "periods": 179,
+      "label": "3.0 年 / 每 5 交易日換股 / 前 10 名",
+      "periods": 139,
       "benchmark_return": {
-        "5": 0.72,
-        "20": 2.94,
-        "60": 8.55
+        "5": 0.59,
+        "20": 2.11,
+        "60": 6.14
       },
       "models": {
-        "純動能120日": {
-          "5": {
-            "periods": 179,
-            "stock_win_rate": 51.2,
-            "portfolio_return": 1.56,
-            "net_return": 0.98,
-            "excess_return": 0.84,
-            "beat_benchmark_rate": 49.7,
-            "t_stat": 2.45,
-            "significant": true,
-            "excess_with_stoploss": 0.83
-          },
-          "20": {
-            "periods": 179,
-            "stock_win_rate": 52.5,
-            "portfolio_return": 5.74,
-            "net_return": 5.16,
-            "excess_return": 2.8,
-            "beat_benchmark_rate": 62.0,
-            "t_stat": 4.43,
-            "significant": true,
-            "excess_with_stoploss": 1.8
-          },
-          "60": {
-            "periods": 179,
-            "stock_win_rate": 56.0,
-            "portfolio_return": 15.74,
-            "net_return": 15.16,
-            "excess_return": 7.2,
-            "beat_benchmark_rate": 64.8,
-            "t_stat": 6.65,
-            "significant": true,
-            "excess_with_stoploss": 1.74
-          }
-        },
-        "純動能250日": {
-          "5": {
-            "periods": 179,
-            "stock_win_rate": 51.1,
-            "portfolio_return": 1.56,
-            "net_return": 0.98,
-            "excess_return": 0.84,
-            "beat_benchmark_rate": 55.9,
-            "t_stat": 2.91,
-            "significant": true,
-            "excess_with_stoploss": 0.92
-          },
-          "20": {
-            "periods": 179,
-            "stock_win_rate": 54.6,
-            "portfolio_return": 5.88,
-            "net_return": 5.29,
-            "excess_return": 2.94,
-            "beat_benchmark_rate": 64.8,
-            "t_stat": 5.29,
-            "significant": true,
-            "excess_with_stoploss": 2.22
-          },
-          "60": {
-            "periods": 179,
-            "stock_win_rate": 54.2,
-            "portfolio_return": 15.37,
-            "net_return": 14.78,
-            "excess_return": 6.82,
-            "beat_benchmark_rate": 65.4,
-            "t_stat": 5.66,
-            "significant": true,
-            "excess_with_stoploss": 2.89
-          }
-        },
-        "純動能60日": {
-          "5": {
-            "periods": 179,
-            "stock_win_rate": 51.3,
-            "portfolio_return": 1.53,
-            "net_return": 0.95,
-            "excess_return": 0.81,
-            "beat_benchmark_rate": 54.2,
-            "t_stat": 2.5,
-            "significant": true,
-            "excess_with_stoploss": 0.74
-          },
-          "20": {
-            "periods": 179,
-            "stock_win_rate": 54.1,
-            "portfolio_return": 6.38,
-            "net_return": 5.8,
-            "excess_return": 3.44,
-            "beat_benchmark_rate": 65.9,
-            "t_stat": 5.25,
-            "significant": true,
-            "excess_with_stoploss": 2.07
-          },
-          "60": {
-            "periods": 179,
-            "stock_win_rate": 58.4,
-            "portfolio_return": 18.27,
-            "net_return": 17.69,
-            "excess_return": 9.73,
-            "beat_benchmark_rate": 69.3,
-            "t_stat": 7.77,
-            "significant": true,
-            "excess_with_stoploss": 3.53
-          }
-        },
-        "長線+短線確認": {
-          "5": {
-            "periods": 178,
-            "stock_win_rate": 52.2,
-            "portfolio_return": 1.43,
-            "net_return": 0.85,
-            "excess_return": 0.79,
-            "beat_benchmark_rate": 61.8,
-            "t_stat": 3.99,
-            "significant": true,
-            "excess_with_stoploss": 0.83
-          },
-          "20": {
-            "periods": 178,
-            "stock_win_rate": 56.6,
-            "portfolio_return": 5.2,
-            "net_return": 4.62,
-            "excess_return": 2.37,
-            "beat_benchmark_rate": 54.5,
-            "t_stat": 4.77,
-            "significant": true,
-            "excess_with_stoploss": 1.56
-          },
-          "60": {
-            "periods": 178,
-            "stock_win_rate": 64.5,
-            "portfolio_return": 16.35,
-            "net_return": 15.76,
-            "excess_return": 7.92,
-            "beat_benchmark_rate": 65.7,
-            "t_stat": 6.17,
-            "significant": true,
-            "excess_with_stoploss": 2.19
-          }
-        },
-        "長線×動能": {
-          "5": {
-            "periods": 179,
-            "stock_win_rate": 51.1,
-            "portfolio_return": 1.5,
-            "net_return": 0.91,
-            "excess_return": 0.77,
-            "beat_benchmark_rate": 50.3,
-            "t_stat": 2.28,
-            "significant": true,
-            "excess_with_stoploss": 0.75
-          },
-          "20": {
-            "periods": 179,
-            "stock_win_rate": 52.5,
-            "portfolio_return": 5.71,
-            "net_return": 5.13,
-            "excess_return": 2.77,
-            "beat_benchmark_rate": 63.1,
-            "t_stat": 4.35,
-            "significant": true,
-            "excess_with_stoploss": 1.77
-          },
-          "60": {
-            "periods": 179,
-            "stock_win_rate": 56.5,
-            "portfolio_return": 15.92,
-            "net_return": 15.33,
-            "excess_return": 7.37,
-            "beat_benchmark_rate": 65.4,
-            "t_stat": 6.85,
-            "significant": true,
-            "excess_with_stoploss": 1.68
-          }
-        },
-        "動能12-1": {
-          "5": {
-            "periods": 179,
-            "stock_win_rate": 51.2,
-            "portfolio_return": 1.48,
-            "net_return": 0.9,
-            "excess_return": 0.76,
-            "beat_benchmark_rate": 58.1,
-            "t_stat": 2.82,
-            "significant": true,
-            "excess_with_stoploss": 0.79
-          },
-          "20": {
-            "periods": 179,
-            "stock_win_rate": 54.6,
-            "portfolio_return": 5.59,
-            "net_return": 5.0,
-            "excess_return": 2.65,
-            "beat_benchmark_rate": 64.2,
-            "t_stat": 4.98,
-            "significant": true,
-            "excess_with_stoploss": 1.76
-          },
-          "60": {
-            "periods": 179,
-            "stock_win_rate": 53.9,
-            "portfolio_return": 14.98,
-            "net_return": 14.39,
-            "excess_return": 6.43,
-            "beat_benchmark_rate": 64.8,
-            "t_stat": 5.36,
-            "significant": true,
-            "excess_with_stoploss": 2.04
-          }
-        },
-        "融資使用率高(反向)": {
-          "5": {
-            "periods": 87,
-            "stock_win_rate": 50.2,
-            "portfolio_return": 1.25,
-            "net_return": 0.66,
-            "excess_return": 0.63,
-            "beat_benchmark_rate": 50.6,
-            "t_stat": 1.8,
-            "significant": false,
-            "excess_with_stoploss": 0.86
-          },
-          "20": {
-            "periods": 87,
-            "stock_win_rate": 55.5,
-            "portfolio_return": 4.84,
-            "net_return": 4.26,
-            "excess_return": 2.38,
-            "beat_benchmark_rate": 63.2,
-            "t_stat": 3.5,
-            "significant": true,
-            "excess_with_stoploss": 1.23
-          },
-          "60": {
-            "periods": 87,
-            "stock_win_rate": 60.6,
-            "portfolio_return": 13.68,
-            "net_return": 13.1,
-            "excess_return": 4.78,
-            "beat_benchmark_rate": 64.4,
-            "t_stat": 4.14,
-            "significant": true,
-            "excess_with_stoploss": -2.14
-          }
-        },
-        "長線+量能+中線": {
-          "5": {
-            "periods": 179,
-            "stock_win_rate": 52.0,
-            "portfolio_return": 1.34,
-            "net_return": 0.76,
-            "excess_return": 0.62,
-            "beat_benchmark_rate": 54.7,
-            "t_stat": 3.03,
-            "significant": true,
-            "excess_with_stoploss": 0.65
-          },
-          "20": {
-            "periods": 179,
-            "stock_win_rate": 58.9,
-            "portfolio_return": 5.49,
-            "net_return": 4.9,
-            "excess_return": 2.55,
-            "beat_benchmark_rate": 58.1,
-            "t_stat": 4.61,
-            "significant": true,
-            "excess_with_stoploss": 1.6
-          },
-          "60": {
-            "periods": 179,
-            "stock_win_rate": 64.0,
-            "portfolio_return": 17.43,
-            "net_return": 16.84,
-            "excess_return": 8.88,
-            "beat_benchmark_rate": 66.5,
-            "t_stat": 6.09,
-            "significant": true,
-            "excess_with_stoploss": 3.18
-          }
-        },
-        "長線+量能確認": {
-          "5": {
-            "periods": 179,
-            "stock_win_rate": 51.7,
-            "portfolio_return": 1.31,
-            "net_return": 0.72,
-            "excess_return": 0.58,
-            "beat_benchmark_rate": 55.9,
-            "t_stat": 3.27,
-            "significant": true,
-            "excess_with_stoploss": 0.65
-          },
-          "20": {
-            "periods": 179,
-            "stock_win_rate": 57.5,
-            "portfolio_return": 5.51,
-            "net_return": 4.93,
-            "excess_return": 2.57,
-            "beat_benchmark_rate": 59.2,
-            "t_stat": 4.97,
-            "significant": true,
-            "excess_with_stoploss": 1.44
-          },
-          "60": {
-            "periods": 179,
-            "stock_win_rate": 62.6,
-            "portfolio_return": 17.85,
-            "net_return": 17.27,
-            "excess_return": 9.31,
-            "beat_benchmark_rate": 65.4,
-            "t_stat": 6.46,
-            "significant": true,
-            "excess_with_stoploss": 1.75
-          }
-        },
-        "強勢族群+長線分": {
-          "5": {
-            "periods": 179,
-            "stock_win_rate": 53.2,
-            "portfolio_return": 1.29,
-            "net_return": 0.71,
-            "excess_return": 0.57,
-            "beat_benchmark_rate": 59.2,
-            "t_stat": 2.86,
-            "significant": true,
-            "excess_with_stoploss": 0.63
-          },
-          "20": {
-            "periods": 179,
-            "stock_win_rate": 58.1,
-            "portfolio_return": 6.01,
-            "net_return": 5.42,
-            "excess_return": 3.07,
-            "beat_benchmark_rate": 62.0,
-            "t_stat": 5.31,
-            "significant": true,
-            "excess_with_stoploss": 1.86
-          },
-          "60": {
-            "periods": 179,
-            "stock_win_rate": 64.9,
-            "portfolio_return": 19.11,
-            "net_return": 18.53,
-            "excess_return": 10.57,
-            "beat_benchmark_rate": 64.8,
-            "t_stat": 6.92,
-            "significant": true,
-            "excess_with_stoploss": 3.0
-          }
-        },
-        "長線+中線雙確認": {
-          "5": {
-            "periods": 179,
-            "stock_win_rate": 52.1,
-            "portfolio_return": 1.27,
-            "net_return": 0.68,
-            "excess_return": 0.55,
-            "beat_benchmark_rate": 53.1,
-            "t_stat": 2.73,
-            "significant": true,
-            "excess_with_stoploss": 0.56
-          },
-          "20": {
-            "periods": 179,
-            "stock_win_rate": 58.3,
-            "portfolio_return": 5.58,
-            "net_return": 5.0,
-            "excess_return": 2.64,
-            "beat_benchmark_rate": 62.0,
-            "t_stat": 4.74,
-            "significant": true,
-            "excess_with_stoploss": 1.55
-          },
-          "60": {
-            "periods": 179,
-            "stock_win_rate": 63.7,
-            "portfolio_return": 17.62,
-            "net_return": 17.04,
-            "excess_return": 9.08,
-            "beat_benchmark_rate": 64.8,
-            "t_stat": 6.14,
-            "significant": true,
-            "excess_with_stoploss": 3.18
-          }
-        },
-        "長線+中線平均": {
-          "5": {
-            "periods": 179,
-            "stock_win_rate": 51.7,
-            "portfolio_return": 1.21,
-            "net_return": 0.62,
-            "excess_return": 0.49,
-            "beat_benchmark_rate": 53.1,
-            "t_stat": 2.47,
-            "significant": true,
-            "excess_with_stoploss": 0.51
-          },
-          "20": {
-            "periods": 179,
-            "stock_win_rate": 57.6,
-            "portfolio_return": 4.48,
-            "net_return": 3.89,
-            "excess_return": 1.54,
-            "beat_benchmark_rate": 54.7,
-            "t_stat": 3.62,
-            "significant": true,
-            "excess_with_stoploss": 0.96
-          },
-          "60": {
-            "periods": 179,
-            "stock_win_rate": 63.6,
-            "portfolio_return": 14.13,
-            "net_return": 13.55,
-            "excess_return": 5.59,
-            "beat_benchmark_rate": 61.5,
-            "t_stat": 5.49,
-            "significant": true,
-            "excess_with_stoploss": 0.98
-          }
-        },
-        "長線+融資健康": {
-          "5": {
-            "periods": 179,
-            "stock_win_rate": 51.5,
-            "portfolio_return": 1.16,
-            "net_return": 0.58,
-            "excess_return": 0.44,
-            "beat_benchmark_rate": 51.4,
-            "t_stat": 2.32,
-            "significant": true,
-            "excess_with_stoploss": 0.49
-          },
-          "20": {
-            "periods": 179,
-            "stock_win_rate": 56.4,
-            "portfolio_return": 5.21,
-            "net_return": 4.63,
-            "excess_return": 2.27,
-            "beat_benchmark_rate": 57.5,
-            "t_stat": 4.26,
-            "significant": true,
-            "excess_with_stoploss": 1.2
-          },
-          "60": {
-            "periods": 179,
-            "stock_win_rate": 62.9,
-            "portfolio_return": 17.11,
-            "net_return": 16.52,
-            "excess_return": 8.56,
-            "beat_benchmark_rate": 57.0,
-            "t_stat": 5.76,
-            "significant": true,
-            "excess_with_stoploss": 1.31
-          }
-        },
-        "短線": {
-          "5": {
-            "periods": 179,
-            "stock_win_rate": 48.0,
-            "portfolio_return": 1.13,
-            "net_return": 0.55,
-            "excess_return": 0.41,
-            "beat_benchmark_rate": 51.4,
-            "t_stat": 2.08,
-            "significant": true,
-            "excess_with_stoploss": 0.44
-          },
-          "20": {
-            "periods": 179,
-            "stock_win_rate": 54.1,
-            "portfolio_return": 4.35,
-            "net_return": 3.76,
-            "excess_return": 1.41,
-            "beat_benchmark_rate": 53.6,
-            "t_stat": 3.35,
-            "significant": true,
-            "excess_with_stoploss": 0.71
-          },
-          "60": {
-            "periods": 179,
-            "stock_win_rate": 59.0,
-            "portfolio_return": 12.52,
-            "net_return": 11.94,
-            "excess_return": 3.98,
-            "beat_benchmark_rate": 53.1,
-            "t_stat": 4.17,
-            "significant": true,
-            "excess_with_stoploss": 0.27
-          }
-        },
-        "長線": {
-          "5": {
-            "periods": 179,
-            "stock_win_rate": 51.0,
-            "portfolio_return": 1.13,
-            "net_return": 0.55,
-            "excess_return": 0.41,
-            "beat_benchmark_rate": 51.4,
-            "t_stat": 2.15,
-            "significant": true,
-            "excess_with_stoploss": 0.48
-          },
-          "20": {
-            "periods": 179,
-            "stock_win_rate": 55.4,
-            "portfolio_return": 4.96,
-            "net_return": 4.37,
-            "excess_return": 2.02,
-            "beat_benchmark_rate": 53.1,
-            "t_stat": 3.72,
-            "significant": true,
-            "excess_with_stoploss": 1.06
-          },
-          "60": {
-            "periods": 179,
-            "stock_win_rate": 61.7,
-            "portfolio_return": 17.04,
-            "net_return": 16.45,
-            "excess_return": 8.49,
-            "beat_benchmark_rate": 57.0,
-            "t_stat": 5.69,
-            "significant": true,
-            "excess_with_stoploss": 1.12
-          }
-        },
-        "長線+四重確認": {
-          "5": {
-            "periods": 178,
-            "stock_win_rate": 50.4,
-            "portfolio_return": 1.03,
-            "net_return": 0.45,
-            "excess_return": 0.39,
-            "beat_benchmark_rate": 48.3,
-            "t_stat": 2.06,
-            "significant": true,
-            "excess_with_stoploss": 0.43
-          },
-          "20": {
-            "periods": 178,
-            "stock_win_rate": 57.3,
-            "portfolio_return": 5.08,
-            "net_return": 4.5,
-            "excess_return": 2.25,
-            "beat_benchmark_rate": 58.4,
-            "t_stat": 4.21,
-            "significant": true,
-            "excess_with_stoploss": 1.36
-          },
-          "60": {
-            "periods": 178,
-            "stock_win_rate": 62.9,
-            "portfolio_return": 16.44,
-            "net_return": 15.85,
-            "excess_return": 8.01,
-            "beat_benchmark_rate": 67.4,
-            "t_stat": 5.9,
-            "significant": true,
-            "excess_with_stoploss": 2.52
-          }
-        },
-        "長線+量能+融資": {
-          "5": {
-            "periods": 179,
-            "stock_win_rate": 50.8,
-            "portfolio_return": 1.09,
-            "net_return": 0.51,
-            "excess_return": 0.37,
-            "beat_benchmark_rate": 50.8,
-            "t_stat": 2.2,
-            "significant": true,
-            "excess_with_stoploss": 0.45
-          },
-          "20": {
-            "periods": 179,
-            "stock_win_rate": 56.8,
-            "portfolio_return": 5.25,
-            "net_return": 4.66,
-            "excess_return": 2.31,
-            "beat_benchmark_rate": 55.9,
-            "t_stat": 4.64,
-            "significant": true,
-            "excess_with_stoploss": 1.29
-          },
-          "60": {
-            "periods": 179,
-            "stock_win_rate": 62.6,
-            "portfolio_return": 17.55,
-            "net_return": 16.97,
-            "excess_return": 9.01,
-            "beat_benchmark_rate": 67.6,
-            "t_stat": 6.57,
-            "significant": true,
-            "excess_with_stoploss": 1.4
-          }
-        },
-        "長線+融資減少": {
-          "5": {
-            "periods": 179,
-            "stock_win_rate": 50.8,
-            "portfolio_return": 1.05,
-            "net_return": 0.47,
-            "excess_return": 0.33,
-            "beat_benchmark_rate": 48.6,
-            "t_stat": 1.85,
-            "significant": false,
-            "excess_with_stoploss": 0.39
-          },
-          "20": {
-            "periods": 179,
-            "stock_win_rate": 55.6,
-            "portfolio_return": 5.11,
-            "net_return": 4.53,
-            "excess_return": 2.17,
-            "beat_benchmark_rate": 55.3,
-            "t_stat": 4.24,
-            "significant": true,
-            "excess_with_stoploss": 1.16
-          },
-          "60": {
-            "periods": 179,
-            "stock_win_rate": 61.7,
-            "portfolio_return": 16.78,
-            "net_return": 16.19,
-            "excess_return": 8.23,
-            "beat_benchmark_rate": 60.3,
-            "t_stat": 5.82,
-            "significant": true,
-            "excess_with_stoploss": 0.96
-          }
-        },
-        "中線": {
-          "5": {
-            "periods": 179,
-            "stock_win_rate": 51.5,
-            "portfolio_return": 1.02,
-            "net_return": 0.43,
-            "excess_return": 0.29,
-            "beat_benchmark_rate": 51.4,
-            "t_stat": 1.49,
-            "significant": false,
-            "excess_with_stoploss": 0.33
-          },
-          "20": {
-            "periods": 179,
-            "stock_win_rate": 57.0,
-            "portfolio_return": 4.65,
-            "net_return": 4.06,
-            "excess_return": 1.71,
-            "beat_benchmark_rate": 55.3,
-            "t_stat": 3.6,
-            "significant": true,
-            "excess_with_stoploss": 0.83
-          },
-          "60": {
-            "periods": 179,
-            "stock_win_rate": 62.3,
-            "portfolio_return": 16.49,
-            "net_return": 15.9,
-            "excess_return": 7.94,
-            "beat_benchmark_rate": 60.3,
-            "t_stat": 6.74,
-            "significant": true,
-            "excess_with_stoploss": 2.76
-          }
-        },
-        "長線+極短線確認": {
-          "5": {
-            "periods": 179,
-            "stock_win_rate": 50.3,
-            "portfolio_return": 0.98,
-            "net_return": 0.39,
-            "excess_return": 0.25,
-            "beat_benchmark_rate": 50.3,
-            "t_stat": 1.49,
-            "significant": false,
-            "excess_with_stoploss": 0.35
-          },
-          "20": {
-            "periods": 179,
-            "stock_win_rate": 55.2,
-            "portfolio_return": 4.26,
-            "net_return": 3.67,
-            "excess_return": 1.32,
-            "beat_benchmark_rate": 58.1,
-            "t_stat": 3.21,
-            "significant": true,
-            "excess_with_stoploss": 0.54
-          },
-          "60": {
-            "periods": 179,
-            "stock_win_rate": 60.9,
-            "portfolio_return": 12.92,
-            "net_return": 12.34,
-            "excess_return": 4.38,
-            "beat_benchmark_rate": 52.0,
-            "t_stat": 4.04,
-            "significant": true,
-            "excess_with_stoploss": -1.14
-          }
-        },
-        "長線+不追高": {
-          "5": {
-            "periods": 179,
-            "stock_win_rate": 49.4,
-            "portfolio_return": 0.95,
-            "net_return": 0.37,
-            "excess_return": 0.23,
-            "beat_benchmark_rate": 46.9,
-            "t_stat": 1.23,
-            "significant": false,
-            "excess_with_stoploss": 0.32
-          },
-          "20": {
-            "periods": 179,
-            "stock_win_rate": 53.1,
-            "portfolio_return": 4.42,
-            "net_return": 3.83,
-            "excess_return": 1.48,
-            "beat_benchmark_rate": 52.5,
-            "t_stat": 2.85,
-            "significant": true,
-            "excess_with_stoploss": 0.45
-          },
-          "60": {
-            "periods": 179,
-            "stock_win_rate": 61.2,
-            "portfolio_return": 16.41,
-            "net_return": 15.83,
-            "excess_return": 7.87,
-            "beat_benchmark_rate": 62.0,
-            "t_stat": 5.76,
-            "significant": true,
-            "excess_with_stoploss": -0.49
-          }
-        },
-        "強勢族群龍頭": {
-          "5": {
-            "periods": 179,
-            "stock_win_rate": 49.5,
-            "portfolio_return": 0.91,
-            "net_return": 0.33,
-            "excess_return": 0.19,
-            "beat_benchmark_rate": 51.4,
-            "t_stat": 0.68,
-            "significant": false,
-            "excess_with_stoploss": 0.23
-          },
-          "20": {
-            "periods": 179,
-            "stock_win_rate": 55.4,
-            "portfolio_return": 4.56,
-            "net_return": 3.98,
-            "excess_return": 1.62,
-            "beat_benchmark_rate": 56.4,
-            "t_stat": 2.81,
-            "significant": true,
-            "excess_with_stoploss": 0.56
-          },
-          "60": {
-            "periods": 179,
-            "stock_win_rate": 60.1,
-            "portfolio_return": 15.3,
-            "net_return": 14.72,
-            "excess_return": 6.76,
-            "beat_benchmark_rate": 57.5,
-            "t_stat": 5.4,
-            "significant": true,
-            "excess_with_stoploss": 1.58
-          }
-        },
-        "反向(買最弱)": {
-          "5": {
-            "periods": 179,
-            "stock_win_rate": 52.2,
-            "portfolio_return": 0.81,
-            "net_return": 0.22,
-            "excess_return": 0.09,
-            "beat_benchmark_rate": 50.3,
-            "t_stat": 0.61,
-            "significant": false,
-            "excess_with_stoploss": 0.15
-          },
-          "20": {
-            "periods": 179,
-            "stock_win_rate": 52.4,
-            "portfolio_return": 1.92,
-            "net_return": 1.34,
-            "excess_return": -1.02,
-            "beat_benchmark_rate": 36.3,
-            "t_stat": -3.72,
-            "significant": true,
-            "excess_with_stoploss": -1.28
-          },
-          "60": {
-            "periods": 179,
-            "stock_win_rate": 55.8,
-            "portfolio_return": 6.83,
-            "net_return": 6.24,
-            "excess_return": -1.72,
-            "beat_benchmark_rate": 40.2,
-            "t_stat": -2.7,
-            "significant": true,
-            "excess_with_stoploss": -4.99
-          }
-        },
         "綜合強勢(技術)": {
           "5": {
-            "periods": 179,
-            "stock_win_rate": 49.9,
-            "portfolio_return": 0.78,
-            "net_return": 0.2,
-            "excess_return": 0.06,
-            "beat_benchmark_rate": 46.9,
-            "t_stat": 0.36,
+            "periods": 139,
+            "stock_win_rate": 47.4,
+            "portfolio_return": 0.66,
+            "net_return": 0.08,
+            "excess_return": 0.07,
+            "beat_benchmark_rate": 50.4,
+            "t_stat": 0.4,
+            "t_raw": 0.4,
+            "nonoverlap": {
+              "n": 139,
+              "subsamples": 1,
+              "t_min": 0.4,
+              "t_med": 0.4,
+              "t_max": 0.4
+            },
             "significant": false,
-            "excess_with_stoploss": 0.13
+            "excess_with_stoploss": 0.1
           },
           "20": {
-            "periods": 179,
-            "stock_win_rate": 52.9,
-            "portfolio_return": 3.34,
-            "net_return": 2.75,
-            "excess_return": 0.4,
-            "beat_benchmark_rate": 43.6,
-            "t_stat": 1.06,
+            "periods": 139,
+            "stock_win_rate": 49.6,
+            "portfolio_return": 2.58,
+            "net_return": 1.99,
+            "excess_return": 0.46,
+            "beat_benchmark_rate": 44.6,
+            "t_stat": 0.91,
+            "t_raw": 1.01,
+            "nonoverlap": {
+              "n": 35,
+              "subsamples": 4,
+              "t_min": -0.45,
+              "t_med": 0.65,
+              "t_max": 0.96
+            },
             "significant": false,
-            "excess_with_stoploss": -0.04
+            "excess_with_stoploss": 0.09
           },
           "60": {
-            "periods": 179,
-            "stock_win_rate": 57.9,
-            "portfolio_return": 10.94,
-            "net_return": 10.36,
-            "excess_return": 2.4,
-            "beat_benchmark_rate": 49.7,
-            "t_stat": 2.98,
-            "significant": true,
-            "excess_with_stoploss": -1.32
+            "periods": 139,
+            "stock_win_rate": 51.1,
+            "portfolio_return": 6.76,
+            "net_return": 6.18,
+            "excess_return": 0.62,
+            "beat_benchmark_rate": 42.4,
+            "t_stat": 0.54,
+            "t_raw": 0.77,
+            "nonoverlap": {
+              "n": 12,
+              "subsamples": 12,
+              "t_min": -1.38,
+              "t_med": 0.23,
+              "t_max": 0.91
+            },
+            "significant": false,
+            "excess_with_stoploss": -1.93
           }
         },
         "極短線": {
           "5": {
-            "periods": 179,
-            "stock_win_rate": 50.2,
-            "portfolio_return": 0.67,
-            "net_return": 0.09,
-            "excess_return": -0.05,
-            "beat_benchmark_rate": 46.4,
-            "t_stat": -0.37,
+            "periods": 139,
+            "stock_win_rate": 49.3,
+            "portfolio_return": 0.82,
+            "net_return": 0.23,
+            "excess_return": 0.23,
+            "beat_benchmark_rate": 51.8,
+            "t_stat": 1.22,
+            "t_raw": 1.21,
+            "nonoverlap": {
+              "n": 139,
+              "subsamples": 1,
+              "t_min": 1.21,
+              "t_med": 1.21,
+              "t_max": 1.21
+            },
+            "significant": false,
+            "excess_with_stoploss": 0.32
+          },
+          "20": {
+            "periods": 139,
+            "stock_win_rate": 50.6,
+            "portfolio_return": 2.43,
+            "net_return": 1.84,
+            "excess_return": 0.31,
+            "beat_benchmark_rate": 49.6,
+            "t_stat": 0.88,
+            "t_raw": 0.74,
+            "nonoverlap": {
+              "n": 35,
+              "subsamples": 4,
+              "t_min": -0.63,
+              "t_med": 0.43,
+              "t_max": 1.01
+            },
+            "significant": false,
+            "excess_with_stoploss": 0.21
+          },
+          "60": {
+            "periods": 139,
+            "stock_win_rate": 51.4,
+            "portfolio_return": 6.0,
+            "net_return": 5.42,
+            "excess_return": -0.14,
+            "beat_benchmark_rate": 48.2,
+            "t_stat": -0.18,
+            "t_raw": -0.17,
+            "nonoverlap": {
+              "n": 12,
+              "subsamples": 12,
+              "t_min": -1.11,
+              "t_med": 0.17,
+              "t_max": 1.49
+            },
+            "significant": false,
+            "excess_with_stoploss": -2.39
+          }
+        },
+        "短線": {
+          "5": {
+            "periods": 139,
+            "stock_win_rate": 46.8,
+            "portfolio_return": 0.89,
+            "net_return": 0.3,
+            "excess_return": 0.3,
+            "beat_benchmark_rate": 52.5,
+            "t_stat": 1.28,
+            "t_raw": 1.28,
+            "nonoverlap": {
+              "n": 139,
+              "subsamples": 1,
+              "t_min": 1.28,
+              "t_med": 1.28,
+              "t_max": 1.28
+            },
+            "significant": false,
+            "excess_with_stoploss": 0.32
+          },
+          "20": {
+            "periods": 139,
+            "stock_win_rate": 49.4,
+            "portfolio_return": 2.58,
+            "net_return": 1.99,
+            "excess_return": 0.46,
+            "beat_benchmark_rate": 51.8,
+            "t_stat": 0.99,
+            "t_raw": 1.07,
+            "nonoverlap": {
+              "n": 35,
+              "subsamples": 4,
+              "t_min": -0.12,
+              "t_med": 0.47,
+              "t_max": 1.16
+            },
             "significant": false,
             "excess_with_stoploss": 0.04
           },
-          "20": {
-            "periods": 179,
-            "stock_win_rate": 53.6,
-            "portfolio_return": 3.13,
-            "net_return": 2.54,
-            "excess_return": 0.19,
-            "beat_benchmark_rate": 52.0,
-            "t_stat": 0.58,
+          "60": {
+            "periods": 139,
+            "stock_win_rate": 49.6,
+            "portfolio_return": 6.0,
+            "net_return": 5.41,
+            "excess_return": -0.15,
+            "beat_benchmark_rate": 46.0,
+            "t_stat": -0.18,
+            "t_raw": -0.17,
+            "nonoverlap": {
+              "n": 12,
+              "subsamples": 12,
+              "t_min": -1.63,
+              "t_med": -0.01,
+              "t_max": 1.33
+            },
             "significant": false,
-            "excess_with_stoploss": -0.38
+            "excess_with_stoploss": -1.71
+          }
+        },
+        "中線": {
+          "5": {
+            "periods": 139,
+            "stock_win_rate": 46.0,
+            "portfolio_return": 0.57,
+            "net_return": -0.02,
+            "excess_return": -0.02,
+            "beat_benchmark_rate": 46.8,
+            "t_stat": -0.1,
+            "t_raw": -0.1,
+            "nonoverlap": {
+              "n": 139,
+              "subsamples": 1,
+              "t_min": -0.1,
+              "t_med": -0.1,
+              "t_max": -0.1
+            },
+            "significant": false,
+            "excess_with_stoploss": 0.05
+          },
+          "20": {
+            "periods": 139,
+            "stock_win_rate": 48.4,
+            "portfolio_return": 2.23,
+            "net_return": 1.65,
+            "excess_return": 0.12,
+            "beat_benchmark_rate": 49.6,
+            "t_stat": 0.18,
+            "t_raw": 0.25,
+            "nonoverlap": {
+              "n": 35,
+              "subsamples": 4,
+              "t_min": -0.53,
+              "t_med": 0.14,
+              "t_max": 0.72
+            },
+            "significant": false,
+            "excess_with_stoploss": -0.24
           },
           "60": {
-            "periods": 179,
-            "stock_win_rate": 58.2,
-            "portfolio_return": 9.09,
-            "net_return": 8.51,
-            "excess_return": 0.55,
-            "beat_benchmark_rate": 48.0,
-            "t_stat": 0.86,
+            "periods": 139,
+            "stock_win_rate": 51.6,
+            "portfolio_return": 5.55,
+            "net_return": 4.96,
+            "excess_return": -0.59,
+            "beat_benchmark_rate": 43.9,
+            "t_stat": -0.47,
+            "t_raw": -0.67,
+            "nonoverlap": {
+              "n": 12,
+              "subsamples": 12,
+              "t_min": -2.63,
+              "t_med": -0.2,
+              "t_max": 0.97
+            },
             "significant": false,
-            "excess_with_stoploss": -3.4
+            "excess_with_stoploss": -2.38
+          }
+        },
+        "長線": {
+          "5": {
+            "periods": 139,
+            "stock_win_rate": 44.0,
+            "portfolio_return": 0.32,
+            "net_return": -0.26,
+            "excess_return": -0.27,
+            "beat_benchmark_rate": 47.5,
+            "t_stat": -1.01,
+            "t_raw": -1.01,
+            "nonoverlap": {
+              "n": 139,
+              "subsamples": 1,
+              "t_min": -1.01,
+              "t_med": -1.01,
+              "t_max": -1.01
+            },
+            "significant": false,
+            "excess_with_stoploss": -0.14
+          },
+          "20": {
+            "periods": 139,
+            "stock_win_rate": 43.3,
+            "portfolio_return": 0.9,
+            "net_return": 0.32,
+            "excess_return": -1.21,
+            "beat_benchmark_rate": 43.9,
+            "t_stat": -1.2,
+            "t_raw": -1.99,
+            "nonoverlap": {
+              "n": 35,
+              "subsamples": 4,
+              "t_min": -1.46,
+              "t_med": -0.93,
+              "t_max": -0.69
+            },
+            "significant": false,
+            "excess_with_stoploss": -1.33
+          },
+          "60": {
+            "periods": 139,
+            "stock_win_rate": 45.7,
+            "portfolio_return": 3.57,
+            "net_return": 2.99,
+            "excess_return": -2.57,
+            "beat_benchmark_rate": 39.6,
+            "t_stat": -1.04,
+            "t_raw": -2.52,
+            "nonoverlap": {
+              "n": 12,
+              "subsamples": 12,
+              "t_min": -1.11,
+              "t_med": -0.75,
+              "t_max": -0.1
+            },
+            "significant": false,
+            "excess_with_stoploss": -3.69
           }
         },
         "潛力潛伏": {
           "5": {
-            "periods": 179,
-            "stock_win_rate": 52.2,
-            "portfolio_return": 0.67,
-            "net_return": 0.08,
-            "excess_return": -0.05,
-            "beat_benchmark_rate": 46.9,
-            "t_stat": -0.37,
-            "significant": false,
-            "excess_with_stoploss": 0.03
+            "periods": 139,
+            "stock_win_rate": 47.5,
+            "portfolio_return": 0.12,
+            "net_return": -0.46,
+            "excess_return": -0.47,
+            "beat_benchmark_rate": 36.7,
+            "t_stat": -2.22,
+            "t_raw": -2.21,
+            "nonoverlap": {
+              "n": 139,
+              "subsamples": 1,
+              "t_min": -2.21,
+              "t_med": -2.21,
+              "t_max": -2.21
+            },
+            "significant": true,
+            "excess_with_stoploss": -0.21
           },
           "20": {
-            "periods": 179,
-            "stock_win_rate": 55.1,
-            "portfolio_return": 2.35,
-            "net_return": 1.77,
-            "excess_return": -0.59,
-            "beat_benchmark_rate": 41.9,
-            "t_stat": -1.74,
-            "significant": false,
-            "excess_with_stoploss": -0.93
+            "periods": 139,
+            "stock_win_rate": 46.3,
+            "portfolio_return": -0.02,
+            "net_return": -0.6,
+            "excess_return": -2.13,
+            "beat_benchmark_rate": 31.7,
+            "t_stat": -3.46,
+            "t_raw": -5.31,
+            "nonoverlap": {
+              "n": 35,
+              "subsamples": 4,
+              "t_min": -2.96,
+              "t_med": -2.66,
+              "t_max": -2.37
+            },
+            "significant": true,
+            "excess_with_stoploss": -1.67
           },
           "60": {
-            "periods": 179,
-            "stock_win_rate": 59.9,
-            "portfolio_return": 7.71,
-            "net_return": 7.13,
-            "excess_return": -0.83,
-            "beat_benchmark_rate": 45.8,
-            "t_stat": -1.15,
-            "significant": false,
-            "excess_with_stoploss": -3.97
-          }
-        },
-        "短線+高RR": {
-          "5": {
-            "periods": 179,
-            "stock_win_rate": 50.9,
-            "portfolio_return": 0.65,
-            "net_return": 0.07,
-            "excess_return": -0.07,
-            "beat_benchmark_rate": 44.1,
-            "t_stat": -0.51,
-            "significant": false,
-            "excess_with_stoploss": 0.06
-          },
-          "20": {
-            "periods": 179,
-            "stock_win_rate": 53.5,
-            "portfolio_return": 2.73,
-            "net_return": 2.14,
-            "excess_return": -0.21,
-            "beat_benchmark_rate": 45.8,
-            "t_stat": -0.66,
-            "significant": false,
-            "excess_with_stoploss": -0.7
-          },
-          "60": {
-            "periods": 179,
-            "stock_win_rate": 56.8,
-            "portfolio_return": 8.79,
-            "net_return": 8.2,
-            "excess_return": 0.24,
-            "beat_benchmark_rate": 45.8,
-            "t_stat": 0.34,
-            "significant": false,
-            "excess_with_stoploss": -3.88
-          }
-        },
-        "高風報比": {
-          "5": {
-            "periods": 179,
-            "stock_win_rate": 49.8,
-            "portfolio_return": 0.64,
-            "net_return": 0.05,
-            "excess_return": -0.08,
-            "beat_benchmark_rate": 46.9,
-            "t_stat": -0.5,
-            "significant": false,
-            "excess_with_stoploss": 0.04
-          },
-          "20": {
-            "periods": 179,
-            "stock_win_rate": 53.4,
-            "portfolio_return": 2.7,
-            "net_return": 2.12,
-            "excess_return": -0.24,
-            "beat_benchmark_rate": 42.5,
-            "t_stat": -0.62,
-            "significant": false,
-            "excess_with_stoploss": -1.34
-          },
-          "60": {
-            "periods": 179,
-            "stock_win_rate": 55.0,
-            "portfolio_return": 8.16,
-            "net_return": 7.58,
-            "excess_return": -0.38,
-            "beat_benchmark_rate": 44.1,
-            "t_stat": -0.48,
-            "significant": false,
-            "excess_with_stoploss": -5.3
-          }
-        },
-        "強勢族群落後股": {
-          "5": {
-            "periods": 179,
-            "stock_win_rate": 50.1,
-            "portfolio_return": 0.6,
-            "net_return": 0.02,
-            "excess_return": -0.12,
-            "beat_benchmark_rate": 46.4,
-            "t_stat": -0.77,
-            "significant": false,
-            "excess_with_stoploss": -0.03
-          },
-          "20": {
-            "periods": 179,
-            "stock_win_rate": 51.3,
-            "portfolio_return": 2.69,
-            "net_return": 2.11,
-            "excess_return": -0.25,
-            "beat_benchmark_rate": 39.7,
-            "t_stat": -0.72,
-            "significant": false,
-            "excess_with_stoploss": -0.71
-          },
-          "60": {
-            "periods": 179,
-            "stock_win_rate": 53.9,
-            "portfolio_return": 7.67,
-            "net_return": 7.08,
-            "excess_return": -0.88,
-            "beat_benchmark_rate": 36.3,
-            "t_stat": -1.4,
-            "significant": false,
-            "excess_with_stoploss": -4.6
-          }
-        },
-        "長線+低波動": {
-          "5": {
-            "periods": 179,
-            "stock_win_rate": 52.0,
-            "portfolio_return": 0.57,
-            "net_return": -0.01,
-            "excess_return": -0.15,
-            "beat_benchmark_rate": 46.4,
-            "t_stat": -0.82,
-            "significant": false,
-            "excess_with_stoploss": -0.1
-          },
-          "20": {
-            "periods": 179,
-            "stock_win_rate": 56.8,
-            "portfolio_return": 2.63,
-            "net_return": 2.04,
-            "excess_return": -0.31,
-            "beat_benchmark_rate": 48.6,
-            "t_stat": -0.99,
-            "significant": false,
-            "excess_with_stoploss": -0.96
-          },
-          "60": {
-            "periods": 179,
-            "stock_win_rate": 63.7,
-            "portfolio_return": 9.44,
-            "net_return": 8.85,
-            "excess_return": 0.89,
-            "beat_benchmark_rate": 49.2,
-            "t_stat": 1.48,
-            "significant": false,
-            "excess_with_stoploss": -3.65
+            "periods": 139,
+            "stock_win_rate": 45.0,
+            "portfolio_return": -0.13,
+            "net_return": -0.71,
+            "excess_return": -6.27,
+            "beat_benchmark_rate": 24.5,
+            "t_stat": -2.89,
+            "t_raw": -7.3,
+            "nonoverlap": {
+              "n": 12,
+              "subsamples": 12,
+              "t_min": -3.42,
+              "t_med": -2.1,
+              "t_max": -1.26
+            },
+            "significant": true,
+            "excess_with_stoploss": -6.33
           }
         },
         "低基期純粹": {
           "5": {
-            "periods": 179,
-            "stock_win_rate": 52.6,
-            "portfolio_return": 0.56,
-            "net_return": -0.03,
-            "excess_return": -0.17,
-            "beat_benchmark_rate": 44.1,
-            "t_stat": -1.11,
-            "significant": false,
-            "excess_with_stoploss": -0.0
+            "periods": 139,
+            "stock_win_rate": 49.5,
+            "portfolio_return": 0.17,
+            "net_return": -0.41,
+            "excess_return": -0.42,
+            "beat_benchmark_rate": 43.9,
+            "t_stat": -2.06,
+            "t_raw": -2.05,
+            "nonoverlap": {
+              "n": 139,
+              "subsamples": 1,
+              "t_min": -2.05,
+              "t_med": -2.05,
+              "t_max": -2.05
+            },
+            "significant": true,
+            "excess_with_stoploss": -0.18
           },
           "20": {
-            "periods": 179,
-            "stock_win_rate": 55.1,
-            "portfolio_return": 2.05,
-            "net_return": 1.46,
-            "excess_return": -0.89,
-            "beat_benchmark_rate": 39.1,
-            "t_stat": -2.98,
+            "periods": 139,
+            "stock_win_rate": 48.7,
+            "portfolio_return": 0.32,
+            "net_return": -0.26,
+            "excess_return": -1.79,
+            "beat_benchmark_rate": 30.2,
+            "t_stat": -3.58,
+            "t_raw": -5.15,
+            "nonoverlap": {
+              "n": 35,
+              "subsamples": 4,
+              "t_min": -4.49,
+              "t_med": -2.31,
+              "t_max": -1.91
+            },
             "significant": true,
-            "excess_with_stoploss": -1.05
+            "excess_with_stoploss": -1.51
           },
           "60": {
-            "periods": 179,
-            "stock_win_rate": 59.1,
-            "portfolio_return": 7.08,
-            "net_return": 6.49,
-            "excess_return": -1.47,
-            "beat_benchmark_rate": 38.0,
-            "t_stat": -2.42,
+            "periods": 139,
+            "stock_win_rate": 49.6,
+            "portfolio_return": 1.68,
+            "net_return": 1.09,
+            "excess_return": -4.47,
+            "beat_benchmark_rate": 28.1,
+            "t_stat": -2.36,
+            "t_raw": -5.79,
+            "nonoverlap": {
+              "n": 12,
+              "subsamples": 12,
+              "t_min": -2.64,
+              "t_med": -1.63,
+              "t_max": -0.52
+            },
             "significant": true,
-            "excess_with_stoploss": -4.53
-          }
-        },
-        "低基期+技術轉強": {
-          "5": {
-            "periods": 179,
-            "stock_win_rate": 49.4,
-            "portfolio_return": 0.56,
-            "net_return": -0.03,
-            "excess_return": -0.17,
-            "beat_benchmark_rate": 41.3,
-            "t_stat": -1.12,
-            "significant": false,
-            "excess_with_stoploss": -0.07
-          },
-          "20": {
-            "periods": 179,
-            "stock_win_rate": 52.4,
-            "portfolio_return": 1.88,
-            "net_return": 1.29,
-            "excess_return": -1.06,
-            "beat_benchmark_rate": 36.9,
-            "t_stat": -3.62,
-            "significant": true,
-            "excess_with_stoploss": -1.29
-          },
-          "60": {
-            "periods": 179,
-            "stock_win_rate": 57.0,
-            "portfolio_return": 5.88,
-            "net_return": 5.3,
-            "excess_return": -2.66,
-            "beat_benchmark_rate": 37.4,
-            "t_stat": -4.21,
-            "significant": true,
-            "excess_with_stoploss": -5.09
-          }
-        },
-        "攻守兼備(無RR)": {
-          "5": {
-            "periods": 179,
-            "stock_win_rate": 48.4,
-            "portfolio_return": 0.38,
-            "net_return": -0.21,
-            "excess_return": -0.35,
-            "beat_benchmark_rate": 43.0,
-            "t_stat": -2.47,
-            "significant": true,
-            "excess_with_stoploss": -0.23
-          },
-          "20": {
-            "periods": 179,
-            "stock_win_rate": 52.0,
-            "portfolio_return": 1.89,
-            "net_return": 1.3,
-            "excess_return": -1.05,
-            "beat_benchmark_rate": 36.3,
-            "t_stat": -3.69,
-            "significant": true,
-            "excess_with_stoploss": -1.34
-          },
-          "60": {
-            "periods": 179,
-            "stock_win_rate": 55.4,
-            "portfolio_return": 6.38,
-            "net_return": 5.79,
-            "excess_return": -2.17,
-            "beat_benchmark_rate": 39.1,
-            "t_stat": -3.48,
-            "significant": true,
-            "excess_with_stoploss": -5.01
+            "excess_with_stoploss": -5.45
           }
         },
         "攻守兼備": {
           "5": {
-            "periods": 179,
-            "stock_win_rate": 49.1,
-            "portfolio_return": 0.37,
-            "net_return": -0.21,
-            "excess_return": -0.35,
-            "beat_benchmark_rate": 39.7,
-            "t_stat": -2.68,
+            "periods": 139,
+            "stock_win_rate": 47.3,
+            "portfolio_return": 0.14,
+            "net_return": -0.44,
+            "excess_return": -0.45,
+            "beat_benchmark_rate": 42.4,
+            "t_stat": -2.61,
+            "t_raw": -2.6,
+            "nonoverlap": {
+              "n": 139,
+              "subsamples": 1,
+              "t_min": -2.6,
+              "t_med": -2.6,
+              "t_max": -2.6
+            },
             "significant": true,
-            "excess_with_stoploss": -0.26
+            "excess_with_stoploss": -0.27
           },
           "20": {
-            "periods": 179,
-            "stock_win_rate": 52.3,
-            "portfolio_return": 2.08,
-            "net_return": 1.49,
-            "excess_return": -0.86,
-            "beat_benchmark_rate": 41.9,
-            "t_stat": -3.16,
+            "periods": 139,
+            "stock_win_rate": 48.9,
+            "portfolio_return": 1.24,
+            "net_return": 0.65,
+            "excess_return": -0.88,
+            "beat_benchmark_rate": 38.8,
+            "t_stat": -2.14,
+            "t_raw": -2.56,
+            "nonoverlap": {
+              "n": 35,
+              "subsamples": 4,
+              "t_min": -2.13,
+              "t_med": -1.29,
+              "t_max": -0.6
+            },
             "significant": true,
-            "excess_with_stoploss": -1.25
+            "excess_with_stoploss": -0.94
           },
           "60": {
-            "periods": 179,
-            "stock_win_rate": 56.3,
-            "portfolio_return": 6.67,
-            "net_return": 6.08,
-            "excess_return": -1.88,
-            "beat_benchmark_rate": 42.5,
-            "t_stat": -3.05,
+            "periods": 139,
+            "stock_win_rate": 47.0,
+            "portfolio_return": 3.05,
+            "net_return": 2.46,
+            "excess_return": -3.1,
+            "beat_benchmark_rate": 36.0,
+            "t_stat": -2.04,
+            "t_raw": -4.46,
+            "nonoverlap": {
+              "n": 12,
+              "subsamples": 12,
+              "t_min": -3.58,
+              "t_med": -1.47,
+              "t_max": 0.23
+            },
             "significant": true,
-            "excess_with_stoploss": -4.9
+            "excess_with_stoploss": -4.63
+          }
+        },
+        "攻守兼備(無RR)": {
+          "5": {
+            "periods": 139,
+            "stock_win_rate": 47.4,
+            "portfolio_return": 0.25,
+            "net_return": -0.33,
+            "excess_return": -0.34,
+            "beat_benchmark_rate": 43.9,
+            "t_stat": -1.82,
+            "t_raw": -1.82,
+            "nonoverlap": {
+              "n": 139,
+              "subsamples": 1,
+              "t_min": -1.82,
+              "t_med": -1.82,
+              "t_max": -1.82
+            },
+            "significant": false,
+            "excess_with_stoploss": -0.14
+          },
+          "20": {
+            "periods": 139,
+            "stock_win_rate": 49.5,
+            "portfolio_return": 1.19,
+            "net_return": 0.61,
+            "excess_return": -0.92,
+            "beat_benchmark_rate": 41.0,
+            "t_stat": -2.28,
+            "t_raw": -2.81,
+            "nonoverlap": {
+              "n": 35,
+              "subsamples": 4,
+              "t_min": -2.01,
+              "t_med": -1.52,
+              "t_max": -0.78
+            },
+            "significant": true,
+            "excess_with_stoploss": -1.09
+          },
+          "60": {
+            "periods": 139,
+            "stock_win_rate": 46.8,
+            "portfolio_return": 3.16,
+            "net_return": 2.58,
+            "excess_return": -2.98,
+            "beat_benchmark_rate": 38.1,
+            "t_stat": -2.04,
+            "t_raw": -4.16,
+            "nonoverlap": {
+              "n": 12,
+              "subsamples": 12,
+              "t_min": -2.96,
+              "t_med": -1.14,
+              "t_max": -0.25
+            },
+            "significant": true,
+            "excess_with_stoploss": -4.75
+          }
+        },
+        "低基期+技術轉強": {
+          "5": {
+            "periods": 139,
+            "stock_win_rate": 47.2,
+            "portfolio_return": 0.31,
+            "net_return": -0.27,
+            "excess_return": -0.28,
+            "beat_benchmark_rate": 43.2,
+            "t_stat": -1.59,
+            "t_raw": -1.58,
+            "nonoverlap": {
+              "n": 139,
+              "subsamples": 1,
+              "t_min": -1.58,
+              "t_med": -1.58,
+              "t_max": -1.58
+            },
+            "significant": false,
+            "excess_with_stoploss": -0.05
+          },
+          "20": {
+            "periods": 139,
+            "stock_win_rate": 49.2,
+            "portfolio_return": 0.94,
+            "net_return": 0.35,
+            "excess_return": -1.17,
+            "beat_benchmark_rate": 37.4,
+            "t_stat": -2.29,
+            "t_raw": -3.31,
+            "nonoverlap": {
+              "n": 35,
+              "subsamples": 4,
+              "t_min": -2.44,
+              "t_med": -1.76,
+              "t_max": -0.51
+            },
+            "significant": true,
+            "excess_with_stoploss": -1.16
+          },
+          "60": {
+            "periods": 139,
+            "stock_win_rate": 49.1,
+            "portfolio_return": 3.17,
+            "net_return": 2.58,
+            "excess_return": -2.98,
+            "beat_benchmark_rate": 36.0,
+            "t_stat": -1.67,
+            "t_raw": -3.92,
+            "nonoverlap": {
+              "n": 12,
+              "subsamples": 12,
+              "t_min": -2.92,
+              "t_med": -1.13,
+              "t_max": -0.16
+            },
+            "significant": false,
+            "excess_with_stoploss": -4.23
+          }
+        },
+        "高風報比": {
+          "5": {
+            "periods": 139,
+            "stock_win_rate": 47.3,
+            "portfolio_return": 0.36,
+            "net_return": -0.23,
+            "excess_return": -0.23,
+            "beat_benchmark_rate": 43.2,
+            "t_stat": -1.19,
+            "t_raw": -1.18,
+            "nonoverlap": {
+              "n": 139,
+              "subsamples": 1,
+              "t_min": -1.18,
+              "t_med": -1.18,
+              "t_max": -1.18
+            },
+            "significant": false,
+            "excess_with_stoploss": -0.1
+          },
+          "20": {
+            "periods": 139,
+            "stock_win_rate": 48.0,
+            "portfolio_return": 1.25,
+            "net_return": 0.67,
+            "excess_return": -0.86,
+            "beat_benchmark_rate": 36.7,
+            "t_stat": -1.65,
+            "t_raw": -1.9,
+            "nonoverlap": {
+              "n": 35,
+              "subsamples": 4,
+              "t_min": -1.37,
+              "t_med": -1.02,
+              "t_max": -0.4
+            },
+            "significant": false,
+            "excess_with_stoploss": -1.03
+          },
+          "60": {
+            "periods": 139,
+            "stock_win_rate": 48.0,
+            "portfolio_return": 5.12,
+            "net_return": 4.54,
+            "excess_return": -1.02,
+            "beat_benchmark_rate": 44.6,
+            "t_stat": -0.9,
+            "t_raw": -1.2,
+            "nonoverlap": {
+              "n": 12,
+              "subsamples": 12,
+              "t_min": -1.85,
+              "t_med": -0.74,
+              "t_max": 1.09
+            },
+            "significant": false,
+            "excess_with_stoploss": -4.32
+          }
+        },
+        "短線+高RR": {
+          "5": {
+            "periods": 139,
+            "stock_win_rate": 48.0,
+            "portfolio_return": 0.52,
+            "net_return": -0.06,
+            "excess_return": -0.07,
+            "beat_benchmark_rate": 48.9,
+            "t_stat": -0.43,
+            "t_raw": -0.42,
+            "nonoverlap": {
+              "n": 139,
+              "subsamples": 1,
+              "t_min": -0.42,
+              "t_med": -0.42,
+              "t_max": -0.42
+            },
+            "significant": false,
+            "excess_with_stoploss": 0.04
+          },
+          "20": {
+            "periods": 139,
+            "stock_win_rate": 50.8,
+            "portfolio_return": 1.69,
+            "net_return": 1.1,
+            "excess_return": -0.43,
+            "beat_benchmark_rate": 36.7,
+            "t_stat": -1.06,
+            "t_raw": -1.09,
+            "nonoverlap": {
+              "n": 35,
+              "subsamples": 4,
+              "t_min": -1.25,
+              "t_med": -0.49,
+              "t_max": 0.07
+            },
+            "significant": false,
+            "excess_with_stoploss": -0.38
+          },
+          "60": {
+            "periods": 139,
+            "stock_win_rate": 50.6,
+            "portfolio_return": 5.29,
+            "net_return": 4.71,
+            "excess_return": -0.85,
+            "beat_benchmark_rate": 38.8,
+            "t_stat": -1.17,
+            "t_raw": -1.02,
+            "nonoverlap": {
+              "n": 12,
+              "subsamples": 12,
+              "t_min": -2.9,
+              "t_med": -0.2,
+              "t_max": 0.83
+            },
+            "significant": false,
+            "excess_with_stoploss": -3.26
+          }
+        },
+        "反向(買最弱)": {
+          "5": {
+            "periods": 139,
+            "stock_win_rate": 49.9,
+            "portfolio_return": 0.56,
+            "net_return": -0.03,
+            "excess_return": -0.03,
+            "beat_benchmark_rate": 43.9,
+            "t_stat": -0.2,
+            "t_raw": -0.2,
+            "nonoverlap": {
+              "n": 139,
+              "subsamples": 1,
+              "t_min": -0.2,
+              "t_med": -0.2,
+              "t_max": -0.2
+            },
+            "significant": false,
+            "excess_with_stoploss": 0.08
+          },
+          "20": {
+            "periods": 139,
+            "stock_win_rate": 49.4,
+            "portfolio_return": 1.11,
+            "net_return": 0.52,
+            "excess_return": -1.01,
+            "beat_benchmark_rate": 38.8,
+            "t_stat": -2.64,
+            "t_raw": -3.01,
+            "nonoverlap": {
+              "n": 35,
+              "subsamples": 4,
+              "t_min": -2.14,
+              "t_med": -1.42,
+              "t_max": -1.02
+            },
+            "significant": true,
+            "excess_with_stoploss": -1.12
+          },
+          "60": {
+            "periods": 139,
+            "stock_win_rate": 49.0,
+            "portfolio_return": 4.39,
+            "net_return": 3.8,
+            "excess_return": -1.76,
+            "beat_benchmark_rate": 36.7,
+            "t_stat": -1.73,
+            "t_raw": -2.38,
+            "nonoverlap": {
+              "n": 12,
+              "subsamples": 12,
+              "t_min": -2.74,
+              "t_med": -0.67,
+              "t_max": 0.22
+            },
+            "significant": false,
+            "excess_with_stoploss": -4.25
+          }
+        },
+        "純動能60日": {
+          "5": {
+            "periods": 139,
+            "stock_win_rate": 48.9,
+            "portfolio_return": 1.19,
+            "net_return": 0.6,
+            "excess_return": 0.6,
+            "beat_benchmark_rate": 54.7,
+            "t_stat": 1.73,
+            "t_raw": 1.72,
+            "nonoverlap": {
+              "n": 139,
+              "subsamples": 1,
+              "t_min": 1.72,
+              "t_med": 1.72,
+              "t_max": 1.72
+            },
+            "significant": false,
+            "excess_with_stoploss": 0.56
+          },
+          "20": {
+            "periods": 139,
+            "stock_win_rate": 47.6,
+            "portfolio_return": 4.1,
+            "net_return": 3.51,
+            "excess_return": 1.98,
+            "beat_benchmark_rate": 57.6,
+            "t_stat": 1.65,
+            "t_raw": 2.56,
+            "nonoverlap": {
+              "n": 35,
+              "subsamples": 4,
+              "t_min": 0.36,
+              "t_med": 1.43,
+              "t_max": 1.83
+            },
+            "significant": false,
+            "excess_with_stoploss": 1.1
+          },
+          "60": {
+            "periods": 139,
+            "stock_win_rate": 48.2,
+            "portfolio_return": 12.37,
+            "net_return": 11.79,
+            "excess_return": 6.23,
+            "beat_benchmark_rate": 56.8,
+            "t_stat": 1.66,
+            "t_raw": 3.96,
+            "nonoverlap": {
+              "n": 12,
+              "subsamples": 12,
+              "t_min": -0.17,
+              "t_med": 1.02,
+              "t_max": 1.99
+            },
+            "significant": false,
+            "excess_with_stoploss": 2.14
+          }
+        },
+        "純動能120日": {
+          "5": {
+            "periods": 139,
+            "stock_win_rate": 46.8,
+            "portfolio_return": 1.01,
+            "net_return": 0.42,
+            "excess_return": 0.42,
+            "beat_benchmark_rate": 49.6,
+            "t_stat": 1.08,
+            "t_raw": 1.08,
+            "nonoverlap": {
+              "n": 139,
+              "subsamples": 1,
+              "t_min": 1.08,
+              "t_med": 1.08,
+              "t_max": 1.08
+            },
+            "significant": false,
+            "excess_with_stoploss": 0.44
+          },
+          "20": {
+            "periods": 139,
+            "stock_win_rate": 47.3,
+            "portfolio_return": 3.39,
+            "net_return": 2.81,
+            "excess_return": 1.28,
+            "beat_benchmark_rate": 55.4,
+            "t_stat": 1.22,
+            "t_raw": 1.73,
+            "nonoverlap": {
+              "n": 35,
+              "subsamples": 4,
+              "t_min": 0.42,
+              "t_med": 0.96,
+              "t_max": 1.11
+            },
+            "significant": false,
+            "excess_with_stoploss": 0.46
+          },
+          "60": {
+            "periods": 139,
+            "stock_win_rate": 48.7,
+            "portfolio_return": 10.5,
+            "net_return": 9.92,
+            "excess_return": 4.36,
+            "beat_benchmark_rate": 58.3,
+            "t_stat": 1.54,
+            "t_raw": 3.52,
+            "nonoverlap": {
+              "n": 12,
+              "subsamples": 12,
+              "t_min": 0.25,
+              "t_med": 0.88,
+              "t_max": 2.2
+            },
+            "significant": false,
+            "excess_with_stoploss": 0.28
+          }
+        },
+        "純動能250日": {
+          "5": {
+            "periods": 139,
+            "stock_win_rate": 49.0,
+            "portfolio_return": 1.25,
+            "net_return": 0.67,
+            "excess_return": 0.66,
+            "beat_benchmark_rate": 51.8,
+            "t_stat": 2.03,
+            "t_raw": 2.03,
+            "nonoverlap": {
+              "n": 139,
+              "subsamples": 1,
+              "t_min": 2.03,
+              "t_med": 2.03,
+              "t_max": 2.03
+            },
+            "significant": true,
+            "excess_with_stoploss": 0.83
+          },
+          "20": {
+            "periods": 139,
+            "stock_win_rate": 51.3,
+            "portfolio_return": 4.58,
+            "net_return": 4.0,
+            "excess_return": 2.47,
+            "beat_benchmark_rate": 61.2,
+            "t_stat": 2.46,
+            "t_raw": 3.79,
+            "nonoverlap": {
+              "n": 35,
+              "subsamples": 4,
+              "t_min": 1.63,
+              "t_med": 1.88,
+              "t_max": 2.18
+            },
+            "significant": true,
+            "excess_with_stoploss": 1.98
+          },
+          "60": {
+            "periods": 139,
+            "stock_win_rate": 50.9,
+            "portfolio_return": 13.2,
+            "net_return": 12.62,
+            "excess_return": 7.06,
+            "beat_benchmark_rate": 62.6,
+            "t_stat": 1.81,
+            "t_raw": 4.67,
+            "nonoverlap": {
+              "n": 12,
+              "subsamples": 12,
+              "t_min": 0.58,
+              "t_med": 1.48,
+              "t_max": 1.82
+            },
+            "significant": false,
+            "excess_with_stoploss": 3.75
+          }
+        },
+        "動能12-1": {
+          "5": {
+            "periods": 139,
+            "stock_win_rate": 48.5,
+            "portfolio_return": 1.17,
+            "net_return": 0.59,
+            "excess_return": 0.58,
+            "beat_benchmark_rate": 52.5,
+            "t_stat": 1.97,
+            "t_raw": 1.96,
+            "nonoverlap": {
+              "n": 139,
+              "subsamples": 1,
+              "t_min": 1.96,
+              "t_med": 1.96,
+              "t_max": 1.96
+            },
+            "significant": true,
+            "excess_with_stoploss": 0.67
+          },
+          "20": {
+            "periods": 139,
+            "stock_win_rate": 50.6,
+            "portfolio_return": 4.35,
+            "net_return": 3.76,
+            "excess_return": 2.23,
+            "beat_benchmark_rate": 63.3,
+            "t_stat": 2.24,
+            "t_raw": 3.64,
+            "nonoverlap": {
+              "n": 35,
+              "subsamples": 4,
+              "t_min": 1.29,
+              "t_med": 1.89,
+              "t_max": 2.18
+            },
+            "significant": true,
+            "excess_with_stoploss": 1.65
+          },
+          "60": {
+            "periods": 139,
+            "stock_win_rate": 49.6,
+            "portfolio_return": 12.24,
+            "net_return": 11.66,
+            "excess_return": 6.1,
+            "beat_benchmark_rate": 64.0,
+            "t_stat": 1.51,
+            "t_raw": 4.01,
+            "nonoverlap": {
+              "n": 12,
+              "subsamples": 12,
+              "t_min": 0.64,
+              "t_med": 1.26,
+              "t_max": 1.45
+            },
+            "significant": false,
+            "excess_with_stoploss": 2.58
+          }
+        },
+        "長線+低波動": {
+          "5": {
+            "periods": 139,
+            "stock_win_rate": 47.9,
+            "portfolio_return": 0.39,
+            "net_return": -0.19,
+            "excess_return": -0.2,
+            "beat_benchmark_rate": 46.0,
+            "t_stat": -0.91,
+            "t_raw": -0.91,
+            "nonoverlap": {
+              "n": 139,
+              "subsamples": 1,
+              "t_min": -0.91,
+              "t_med": -0.91,
+              "t_max": -0.91
+            },
+            "significant": false,
+            "excess_with_stoploss": -0.09
+          },
+          "20": {
+            "periods": 139,
+            "stock_win_rate": 50.9,
+            "portfolio_return": 1.52,
+            "net_return": 0.93,
+            "excess_return": -0.59,
+            "beat_benchmark_rate": 48.2,
+            "t_stat": -1.15,
+            "t_raw": -1.6,
+            "nonoverlap": {
+              "n": 35,
+              "subsamples": 4,
+              "t_min": -1.32,
+              "t_med": -0.73,
+              "t_max": -0.34
+            },
+            "significant": false,
+            "excess_with_stoploss": -0.6
+          },
+          "60": {
+            "periods": 139,
+            "stock_win_rate": 53.7,
+            "portfolio_return": 4.91,
+            "net_return": 4.33,
+            "excess_return": -1.23,
+            "beat_benchmark_rate": 43.9,
+            "t_stat": -0.68,
+            "t_raw": -1.51,
+            "nonoverlap": {
+              "n": 12,
+              "subsamples": 12,
+              "t_min": -1.96,
+              "t_med": -0.39,
+              "t_max": 0.64
+            },
+            "significant": false,
+            "excess_with_stoploss": -2.73
+          }
+        },
+        "長線+量能確認": {
+          "5": {
+            "periods": 139,
+            "stock_win_rate": 45.6,
+            "portfolio_return": 0.38,
+            "net_return": -0.21,
+            "excess_return": -0.21,
+            "beat_benchmark_rate": 44.6,
+            "t_stat": -0.85,
+            "t_raw": -0.84,
+            "nonoverlap": {
+              "n": 139,
+              "subsamples": 1,
+              "t_min": -0.84,
+              "t_med": -0.84,
+              "t_max": -0.84
+            },
+            "significant": false,
+            "excess_with_stoploss": -0.05
+          },
+          "20": {
+            "periods": 139,
+            "stock_win_rate": 44.7,
+            "portfolio_return": 1.22,
+            "net_return": 0.63,
+            "excess_return": -0.9,
+            "beat_benchmark_rate": 41.0,
+            "t_stat": -0.95,
+            "t_raw": -1.53,
+            "nonoverlap": {
+              "n": 35,
+              "subsamples": 4,
+              "t_min": -1.6,
+              "t_med": -0.92,
+              "t_max": 0.09
+            },
+            "significant": false,
+            "excess_with_stoploss": -0.9
+          },
+          "60": {
+            "periods": 139,
+            "stock_win_rate": 45.8,
+            "portfolio_return": 3.82,
+            "net_return": 3.23,
+            "excess_return": -2.33,
+            "beat_benchmark_rate": 39.6,
+            "t_stat": -0.91,
+            "t_raw": -2.23,
+            "nonoverlap": {
+              "n": 12,
+              "subsamples": 12,
+              "t_min": -1.74,
+              "t_med": -0.7,
+              "t_max": -0.02
+            },
+            "significant": false,
+            "excess_with_stoploss": -3.14
+          }
+        },
+        "長線+不追高": {
+          "5": {
+            "periods": 139,
+            "stock_win_rate": 44.1,
+            "portfolio_return": 0.25,
+            "net_return": -0.33,
+            "excess_return": -0.34,
+            "beat_benchmark_rate": 42.4,
+            "t_stat": -1.34,
+            "t_raw": -1.33,
+            "nonoverlap": {
+              "n": 139,
+              "subsamples": 1,
+              "t_min": -1.33,
+              "t_med": -1.33,
+              "t_max": -1.33
+            },
+            "significant": false,
+            "excess_with_stoploss": -0.18
+          },
+          "20": {
+            "periods": 139,
+            "stock_win_rate": 41.7,
+            "portfolio_return": 0.22,
+            "net_return": -0.36,
+            "excess_return": -1.89,
+            "beat_benchmark_rate": 38.1,
+            "t_stat": -2.32,
+            "t_raw": -3.62,
+            "nonoverlap": {
+              "n": 35,
+              "subsamples": 4,
+              "t_min": -2.72,
+              "t_med": -2.29,
+              "t_max": -0.36
+            },
+            "significant": true,
+            "excess_with_stoploss": -1.71
+          },
+          "60": {
+            "periods": 139,
+            "stock_win_rate": 43.4,
+            "portfolio_return": 2.66,
+            "net_return": 2.07,
+            "excess_return": -3.49,
+            "beat_benchmark_rate": 32.4,
+            "t_stat": -1.58,
+            "t_raw": -3.6,
+            "nonoverlap": {
+              "n": 12,
+              "subsamples": 12,
+              "t_min": -2.46,
+              "t_med": -0.92,
+              "t_max": -0.3
+            },
+            "significant": false,
+            "excess_with_stoploss": -4.3
+          }
+        },
+        "長線×動能": {
+          "5": {
+            "periods": 139,
+            "stock_win_rate": 46.9,
+            "portfolio_return": 1.0,
+            "net_return": 0.41,
+            "excess_return": 0.41,
+            "beat_benchmark_rate": 48.9,
+            "t_stat": 1.06,
+            "t_raw": 1.06,
+            "nonoverlap": {
+              "n": 139,
+              "subsamples": 1,
+              "t_min": 1.06,
+              "t_med": 1.06,
+              "t_max": 1.06
+            },
+            "significant": false,
+            "excess_with_stoploss": 0.43
+          },
+          "20": {
+            "periods": 139,
+            "stock_win_rate": 47.2,
+            "portfolio_return": 3.38,
+            "net_return": 2.79,
+            "excess_return": 1.26,
+            "beat_benchmark_rate": 55.4,
+            "t_stat": 1.22,
+            "t_raw": 1.72,
+            "nonoverlap": {
+              "n": 35,
+              "subsamples": 4,
+              "t_min": 0.4,
+              "t_med": 0.98,
+              "t_max": 1.08
+            },
+            "significant": false,
+            "excess_with_stoploss": 0.48
+          },
+          "60": {
+            "periods": 139,
+            "stock_win_rate": 48.6,
+            "portfolio_return": 10.49,
+            "net_return": 9.91,
+            "excess_return": 4.35,
+            "beat_benchmark_rate": 56.8,
+            "t_stat": 1.52,
+            "t_raw": 3.5,
+            "nonoverlap": {
+              "n": 12,
+              "subsamples": 12,
+              "t_min": 0.22,
+              "t_med": 0.84,
+              "t_max": 2.19
+            },
+            "significant": false,
+            "excess_with_stoploss": 0.3
+          }
+        },
+        "長線+中線雙確認": {
+          "5": {
+            "periods": 139,
+            "stock_win_rate": 47.6,
+            "portfolio_return": 0.77,
+            "net_return": 0.18,
+            "excess_return": 0.18,
+            "beat_benchmark_rate": 50.4,
+            "t_stat": 0.66,
+            "t_raw": 0.66,
+            "nonoverlap": {
+              "n": 139,
+              "subsamples": 1,
+              "t_min": 0.66,
+              "t_med": 0.66,
+              "t_max": 0.66
+            },
+            "significant": false,
+            "excess_with_stoploss": 0.25
+          },
+          "20": {
+            "periods": 139,
+            "stock_win_rate": 45.9,
+            "portfolio_return": 1.84,
+            "net_return": 1.25,
+            "excess_return": -0.28,
+            "beat_benchmark_rate": 44.6,
+            "t_stat": -0.29,
+            "t_raw": -0.44,
+            "nonoverlap": {
+              "n": 35,
+              "subsamples": 4,
+              "t_min": -0.78,
+              "t_med": -0.19,
+              "t_max": 0.29
+            },
+            "significant": false,
+            "excess_with_stoploss": -0.63
+          },
+          "60": {
+            "periods": 139,
+            "stock_win_rate": 48.3,
+            "portfolio_return": 4.07,
+            "net_return": 3.49,
+            "excess_return": -2.07,
+            "beat_benchmark_rate": 42.4,
+            "t_stat": -0.92,
+            "t_raw": -1.95,
+            "nonoverlap": {
+              "n": 12,
+              "subsamples": 12,
+              "t_min": -2.63,
+              "t_med": -0.43,
+              "t_max": 0.81
+            },
+            "significant": false,
+            "excess_with_stoploss": -3.41
+          }
+        },
+        "長線+短線確認": {
+          "5": {
+            "periods": 138,
+            "stock_win_rate": 45.9,
+            "portfolio_return": 0.68,
+            "net_return": 0.1,
+            "excess_return": 0.2,
+            "beat_benchmark_rate": 48.6,
+            "t_stat": 0.69,
+            "t_raw": 0.69,
+            "nonoverlap": {
+              "n": 138,
+              "subsamples": 1,
+              "t_min": 0.69,
+              "t_med": 0.69,
+              "t_max": 0.69
+            },
+            "significant": false,
+            "excess_with_stoploss": 0.24
+          },
+          "20": {
+            "periods": 138,
+            "stock_win_rate": 47.1,
+            "portfolio_return": 2.09,
+            "net_return": 1.5,
+            "excess_return": 0.12,
+            "beat_benchmark_rate": 45.7,
+            "t_stat": 0.17,
+            "t_raw": 0.23,
+            "nonoverlap": {
+              "n": 34,
+              "subsamples": 4,
+              "t_min": -0.16,
+              "t_med": 0.0,
+              "t_max": 0.55
+            },
+            "significant": false,
+            "excess_with_stoploss": -0.21
+          },
+          "60": {
+            "periods": 138,
+            "stock_win_rate": 48.6,
+            "portfolio_return": 5.26,
+            "net_return": 4.67,
+            "excess_return": -0.72,
+            "beat_benchmark_rate": 45.7,
+            "t_stat": -0.37,
+            "t_raw": -0.7,
+            "nonoverlap": {
+              "n": 11,
+              "subsamples": 12,
+              "t_min": -2.44,
+              "t_med": -0.32,
+              "t_max": 1.37
+            },
+            "significant": false,
+            "excess_with_stoploss": -1.94
+          }
+        },
+        "長線+極短線確認": {
+          "5": {
+            "periods": 139,
+            "stock_win_rate": 47.1,
+            "portfolio_return": 0.72,
+            "net_return": 0.14,
+            "excess_return": 0.13,
+            "beat_benchmark_rate": 47.5,
+            "t_stat": 0.57,
+            "t_raw": 0.57,
+            "nonoverlap": {
+              "n": 139,
+              "subsamples": 1,
+              "t_min": 0.57,
+              "t_med": 0.57,
+              "t_max": 0.57
+            },
+            "significant": false,
+            "excess_with_stoploss": 0.21
+          },
+          "20": {
+            "periods": 139,
+            "stock_win_rate": 48.0,
+            "portfolio_return": 2.31,
+            "net_return": 1.73,
+            "excess_return": 0.2,
+            "beat_benchmark_rate": 50.4,
+            "t_stat": 0.38,
+            "t_raw": 0.41,
+            "nonoverlap": {
+              "n": 35,
+              "subsamples": 4,
+              "t_min": -1.08,
+              "t_med": 0.12,
+              "t_max": 1.64
+            },
+            "significant": false,
+            "excess_with_stoploss": -0.36
+          },
+          "60": {
+            "periods": 139,
+            "stock_win_rate": 48.6,
+            "portfolio_return": 5.54,
+            "net_return": 4.96,
+            "excess_return": -0.6,
+            "beat_benchmark_rate": 43.2,
+            "t_stat": -0.5,
+            "t_raw": -0.7,
+            "nonoverlap": {
+              "n": 12,
+              "subsamples": 12,
+              "t_min": -1.48,
+              "t_med": -0.79,
+              "t_max": 3.11
+            },
+            "significant": false,
+            "excess_with_stoploss": -2.64
+          }
+        },
+        "長線+中線平均": {
+          "5": {
+            "periods": 139,
+            "stock_win_rate": 46.2,
+            "portfolio_return": 0.75,
+            "net_return": 0.16,
+            "excess_return": 0.15,
+            "beat_benchmark_rate": 48.2,
+            "t_stat": 0.69,
+            "t_raw": 0.69,
+            "nonoverlap": {
+              "n": 139,
+              "subsamples": 1,
+              "t_min": 0.69,
+              "t_med": 0.69,
+              "t_max": 0.69
+            },
+            "significant": false,
+            "excess_with_stoploss": 0.18
+          },
+          "20": {
+            "periods": 139,
+            "stock_win_rate": 48.3,
+            "portfolio_return": 2.58,
+            "net_return": 2.0,
+            "excess_return": 0.47,
+            "beat_benchmark_rate": 50.4,
+            "t_stat": 0.71,
+            "t_raw": 0.99,
+            "nonoverlap": {
+              "n": 35,
+              "subsamples": 4,
+              "t_min": -0.44,
+              "t_med": 0.56,
+              "t_max": 1.22
+            },
+            "significant": false,
+            "excess_with_stoploss": -0.04
+          },
+          "60": {
+            "periods": 139,
+            "stock_win_rate": 52.2,
+            "portfolio_return": 7.05,
+            "net_return": 6.46,
+            "excess_return": 0.9,
+            "beat_benchmark_rate": 48.2,
+            "t_stat": 0.84,
+            "t_raw": 1.05,
+            "nonoverlap": {
+              "n": 12,
+              "subsamples": 12,
+              "t_min": -0.89,
+              "t_med": 0.43,
+              "t_max": 1.05
+            },
+            "significant": false,
+            "excess_with_stoploss": -1.59
+          }
+        },
+        "長線分(現行,平手不處理)": {
+          "5": {
+            "periods": 139,
+            "stock_win_rate": 44.0,
+            "portfolio_return": 0.32,
+            "net_return": -0.26,
+            "excess_return": -0.27,
+            "beat_benchmark_rate": 47.5,
+            "t_stat": -1.01,
+            "t_raw": -1.01,
+            "nonoverlap": {
+              "n": 139,
+              "subsamples": 1,
+              "t_min": -1.01,
+              "t_med": -1.01,
+              "t_max": -1.01
+            },
+            "significant": false,
+            "excess_with_stoploss": -0.14
+          },
+          "20": {
+            "periods": 139,
+            "stock_win_rate": 43.3,
+            "portfolio_return": 0.9,
+            "net_return": 0.32,
+            "excess_return": -1.21,
+            "beat_benchmark_rate": 43.9,
+            "t_stat": -1.2,
+            "t_raw": -1.99,
+            "nonoverlap": {
+              "n": 35,
+              "subsamples": 4,
+              "t_min": -1.46,
+              "t_med": -0.93,
+              "t_max": -0.69
+            },
+            "significant": false,
+            "excess_with_stoploss": -1.33
+          },
+          "60": {
+            "periods": 139,
+            "stock_win_rate": 45.7,
+            "portfolio_return": 3.57,
+            "net_return": 2.99,
+            "excess_return": -2.57,
+            "beat_benchmark_rate": 39.6,
+            "t_stat": -1.04,
+            "t_raw": -2.52,
+            "nonoverlap": {
+              "n": 12,
+              "subsamples": 12,
+              "t_min": -1.11,
+              "t_med": -0.75,
+              "t_max": -0.1
+            },
+            "significant": false,
+            "excess_with_stoploss": -3.69
+          }
+        },
+        "長線分+動能破平手": {
+          "5": {
+            "periods": 139,
+            "stock_win_rate": 47.0,
+            "portfolio_return": 1.05,
+            "net_return": 0.47,
+            "excess_return": 0.46,
+            "beat_benchmark_rate": 49.6,
+            "t_stat": 1.23,
+            "t_raw": 1.23,
+            "nonoverlap": {
+              "n": 139,
+              "subsamples": 1,
+              "t_min": 1.23,
+              "t_med": 1.23,
+              "t_max": 1.23
+            },
+            "significant": false,
+            "excess_with_stoploss": 0.42
+          },
+          "20": {
+            "periods": 139,
+            "stock_win_rate": 47.3,
+            "portfolio_return": 3.47,
+            "net_return": 2.89,
+            "excess_return": 1.36,
+            "beat_benchmark_rate": 56.1,
+            "t_stat": 1.29,
+            "t_raw": 1.85,
+            "nonoverlap": {
+              "n": 35,
+              "subsamples": 4,
+              "t_min": 0.4,
+              "t_med": 1.0,
+              "t_max": 1.3
+            },
+            "significant": false,
+            "excess_with_stoploss": 0.49
+          },
+          "60": {
+            "periods": 139,
+            "stock_win_rate": 48.6,
+            "portfolio_return": 10.57,
+            "net_return": 9.98,
+            "excess_return": 4.42,
+            "beat_benchmark_rate": 57.6,
+            "t_stat": 1.53,
+            "t_raw": 3.56,
+            "nonoverlap": {
+              "n": 12,
+              "subsamples": 12,
+              "t_min": 0.22,
+              "t_med": 0.84,
+              "t_max": 2.19
+            },
+            "significant": false,
+            "excess_with_stoploss": 0.3
+          }
+        },
+        "長線分+距季線破平手": {
+          "5": {
+            "periods": 139,
+            "stock_win_rate": 49.1,
+            "portfolio_return": 1.35,
+            "net_return": 0.77,
+            "excess_return": 0.76,
+            "beat_benchmark_rate": 54.7,
+            "t_stat": 2.09,
+            "t_raw": 2.09,
+            "nonoverlap": {
+              "n": 139,
+              "subsamples": 1,
+              "t_min": 2.09,
+              "t_med": 2.09,
+              "t_max": 2.09
+            },
+            "significant": true,
+            "excess_with_stoploss": 0.71
+          },
+          "20": {
+            "periods": 139,
+            "stock_win_rate": 47.1,
+            "portfolio_return": 4.32,
+            "net_return": 3.74,
+            "excess_return": 2.21,
+            "beat_benchmark_rate": 58.3,
+            "t_stat": 1.88,
+            "t_raw": 2.76,
+            "nonoverlap": {
+              "n": 35,
+              "subsamples": 4,
+              "t_min": 0.54,
+              "t_med": 1.49,
+              "t_max": 2.09
+            },
+            "significant": false,
+            "excess_with_stoploss": 1.24
+          },
+          "60": {
+            "periods": 139,
+            "stock_win_rate": 48.5,
+            "portfolio_return": 10.57,
+            "net_return": 9.98,
+            "excess_return": 4.42,
+            "beat_benchmark_rate": 54.0,
+            "t_stat": 1.34,
+            "t_raw": 3.26,
+            "nonoverlap": {
+              "n": 12,
+              "subsamples": 12,
+              "t_min": 0.24,
+              "t_med": 0.89,
+              "t_max": 1.69
+            },
+            "significant": false,
+            "excess_with_stoploss": -0.24
+          }
+        },
+        "長線分+技術分破平手": {
+          "5": {
+            "periods": 139,
+            "stock_win_rate": 46.0,
+            "portfolio_return": 0.84,
+            "net_return": 0.26,
+            "excess_return": 0.25,
+            "beat_benchmark_rate": 47.5,
+            "t_stat": 1.14,
+            "t_raw": 1.14,
+            "nonoverlap": {
+              "n": 139,
+              "subsamples": 1,
+              "t_min": 1.14,
+              "t_med": 1.14,
+              "t_max": 1.14
+            },
+            "significant": false,
+            "excess_with_stoploss": 0.28
+          },
+          "20": {
+            "periods": 139,
+            "stock_win_rate": 49.0,
+            "portfolio_return": 2.98,
+            "net_return": 2.39,
+            "excess_return": 0.86,
+            "beat_benchmark_rate": 54.7,
+            "t_stat": 1.5,
+            "t_raw": 1.81,
+            "nonoverlap": {
+              "n": 35,
+              "subsamples": 4,
+              "t_min": 0.18,
+              "t_med": 0.68,
+              "t_max": 2.12
+            },
+            "significant": false,
+            "excess_with_stoploss": 0.47
+          },
+          "60": {
+            "periods": 139,
+            "stock_win_rate": 52.7,
+            "portfolio_return": 7.73,
+            "net_return": 7.14,
+            "excess_return": 1.58,
+            "beat_benchmark_rate": 46.0,
+            "t_stat": 1.2,
+            "t_raw": 1.92,
+            "nonoverlap": {
+              "n": 12,
+              "subsamples": 12,
+              "t_min": -0.3,
+              "t_med": 0.6,
+              "t_max": 1.36
+            },
+            "significant": false,
+            "excess_with_stoploss": -1.55
+          }
+        },
+        "長線分+量價破平手": {
+          "5": {
+            "periods": 139,
+            "stock_win_rate": 48.3,
+            "portfolio_return": 1.45,
+            "net_return": 0.86,
+            "excess_return": 0.85,
+            "beat_benchmark_rate": 56.1,
+            "t_stat": 2.75,
+            "t_raw": 2.74,
+            "nonoverlap": {
+              "n": 139,
+              "subsamples": 1,
+              "t_min": 2.74,
+              "t_med": 2.74,
+              "t_max": 2.74
+            },
+            "significant": true,
+            "excess_with_stoploss": 0.92
+          },
+          "20": {
+            "periods": 139,
+            "stock_win_rate": 46.6,
+            "portfolio_return": 3.39,
+            "net_return": 2.81,
+            "excess_return": 1.28,
+            "beat_benchmark_rate": 56.8,
+            "t_stat": 1.79,
+            "t_raw": 1.98,
+            "nonoverlap": {
+              "n": 35,
+              "subsamples": 4,
+              "t_min": 0.52,
+              "t_med": 0.95,
+              "t_max": 1.48
+            },
+            "significant": false,
+            "excess_with_stoploss": 0.62
+          },
+          "60": {
+            "periods": 139,
+            "stock_win_rate": 49.6,
+            "portfolio_return": 7.49,
+            "net_return": 6.9,
+            "excess_return": 1.34,
+            "beat_benchmark_rate": 49.6,
+            "t_stat": 0.73,
+            "t_raw": 1.19,
+            "nonoverlap": {
+              "n": 12,
+              "subsamples": 12,
+              "t_min": -2.12,
+              "t_med": 0.31,
+              "t_max": 2.75
+            },
+            "significant": false,
+            "excess_with_stoploss": -0.96
+          }
+        },
+        "強勢族群龍頭": {
+          "5": {
+            "periods": 139,
+            "stock_win_rate": 44.5,
+            "portfolio_return": 0.02,
+            "net_return": -0.56,
+            "excess_return": -0.57,
+            "beat_benchmark_rate": 38.1,
+            "t_stat": -1.97,
+            "t_raw": -1.96,
+            "nonoverlap": {
+              "n": 139,
+              "subsamples": 1,
+              "t_min": -1.96,
+              "t_med": -1.96,
+              "t_max": -1.96
+            },
+            "significant": true,
+            "excess_with_stoploss": -0.56
+          },
+          "20": {
+            "periods": 139,
+            "stock_win_rate": 48.1,
+            "portfolio_return": 1.49,
+            "net_return": 0.9,
+            "excess_return": -0.63,
+            "beat_benchmark_rate": 43.9,
+            "t_stat": -0.64,
+            "t_raw": -0.91,
+            "nonoverlap": {
+              "n": 35,
+              "subsamples": 4,
+              "t_min": -1.8,
+              "t_med": -0.21,
+              "t_max": 0.37
+            },
+            "significant": false,
+            "excess_with_stoploss": -1.11
+          },
+          "60": {
+            "periods": 139,
+            "stock_win_rate": 52.0,
+            "portfolio_return": 6.87,
+            "net_return": 6.29,
+            "excess_return": 0.73,
+            "beat_benchmark_rate": 50.4,
+            "t_stat": 0.37,
+            "t_raw": 0.66,
+            "nonoverlap": {
+              "n": 12,
+              "subsamples": 12,
+              "t_min": -0.87,
+              "t_med": 0.09,
+              "t_max": 0.93
+            },
+            "significant": false,
+            "excess_with_stoploss": -2.16
+          }
+        },
+        "強勢族群落後股": {
+          "5": {
+            "periods": 139,
+            "stock_win_rate": 49.2,
+            "portfolio_return": 0.56,
+            "net_return": -0.02,
+            "excess_return": -0.03,
+            "beat_benchmark_rate": 46.8,
+            "t_stat": -0.15,
+            "t_raw": -0.15,
+            "nonoverlap": {
+              "n": 139,
+              "subsamples": 1,
+              "t_min": -0.15,
+              "t_med": -0.15,
+              "t_max": -0.15
+            },
+            "significant": false,
+            "excess_with_stoploss": 0.02
+          },
+          "20": {
+            "periods": 139,
+            "stock_win_rate": 47.2,
+            "portfolio_return": 2.02,
+            "net_return": 1.44,
+            "excess_return": -0.09,
+            "beat_benchmark_rate": 44.6,
+            "t_stat": -0.18,
+            "t_raw": -0.19,
+            "nonoverlap": {
+              "n": 35,
+              "subsamples": 4,
+              "t_min": -1.8,
+              "t_med": 0.2,
+              "t_max": 0.45
+            },
+            "significant": false,
+            "excess_with_stoploss": -0.43
+          },
+          "60": {
+            "periods": 139,
+            "stock_win_rate": 43.7,
+            "portfolio_return": 4.97,
+            "net_return": 4.38,
+            "excess_return": -1.17,
+            "beat_benchmark_rate": 38.8,
+            "t_stat": -1.18,
+            "t_raw": -1.43,
+            "nonoverlap": {
+              "n": 12,
+              "subsamples": 12,
+              "t_min": -4.34,
+              "t_med": -0.51,
+              "t_max": 1.07
+            },
+            "significant": false,
+            "excess_with_stoploss": -3.78
+          }
+        },
+        "強勢族群+長線分": {
+          "5": {
+            "periods": 139,
+            "stock_win_rate": 47.4,
+            "portfolio_return": 0.71,
+            "net_return": 0.12,
+            "excess_return": 0.12,
+            "beat_benchmark_rate": 53.2,
+            "t_stat": 0.4,
+            "t_raw": 0.39,
+            "nonoverlap": {
+              "n": 139,
+              "subsamples": 1,
+              "t_min": 0.39,
+              "t_med": 0.39,
+              "t_max": 0.39
+            },
+            "significant": false,
+            "excess_with_stoploss": 0.16
+          },
+          "20": {
+            "periods": 139,
+            "stock_win_rate": 45.2,
+            "portfolio_return": 1.37,
+            "net_return": 0.79,
+            "excess_return": -0.74,
+            "beat_benchmark_rate": 43.2,
+            "t_stat": -0.71,
+            "t_raw": -1.12,
+            "nonoverlap": {
+              "n": 35,
+              "subsamples": 4,
+              "t_min": -0.94,
+              "t_med": -0.63,
+              "t_max": -0.11
+            },
+            "significant": false,
+            "excess_with_stoploss": -1.23
+          },
+          "60": {
+            "periods": 139,
+            "stock_win_rate": 48.2,
+            "portfolio_return": 4.54,
+            "net_return": 3.95,
+            "excess_return": -1.61,
+            "beat_benchmark_rate": 39.6,
+            "t_stat": -0.72,
+            "t_raw": -1.56,
+            "nonoverlap": {
+              "n": 12,
+              "subsamples": 12,
+              "t_min": -1.52,
+              "t_med": -0.45,
+              "t_max": 0.45
+            },
+            "significant": false,
+            "excess_with_stoploss": -3.87
           }
         },
         "弱勢族群落後股(對照)": {
           "5": {
-            "periods": 165,
-            "stock_win_rate": 47.6,
-            "portfolio_return": 0.28,
-            "net_return": -0.31,
-            "excess_return": -0.39,
-            "beat_benchmark_rate": 40.6,
-            "t_stat": -1.86,
+            "periods": 130,
+            "stock_win_rate": 46.8,
+            "portfolio_return": 0.15,
+            "net_return": -0.43,
+            "excess_return": -0.49,
+            "beat_benchmark_rate": 37.7,
+            "t_stat": -1.66,
+            "t_raw": -1.65,
+            "nonoverlap": {
+              "n": 130,
+              "subsamples": 1,
+              "t_min": -1.65,
+              "t_med": -1.65,
+              "t_max": -1.65
+            },
             "significant": false,
             "excess_with_stoploss": -0.15
           },
           "20": {
-            "periods": 165,
-            "stock_win_rate": 51.2,
+            "periods": 130,
+            "stock_win_rate": 50.5,
             "portfolio_return": 1.34,
-            "net_return": 0.76,
-            "excess_return": -1.38,
-            "beat_benchmark_rate": 37.6,
-            "t_stat": -3.27,
-            "significant": true,
-            "excess_with_stoploss": -1.42
+            "net_return": 0.75,
+            "excess_return": -0.98,
+            "beat_benchmark_rate": 41.5,
+            "t_stat": -1.27,
+            "t_raw": -1.72,
+            "nonoverlap": {
+              "n": 32,
+              "subsamples": 4,
+              "t_min": -1.78,
+              "t_med": -1.17,
+              "t_max": 0.3
+            },
+            "significant": false,
+            "excess_with_stoploss": -0.94
           },
           "60": {
-            "periods": 165,
-            "stock_win_rate": 54.0,
-            "portfolio_return": 4.77,
-            "net_return": 4.19,
-            "excess_return": -4.0,
-            "beat_benchmark_rate": 29.7,
-            "t_stat": -4.67,
-            "significant": true,
-            "excess_with_stoploss": -6.27
+            "periods": 130,
+            "stock_win_rate": 49.7,
+            "portfolio_return": 3.7,
+            "net_return": 3.11,
+            "excess_return": -2.88,
+            "beat_benchmark_rate": 40.0,
+            "t_stat": -1.11,
+            "t_raw": -2.62,
+            "nonoverlap": {
+              "n": 11,
+              "subsamples": 12,
+              "t_min": -2.14,
+              "t_med": -0.86,
+              "t_max": 0.01
+            },
+            "significant": false,
+            "excess_with_stoploss": -5.09
+          }
+        },
+        "長線+量能+融資": {
+          "5": {
+            "periods": 139,
+            "stock_win_rate": 45.5,
+            "portfolio_return": 0.37,
+            "net_return": -0.22,
+            "excess_return": -0.22,
+            "beat_benchmark_rate": 44.6,
+            "t_stat": -1.02,
+            "t_raw": -1.02,
+            "nonoverlap": {
+              "n": 139,
+              "subsamples": 1,
+              "t_min": -1.02,
+              "t_med": -1.02,
+              "t_max": -1.02
+            },
+            "significant": false,
+            "excess_with_stoploss": -0.03
+          },
+          "20": {
+            "periods": 139,
+            "stock_win_rate": 45.9,
+            "portfolio_return": 1.29,
+            "net_return": 0.7,
+            "excess_return": -0.83,
+            "beat_benchmark_rate": 42.4,
+            "t_stat": -1.32,
+            "t_raw": -1.85,
+            "nonoverlap": {
+              "n": 35,
+              "subsamples": 4,
+              "t_min": -1.68,
+              "t_med": -0.92,
+              "t_max": -0.27
+            },
+            "significant": false,
+            "excess_with_stoploss": -0.92
+          },
+          "60": {
+            "periods": 139,
+            "stock_win_rate": 47.3,
+            "portfolio_return": 4.72,
+            "net_return": 4.14,
+            "excess_return": -1.42,
+            "beat_benchmark_rate": 36.7,
+            "t_stat": -0.86,
+            "t_raw": -1.68,
+            "nonoverlap": {
+              "n": 12,
+              "subsamples": 12,
+              "t_min": -1.27,
+              "t_med": -0.73,
+              "t_max": 0.44
+            },
+            "significant": false,
+            "excess_with_stoploss": -3.06
+          }
+        },
+        "長線+量能+中線": {
+          "5": {
+            "periods": 139,
+            "stock_win_rate": 48.8,
+            "portfolio_return": 0.87,
+            "net_return": 0.28,
+            "excess_return": 0.28,
+            "beat_benchmark_rate": 47.5,
+            "t_stat": 0.97,
+            "t_raw": 0.96,
+            "nonoverlap": {
+              "n": 139,
+              "subsamples": 1,
+              "t_min": 0.96,
+              "t_med": 0.96,
+              "t_max": 0.96
+            },
+            "significant": false,
+            "excess_with_stoploss": 0.36
+          },
+          "20": {
+            "periods": 139,
+            "stock_win_rate": 45.8,
+            "portfolio_return": 1.67,
+            "net_return": 1.08,
+            "excess_return": -0.45,
+            "beat_benchmark_rate": 41.0,
+            "t_stat": -0.48,
+            "t_raw": -0.71,
+            "nonoverlap": {
+              "n": 35,
+              "subsamples": 4,
+              "t_min": -0.72,
+              "t_med": -0.38,
+              "t_max": -0.07
+            },
+            "significant": false,
+            "excess_with_stoploss": -0.64
+          },
+          "60": {
+            "periods": 139,
+            "stock_win_rate": 48.2,
+            "portfolio_return": 4.22,
+            "net_return": 3.63,
+            "excess_return": -1.92,
+            "beat_benchmark_rate": 41.7,
+            "t_stat": -1.02,
+            "t_raw": -1.94,
+            "nonoverlap": {
+              "n": 12,
+              "subsamples": 12,
+              "t_min": -2.21,
+              "t_med": -0.51,
+              "t_max": 0.71
+            },
+            "significant": false,
+            "excess_with_stoploss": -2.94
+          }
+        },
+        "長線+四重確認": {
+          "5": {
+            "periods": 138,
+            "stock_win_rate": 45.7,
+            "portfolio_return": 0.23,
+            "net_return": -0.36,
+            "excess_return": -0.25,
+            "beat_benchmark_rate": 43.5,
+            "t_stat": -1.04,
+            "t_raw": -1.04,
+            "nonoverlap": {
+              "n": 138,
+              "subsamples": 1,
+              "t_min": -1.04,
+              "t_med": -1.04,
+              "t_max": -1.04
+            },
+            "significant": false,
+            "excess_with_stoploss": -0.16
+          },
+          "20": {
+            "periods": 138,
+            "stock_win_rate": 46.6,
+            "portfolio_return": 1.83,
+            "net_return": 1.24,
+            "excess_return": -0.14,
+            "beat_benchmark_rate": 42.0,
+            "t_stat": -0.23,
+            "t_raw": -0.28,
+            "nonoverlap": {
+              "n": 34,
+              "subsamples": 4,
+              "t_min": -0.66,
+              "t_med": -0.17,
+              "t_max": 0.38
+            },
+            "significant": false,
+            "excess_with_stoploss": -0.62
+          },
+          "60": {
+            "periods": 138,
+            "stock_win_rate": 49.8,
+            "portfolio_return": 6.13,
+            "net_return": 5.55,
+            "excess_return": 0.16,
+            "beat_benchmark_rate": 47.8,
+            "t_stat": 0.12,
+            "t_raw": 0.17,
+            "nonoverlap": {
+              "n": 11,
+              "subsamples": 12,
+              "t_min": -1.02,
+              "t_med": -0.17,
+              "t_max": 1.4
+            },
+            "significant": false,
+            "excess_with_stoploss": -1.86
+          }
+        },
+        "低本益比(價值)": {},
+        "高殖利率": {},
+        "低股價淨值比": {},
+        "長線+合理估值": {},
+        "長線+高殖利率": {},
+        "長線+融資健康": {
+          "5": {
+            "periods": 139,
+            "stock_win_rate": 45.3,
+            "portfolio_return": 0.46,
+            "net_return": -0.12,
+            "excess_return": -0.13,
+            "beat_benchmark_rate": 52.5,
+            "t_stat": -0.47,
+            "t_raw": -0.47,
+            "nonoverlap": {
+              "n": 139,
+              "subsamples": 1,
+              "t_min": -0.47,
+              "t_med": -0.47,
+              "t_max": -0.47
+            },
+            "significant": false,
+            "excess_with_stoploss": -0.02
+          },
+          "20": {
+            "periods": 139,
+            "stock_win_rate": 45.4,
+            "portfolio_return": 1.31,
+            "net_return": 0.73,
+            "excess_return": -0.8,
+            "beat_benchmark_rate": 47.5,
+            "t_stat": -0.79,
+            "t_raw": -1.29,
+            "nonoverlap": {
+              "n": 35,
+              "subsamples": 4,
+              "t_min": -0.84,
+              "t_med": -0.73,
+              "t_max": -0.28
+            },
+            "significant": false,
+            "excess_with_stoploss": -1.05
+          },
+          "60": {
+            "periods": 139,
+            "stock_win_rate": 47.1,
+            "portfolio_return": 4.28,
+            "net_return": 3.7,
+            "excess_return": -1.86,
+            "beat_benchmark_rate": 42.4,
+            "t_stat": -0.78,
+            "t_raw": -1.86,
+            "nonoverlap": {
+              "n": 12,
+              "subsamples": 12,
+              "t_min": -1.83,
+              "t_med": -0.51,
+              "t_max": 0.04
+            },
+            "significant": false,
+            "excess_with_stoploss": -3.35
+          }
+        },
+        "長線+融資減少": {
+          "5": {
+            "periods": 139,
+            "stock_win_rate": 45.2,
+            "portfolio_return": 0.31,
+            "net_return": -0.27,
+            "excess_return": -0.28,
+            "beat_benchmark_rate": 43.2,
+            "t_stat": -1.25,
+            "t_raw": -1.24,
+            "nonoverlap": {
+              "n": 139,
+              "subsamples": 1,
+              "t_min": -1.24,
+              "t_med": -1.24,
+              "t_max": -1.24
+            },
+            "significant": false,
+            "excess_with_stoploss": -0.12
+          },
+          "20": {
+            "periods": 139,
+            "stock_win_rate": 44.3,
+            "portfolio_return": 0.88,
+            "net_return": 0.29,
+            "excess_return": -1.24,
+            "beat_benchmark_rate": 43.2,
+            "t_stat": -1.9,
+            "t_raw": -2.7,
+            "nonoverlap": {
+              "n": 35,
+              "subsamples": 4,
+              "t_min": -2.0,
+              "t_med": -1.28,
+              "t_max": -0.9
+            },
+            "significant": false,
+            "excess_with_stoploss": -1.34
+          },
+          "60": {
+            "periods": 139,
+            "stock_win_rate": 46.7,
+            "portfolio_return": 3.97,
+            "net_return": 3.38,
+            "excess_return": -2.18,
+            "beat_benchmark_rate": 39.6,
+            "t_stat": -1.05,
+            "t_raw": -2.5,
+            "nonoverlap": {
+              "n": 12,
+              "subsamples": 12,
+              "t_min": -1.49,
+              "t_med": -0.71,
+              "t_max": 0.11
+            },
+            "significant": false,
+            "excess_with_stoploss": -3.22
+          }
+        },
+        "融資使用率高(反向)": {
+          "5": {
+            "periods": 139,
+            "stock_win_rate": 49.0,
+            "portfolio_return": 1.02,
+            "net_return": 0.44,
+            "excess_return": 0.43,
+            "beat_benchmark_rate": 52.5,
+            "t_stat": 1.5,
+            "t_raw": 1.5,
+            "nonoverlap": {
+              "n": 139,
+              "subsamples": 1,
+              "t_min": 1.5,
+              "t_med": 1.5,
+              "t_max": 1.5
+            },
+            "significant": false,
+            "excess_with_stoploss": 0.51
+          },
+          "20": {
+            "periods": 139,
+            "stock_win_rate": 52.0,
+            "portfolio_return": 3.53,
+            "net_return": 2.94,
+            "excess_return": 1.41,
+            "beat_benchmark_rate": 55.4,
+            "t_stat": 1.53,
+            "t_raw": 2.41,
+            "nonoverlap": {
+              "n": 35,
+              "subsamples": 4,
+              "t_min": 1.06,
+              "t_med": 1.21,
+              "t_max": 1.33
+            },
+            "significant": false,
+            "excess_with_stoploss": 0.36
+          },
+          "60": {
+            "periods": 139,
+            "stock_win_rate": 53.2,
+            "portfolio_return": 9.23,
+            "net_return": 8.64,
+            "excess_return": 3.08,
+            "beat_benchmark_rate": 52.5,
+            "t_stat": 1.19,
+            "t_raw": 2.95,
+            "nonoverlap": {
+              "n": 12,
+              "subsamples": 12,
+              "t_min": 0.07,
+              "t_med": 0.84,
+              "t_max": 1.54
+            },
+            "significant": false,
+            "excess_with_stoploss": -2.38
           }
         }
       },

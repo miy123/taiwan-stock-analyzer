@@ -15,10 +15,12 @@
 """
 
 import argparse
+import datetime
+import json
+import os
 import statistics as stat
 import sys
 
-import pandas as pd
 import yfinance as yf
 
 sys.path.insert(0, ".")
@@ -28,8 +30,13 @@ from services.technical import (
     analyze_volume_price, calculate_risk_plan,
 )
 from services.potential import calculate_potential_score
-from services.universe import get_listed_snapshot, download_history_bulk
+from services.universe import download_history_bulk
+from services.backtest_stats import t_newey_west, t_stat, nonoverlap, listed_pool
 from services.sector import get_industry_map
+
+# App 讀的實證檔。先前這支腳本只印不存，於是這個檔案沒有任何程式能重現。
+_OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                    "backtest_results.json")
 
 FWD = (5, 20, 60)          # 交易日：約 1週 / 1個月 / 3個月
 MIN_HISTORY = 260          # 評分所需最少歷史長度
@@ -297,7 +304,12 @@ def build_signals(df_slice):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--stocks", type=int, default=400, help="最多分析幾檔（依流動性）")
+    ap.add_argument("--run-key", default=None,
+                    help="寫進 backtest_results.json 的哪一個 run（預設依 --years 判斷）")
+    ap.add_argument("--pool", type=int, default=0,
+                    help="下載幾檔（0 ＝全部上市）。可投資範圍由當日流動性決定")
+    ap.add_argument("--stocks", type=int, default=400,
+                    help="每個換股日的可投資範圍（依當日流動性取前 N 檔）")
     ap.add_argument("--every", type=int, default=10, help="每隔幾個交易日換股一次")
     ap.add_argument("--years", type=float, default=2.0, help="回測涵蓋幾年")
     ap.add_argument("--topn", type=int, default=10, help="每次選前幾名")
@@ -308,10 +320,12 @@ def main():
     print(f"設定: 前{args.stocks}檔流動股 / 每{args.every}交易日換股 / "
           f"近{args.years}年 / 每次選前{args.topn}名\n")
 
+    models_out = {}
     print("① 取得上市清單與歷史資料…")
-    snap = get_listed_snapshot()
-    ranked = sorted(snap.items(), key=lambda kv: -(kv[1].get("turnover") or 0))
-    codes = [c for c, _ in ranked[:args.stocks]]
+    # ⚠️ 池子用今天的成交金額排序取前 N 檔＝前視偏誤（後來才變熱門的股票
+    #    多半是因為漲了很多）。改成下載全部上市，實際可投資範圍由迴圈裡
+    #    「近 20 日平均成交金額 ≥ 2000 萬」這條**當日**條件決定。
+    codes = listed_pool(args.pool)
     frames = download_history_bulk(codes, period="5y", chunk=120)
     print(f"   取得 {len(frames)} 檔歷史資料")
 
@@ -387,15 +401,33 @@ def main():
         dstr = date.strftime("%Y%m%d")
         val_map = get_hist_valuation(dstr) if args.valuation else {}
         mgn_map = get_hist_margin(dstr)
+        # ① 先決定當日的可投資範圍：近20日均額 ≥2000萬，再取**前 --stocks 檔**。
+        #
+        # ⚠️ 兩件事要一起做才對得起「可比」：
+        #    (a) 池子不能用今天的成交金額回頭挑（前視偏誤，已改成下載全上市）；
+        #    (b) 但也不能因此把範圍從 400 檔放大到上千檔——那等於同時改了
+        #        「有沒有前視」與「投資範圍多寬」兩個變因，結果歸因不了。
+        #        實際撞到過：只改 (a) 時「長線」模型從 +8.49% 翻成 −2.01%，
+        #        分不清是修掉偏誤還是換了池子。
+        _liq = []
+        for code, d in enriched.items():
+            sl = d.loc[:date]
+            if len(sl) < MIN_HISTORY:
+                continue
+            dv = float((sl["Close"] * sl["Volume"]).tail(20).mean())
+            if dv >= 2e7:
+                _liq.append((dv, code))
+        _liq.sort(reverse=True)
+        allowed = {c for _, c in _liq[:args.stocks]} if args.stocks > 0 else \
+            {c for _, c in _liq}
+
         day_sigs = []
         for code, d in enriched.items():
+            if code not in allowed:
+                continue
             try:
                 sl = d.loc[:date]
                 if len(sl) < MIN_HISTORY:
-                    continue
-                # 流動性：近20日平均成交金額 ≥ 2000萬（用當日以前資料，可還原）
-                dv = float((sl["Close"] * sl["Volume"]).tail(20).mean())
-                if dv < 2e7:
                     continue
                 base = float(sl["Close"].iloc[-1])
                 if base <= 0:
@@ -511,15 +543,19 @@ def main():
         rows = []
         for m in MODELS:
             data = results[m["name"]][h]
+            models_out.setdefault(m["name"], {})
             if len(data) < 5:
                 continue
             ports = [p for p, _, _, _, _, _ in data]
             exc = [p - b for p, b, _, _, _, _ in data]
             wins = [w for _, _, w, _, _, _ in data]
             sl_exc = [ps - b for _, b, _, ps, _, _ in data]
-            # t 檢定：超額報酬是否顯著不等於 0（樣本 = 換股日數）
-            sd = stat.pstdev(exc) if len(exc) > 1 else 0
-            tval = (stat.mean(exc) / (sd / (len(exc) ** 0.5))) if sd > 0 else 0
+            # t 檢定：超額報酬是否顯著不等於 0。
+            # ⚠️ 每 args.every 天換股卻持有 h 天 → 相鄰 h/every 期的持有區間
+            #    重疊，觀測不是獨立樣本。一律用 Newey-West（唯一實作在
+            #    services/backtest_stats），舊算法只留 t_raw 供對照。
+            tval = t_newey_west(exc, h / args.every - 1)
+            t_raw = t_stat(exc)
             rows.append({
                 "name": m["name"], "n": len(ports),
                 "win": stat.mean(wins),
@@ -527,8 +563,26 @@ def main():
                 "net": stat.mean(ports) - ROUND_TRIP_COST,
                 "exc": stat.mean(exc),
                 "beat": sum(1 for e in exc if e > 0) / len(exc) * 100,
-                "t": tval, "sl_exc": stat.mean(sl_exc), "desc": m["desc"],
+                "t": tval, "t_raw": round(t_raw, 2),
+                "nonoverlap": nonoverlap(exc, h / args.every),
+                "sl_exc": stat.mean(sl_exc), "desc": m["desc"],
             })
+            # 同一份數字落地給 App 讀（鍵名沿用既有 json，不要改，
+            # 否則 services/evidence.py 全部要跟著改）
+            models_out[m["name"]][str(h)] = {
+                "periods": len(ports),
+                "stock_win_rate": round(stat.mean(wins), 1),
+                "portfolio_return": round(stat.mean(ports), 2),
+                "net_return": round(stat.mean(ports) - ROUND_TRIP_COST, 2),
+                "excess_return": round(stat.mean(exc), 2),
+                "beat_benchmark_rate": round(
+                    sum(1 for e in exc if e > 0) / len(exc) * 100, 1),
+                "t_stat": round(tval, 2),
+                "t_raw": round(t_raw, 2),
+                "nonoverlap": nonoverlap(exc, h / args.every),
+                "significant": abs(tval) >= 1.96,
+                "excess_with_stoploss": round(stat.mean(sl_exc), 2),
+            }
         for r in sorted(rows, key=lambda x: -x["exc"]):
             sig = "*" if abs(r["t"]) >= 1.96 else " "
             print(f"{r['name']:<18}{r['n']:>5}{r['win']:>8.1f}%{r['mean']:>9.2f}%"
@@ -654,7 +708,51 @@ def main():
     print("\n重要限制：")
     print("  · 僅檢驗價量核心；基本面與新聞無歷史快照，其貢獻未被驗證")
     print("  · 存活者偏誤：用『現在還在市』的股票回測，已下市/崩壞的公司不在樣本內，結果偏樂觀")
-    print("  · 60日窗在5日換股下仍有重疊，t值仍略微高估顯著性")
+    print("  · 重疊視窗造成的 t 值高估**已修正**（Newey-West，lag = 持有天數/換股間隔 − 1）；"
+          "\n    未修正的舊數字存成 t_raw 供對照")
+    # ── 落地成 backtest_results.json ─────────────────────────────────────────
+    #
+    # ⚠️ 這支腳本**原本只印不存**：`backtest_results.json` 是 2026-09-04 手動
+    #    產出之後就沒有任何程式能重現的檔案，而 App 一直在讀它
+    #    （`evidence.get_stats_for_model` / `all_model_rows` / `regime_stats_for_model`
+    #    / `benchmark_return` / `run_periods`）。於是畫面上的數字既不能重跑驗證、
+    #    也不會跟著模型修正而更新——2026-09-24 修掉兩個統計偏誤時才發現。
+    #
+    # 只覆蓋本次實際跑出來的那個 run key，其餘 run 原封不動保留。
+    run_key = args.run_key or ("main_3y" if args.years >= 2.5 else "robustness_1y")
+    try:
+        with open(_OUT, "r", encoding="utf-8") as f:
+            payload = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        payload = {"meta": {}, "runs": {}}
+    payload.setdefault("runs", {})[run_key] = {
+        "label": f"{args.years} 年 / 每 {args.every} 交易日換股 / 前 {args.topn} 名",
+        "periods": len(rebal),
+        "benchmark_return": {str(h): round(stat.mean(bench_all[h]), 2)
+                             for h in FWD if bench_all[h]},
+        "models": models_out,
+        "by_regime_1m": payload.get("runs", {}).get(run_key, {}).get("by_regime_1m", {}),
+    }
+    payload["meta"] = {
+        "generated": datetime.date.today().isoformat(),
+        "script": "backtest_research.py",
+        "universe": (f"全部上市（下載 {len(codes)} 檔）；"
+                     f"每期取近20日均額 ≥2000萬且流動性前 {args.stocks} 名"),
+        "method": (f"每 {args.every} 交易日換股，等權買進各模型前 {args.topn} 名；"
+                   "每個換股日聚合為 1 個觀測；t 值為 Newey-West"
+                   "（lag = 持有天數/換股間隔 − 1，修正重疊視窗）；"
+                   f"扣除來回交易成本 {ROUND_TRIP_COST}%"),
+        "signals_tested": "僅價量核心（技術/四週期/量價/低基期/ATR風報比/大盤環境）",
+        "signals_excluded": "基本面、新聞情緒、分析師目標價（無歷史快照，納入會造成前視偏誤）",
+        "caveats": {
+            "t_stat": "t 值為 Newey-West，已修正重疊視窗高估；t_raw 為未修正的舊算法",
+            "survivorship": "股票池取自今天仍在上市的公司，期間內已下市者不在樣本中，數字偏樂觀",
+        },
+    }
+    with open(_OUT, "w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False, indent=2)
+    print(f"\n已存出 {_OUT}（run key: {run_key}）")
+
 
 
 if __name__ == "__main__":

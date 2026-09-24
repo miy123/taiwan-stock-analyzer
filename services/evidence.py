@@ -125,34 +125,67 @@ _REGIME_MAP = {
 #   中線   1週+0.28%(1.25 ) 1個月+1.90%(4.23✳) 3個月 +7.45%(6.00✳)
 #   短線   1週+0.39%(2.07✳) 1個月+1.29%(3.30✳) 3個月 +2.25%(3.04✳)
 #   極短線 1週-0.00%(-0.01) 1個月+0.23%(0.74 ) 3個月 +0.71%(1.00 ) ← 全不顯著
-HORIZON_EFFICACY = {
-    "long": {
-        "tag": "✅", "label": "實證最強", "color": "#4caf50",
-        "basis": "季線MA120、MA60>MA120、半年報酬",
-        "note": "三種持有期都顯著（t=2.61/4.71/6.32），**不論你打算抱多久，這都是最好的選股依據**",
-    },
-    "medium": {
-        "tag": "✅", "label": "有效", "color": "#a9e34b",
-        "basis": "MA20/MA60 排列與斜率、近月報酬",
-        "note": "1個月以上顯著（t=4.23/6.00）；當『第二確認』（≥60分）可小幅提升長線模型",
-    },
-    "short": {
-        "tag": "🟡", "label": "偏弱", "color": "#ff9800",
-        "basis": "MA5/MA10、MACD交叉、量能",
-        "note": "顯著但強度低；是除長線外唯一在『持有1週』也顯著者（t=2.07）",
-    },
-    "ultra_short": {
-        "tag": "🔴", "label": "無預測力", "color": "#f44336",
-        "basis": "當日量價、KD/RSI極值、MA5",
-        "note": "三種持有期全部不顯著（t=-0.01/0.74/1.00），分桶亦無規律——"
-                "**視為雜訊，只當盤中氣氛參考，勿作買賣依據**。實測把它當過濾條件"
-                "反而會傷害長線模型（3個月超額 11.57%→5.62%）",
-    },
+# 各週期分數的「基礎指標」—— 這是**事實描述**（那個分數在看什麼），不是實證數字，
+# 所以留在程式裡。效力判定（✅/🟡/🔴 與 t 值）一律由 backtest_results.json 生成。
+#
+# ⚠️ 這張表原本連效力與 t 值都寫死（「三種持有期都顯著（t=2.61/4.71/6.32）」）。
+#    2026-09-24 修掉重疊視窗造成的 t 高估之後，那些數字全部作廢，
+#    而它們是寫在程式裡的字串，沒有任何檢查會抓到——`check_consistency` 只掃
+#    app.py 與 services/ui.py。**畫面上的實證數字一律生成，這裡也不例外。**
+_HORIZON_BASIS = {
+    "long": "季線MA120、MA60>MA120、半年報酬",
+    "medium": "MA20/MA60 排列與斜率、近月報酬",
+    "short": "MA5/MA10、MACD交叉、量能",
+    "ultra_short": "當日量價、KD/RSI極值、MA5",
 }
+# 週期 → 回測裡對應的模型名稱（backtest_research.py 的 MODELS）
+_HORIZON_MODEL = {"long": "長線", "medium": "中線",
+                  "short": "短線", "ultra_short": "極短線"}
+_HORIZON_HOLDS = (5, 20, 60)
+_HOLD_LABEL = {5: "1週", 20: "1個月", 60: "3個月"}
 
 
 def horizon_efficacy(key: str) -> dict:
-    return HORIZON_EFFICACY.get(key, {})
+    """
+    這個週期分數有沒有預測力 —— **由實證檔生成**，不是寫死的判定。
+
+    回傳 {tag, label, color, basis, note}；查無資料時明說「尚未量過」，
+    不要沉默也不要沿用舊結論。
+    """
+    basis = _HORIZON_BASIS.get(key)
+    if not basis:
+        return {}
+    name = _HORIZON_MODEL.get(key)
+    ts, excs, bits = [], [], []
+    for h in _HORIZON_HOLDS:
+        d = get_stats_for_model(name, h)
+        if not d:
+            continue
+        t = d.get("t_stat")
+        ts.append(t)
+        excs.append(d.get("excess_return"))
+        bits.append(f"{_HOLD_LABEL.get(h, str(h))} {d.get('excess_return'):+.2f}%（t={t:+.2f}）")
+    if not ts:
+        return {"tag": "", "label": "尚未量過", "color": "#78909c",
+                "basis": basis, "note": "這個週期分數還沒有納入回測，效力未知。"}
+
+    sig_pos = sum(1 for t in ts if t is not None and t >= 1.96)
+    all_pos = all((e or 0) > 0 for e in excs)
+    if sig_pos == len(ts):
+        tag, label, color = "✅", "三段都顯著", "#4caf50"
+    elif sig_pos:
+        tag, label, color = "✅", f"{sig_pos}/{len(ts)} 段顯著", "#a9e34b"
+    elif all_pos:
+        tag, label, color = "🟡", "為正但不顯著", "#ff9800"
+    else:
+        tag, label, color = "🔴", "無預測力", "#f44336"
+    note = "、".join(bits)
+    if not sig_pos:
+        note += ("　——**沒有任何持有期達到統計顯著**，"
+                 "方向可參考但不足以當買賣依據。")
+    return {"tag": tag, "label": label, "color": color,
+            "basis": basis, "note": note}
+
 
 
 # ── 連續趨勢分的分桶實證（trend_score_buckets.py 產生）─────────────────────

@@ -17,12 +17,12 @@
 """
 
 import argparse
-import math
 from collections import defaultdict
 
 import numpy as np
 
-from services.universe import get_listed_snapshot, download_history_bulk
+from services.universe import download_history_bulk
+from services.backtest_stats import t_newey_west, listed_pool
 from services.technical import calculate_indicators, calculate_horizon_scores
 
 MIN_HISTORY = 260
@@ -36,25 +36,22 @@ def _fwd(close, i, n):
     return (b / a - 1) * 100 if a else None
 
 
-def _tstat(xs):
-    if len(xs) < 3:
-        return 0.0
-    m, sd = float(np.mean(xs)), float(np.std(xs, ddof=1))
-    return m / (sd / math.sqrt(len(xs))) if sd else 0.0
+# 統計工具走 services/backtest_stats（唯一實作）。取樣視窗重疊，一律 Newey-West。
+def _tstat(xs, every=5, h=60):
+    return t_newey_west(xs, h / every - 1)
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--stocks", type=int, default=400)
     ap.add_argument("--every", type=int, default=5)
+    ap.add_argument("--pool", type=int, default=0)      # 0 ＝全部上市
     ap.add_argument("--years", type=float, default=3.0)
     args = ap.parse_args()
 
     print(f"設定: 前{args.stocks}檔流動股 / 每{args.every}交易日取樣 / 近{args.years}年\n")
     print("① 下載歷史資料…")
-    snap = get_listed_snapshot()
-    ranked = sorted(snap.items(), key=lambda kv: -(kv[1].get("turnover") or 0))
-    codes = [c for c, _ in ranked[:args.stocks]]
+    codes = listed_pool(args.pool)
     frames = download_history_bulk(codes, period="5y", chunk=120)
 
     enriched = {}

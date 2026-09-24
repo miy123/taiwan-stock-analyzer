@@ -24,13 +24,15 @@ Point-in-time 紀律（避免前視偏誤）：
 
 import argparse
 import json
-import math
 from collections import defaultdict
 
 import numpy as np
 import pandas as pd
 
-from services.universe import get_listed_snapshot, download_history_bulk
+from services.universe import download_history_bulk
+from services.backtest_stats import (
+    t_stat, t_newey_west, nonoverlap, pit_universe, listed_pool,
+)
 from services.technical import calculate_indicators, analyze_volume_price
 from services.histdata import (
     valuation_snapshot, build_eps_timeline, pe_from_timeline,
@@ -211,16 +213,20 @@ def score_models(ranks, n):
     return out
 
 
-def _t(xs):
-    if len(xs) < 3:
-        return 0.0
-    m, sd = float(np.mean(xs)), float(np.std(xs, ddof=1))
-    return m / (sd / math.sqrt(len(xs))) if sd else 0.0
+# 統計工具走 services/backtest_stats（唯一實作）。
+# `_t` 仍指向未修正的版本，只用在 t_raw；對外報告一律 `_tnw`。
+_t = t_stat
+
+
+def _tnw(xs, every, h):
+    """Newey-West —— 重疊視窗的修正。lag = 持有天數/換股間隔 − 1。"""
+    return t_newey_west(xs, h / every - 1)
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--stocks", type=int, default=400)
+    ap.add_argument("--pool", type=int, default=0)      # 0 ＝全部上市
+    ap.add_argument("--stocks", type=int, default=400)   # 每期可投資前 N 檔
     ap.add_argument("--every", type=int, default=5)
     ap.add_argument("--years", type=float, default=3.0)
     ap.add_argument("--topn", type=int, default=10)
@@ -231,10 +237,7 @@ def main():
           f"選前{args.topn}名")
     print(f"快取: {cache_stats()}\n")
 
-    snap = get_listed_snapshot()
-    codes = [c for c, _ in sorted(snap.items(),
-                                  key=lambda kv: -(kv[1].get("turnover") or 0))
-             ][:args.stocks]
+    codes = listed_pool(args.pool)
     frames = download_history_bulk(codes, period="5y", chunk=120)
     enriched = {}
     for c, d in frames.items():
@@ -364,10 +367,12 @@ def main():
         for h in FWD:
             xs = res[m][h]
             win = 100 * sum(1 for x in xs if x > 0) / len(xs) if xs else 0
-            line += f"{np.mean(xs):>+10.2f}%{_t(xs):>7.2f}{win:>6.0f}%"
+            line += (f"{np.mean(xs):>+10.2f}%"
+                     f"{_tnw(xs, args.every, h):>7.2f}{win:>6.0f}%")
         line += f"{np.mean(disc[m]):>8.1f}"
         print(line)
-        ranking.append((float(np.mean(res[m][60])), _t(res[m][60]), m))
+        ranking.append((float(np.mean(res[m][60])),
+                        _tnw(res[m][60], args.every, 60), m))
 
     # ── 走查：前半段挑模型，後半段驗證 ──
     print("\n" + "=" * 96)
@@ -397,7 +402,8 @@ def main():
                   f"測試{len(te)}期實際 {np.mean(te):+.2f}%"
                   f"（該段真正最佳「{truth[1]}」{truth[0]:+.2f}%）")
         if tests:
-            print(f"  ▶ 走查合計：{np.mean(tests):+.2f}%  t={_t(tests):+.2f}  "
+            print(f"  ▶ 走查合計：{np.mean(tests):+.2f}%  "
+                  f"t={_tnw(tests, args.every, h):+.2f}  "
                   f"勝率 {100*sum(1 for x in tests if x>0)/len(tests):.0f}%"
                   f"（{len(tests)} 期，全部是沒看過的資料）")
             from collections import Counter
@@ -422,9 +428,10 @@ def main():
         line = f"{m:<26} "
         for h in FWD:
             xs = res[m][h][cut:]
-            line += f"{np.mean(xs):>+9.2f}%{_t(xs):>7.2f}"
+            line += f"{np.mean(xs):>+9.2f}%{_tnw(xs, args.every, h):>7.2f}"
         print(line)
-        recent.append((float(np.mean(res[m][60][cut:])), _t(res[m][60][cut:]), m))
+        recent.append((float(np.mean(res[m][60][cut:])),
+                       _tnw(res[m][60][cut:], args.every, 60), m))
     recent.sort(reverse=True)
     print(f"\n  近期 +60日最佳：「{recent[0][2]}」 {recent[0][0]:+.2f}% (t={recent[0][1]:+.2f})")
 
@@ -453,7 +460,9 @@ def main():
                          "portfolio_return": float(np.mean(absr[m][h])),
                          "stock_win_rate": 100 * sum(
                              1 for x in absr[m][h] if x > 0) / len(absr[m][h]),
-                             "t": _t(res[m][h]),
+                             "t": _tnw(res[m][h], args.every, h),
+                             "t_raw": round(_t(res[m][h]), 2),
+                             "nonoverlap": nonoverlap(res[m][h], h / args.every),
                              "win_rate": 100 * sum(1 for x in res[m][h] if x > 0)
                              / len(res[m][h]),
                              "recent_excess": float(np.mean(res[m][h][cut:]))}

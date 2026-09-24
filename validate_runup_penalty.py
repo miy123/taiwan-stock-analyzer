@@ -21,13 +21,11 @@
 """
 
 import argparse
-import math
-from collections import defaultdict
 
 import numpy as np
-import pandas as pd
 
-from services.universe import get_listed_snapshot, download_history_bulk
+from services.universe import download_history_bulk
+from services.backtest_stats import t_stat, t_newey_west, listed_pool
 from services.technical import (
     calculate_indicators, calculate_horizon_scores, analyze_volume_price,
 )
@@ -69,15 +67,15 @@ def long_score_variant(sl, runup_bonus):
     return max(0, min(100, int(lg)))
 
 
-def _t(xs):
-    if len(xs) < 3:
-        return 0.0
-    m, sd = float(np.mean(xs)), float(np.std(xs, ddof=1))
-    return m / (sd / math.sqrt(len(xs))) if sd else 0.0
+# 統計工具走 services/backtest_stats（唯一實作）。此腳本每 args.every 天取樣、
+# 持有 FWD 天，視窗重疊，所以 `_t` 一律代入 Newey-West。
+def _t(xs, every=5, h=60):
+    return t_newey_west(xs, h / every - 1)
 
 
 def main():
     ap = argparse.ArgumentParser()
+    ap.add_argument("--pool", type=int, default=0)      # 0 ＝全部上市
     ap.add_argument("--stocks", type=int, default=400)
     ap.add_argument("--every", type=int, default=5)
     ap.add_argument("--years", type=float, default=3.0)
@@ -85,10 +83,7 @@ def main():
     args = ap.parse_args()
 
     print(f"設定: 前{args.stocks}檔 / 每{args.every}日換股 / 近{args.years}年 / 選前{args.topn}名\n")
-    snap = get_listed_snapshot()
-    ranked = sorted(snap.items(), key=lambda kv: -(kv[1].get("turnover") or 0))
-    frames = download_history_bulk([c for c, _ in ranked[:args.stocks]],
-                                   period="5y", chunk=120)
+    frames = download_history_bulk(listed_pool(args.pool), period="5y", chunk=120)
     enriched = {}
     for c, d in frames.items():
         if len(d) >= MIN_HISTORY + max(FWD):
