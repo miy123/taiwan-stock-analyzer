@@ -85,7 +85,12 @@ def main():
     ap.add_argument("--pool", type=int, default=0)
     ap.add_argument("--stocks", type=int, default=400)
     ap.add_argument("--every", type=int, default=5)
-    ap.add_argument("--years", type=float, default=3.0)
+    # 預設 5 年（約 179 期）而不是 3 年（139 期）。
+    # ⚠️ 理由：修正重疊視窗（Newey-West）之後標準誤變大，3 年的樣本讓每個
+    #    正向策略的 t 都掉到 1.6 以下，分不出誰有效。同一批資料拉到 5 年後
+    #    趨勢結構分 t 從 1.59 回到 2.03——**差別是樣本量，不是模型**。
+    #    5 年是 yfinance 這條路徑拿得到的上限（download_history_bulk period="5y"）。
+    ap.add_argument("--years", type=float, default=5.0)
     ap.add_argument("--topn", type=int, default=TOPN_DEFAULT)
     ap.add_argument("--min-turnover", type=float, default=1e7)
     args = ap.parse_args()
@@ -184,6 +189,11 @@ def main():
                 "is_limit_up": (lu["max_streak"] >= MIN_STREAK
                                 and lu["last_days_ago"] <= MAX_DAYS_AGO),
                 "max_streak": lu["max_streak"],
+                # 純動能（近 N 日報酬）—— 診斷欄位。修正後的 backtest_research 裡
+                # 動能類的平均超額最高，但那是**另一個 run**，不能跨 run 比。
+                # 帶在 row 上，才能把它當候選策略放進同一批換股日測。
+                "mom250": _pct(sl["Close"], 250),
+                "mom60": _pct(sl["Close"], 60),
                 "total_score": 50,          # 綜合評分無法還原（含新聞/基本面），給中性值
                 "_fwd": fwd,
             })
