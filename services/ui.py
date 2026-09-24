@@ -740,6 +740,51 @@ def cross_evidence(keys, hold_days: int = 60) -> str:
     return head + "\n".join(lines) + tail
 
 
+def backtest_method_note(hold_days: int = 60) -> str:
+    """
+    回測怎麼做的、哪裡不能盡信 —— 三頁共用，**全部由實證檔生成**。
+
+    使用者問「真的有嚴格驗證過去時間點嗎？不能只抓一天」——答案是有
+    （每週一個進場點、上百個時點），但同時必須講清楚三件事：
+    重疊視窗、股票池怎麼挑、生存者偏誤。先前畫面上一句都沒有。
+    """
+    from services.evidence import method_meta
+    m = method_meta()
+    if not m.get("periods"):
+        return ""
+    lab = {20: "1個月", 40: "2個月", 60: "3個月"}.get(hold_days, f"{hold_days}日")
+    rng = m.get("date_range") or ["—", "—"]
+    u = m.get("universe") or {}
+    cv = m.get("caveats") or {}
+    every = m.get("every")
+    lines = [
+        f"**怎麼測的**：{rng[0]} ~ {rng[1]} 之間，每 {every} 個交易日換一次股，"
+        f"共 **{m['periods']} 個不同的進場時點**；每次都用當天的資料重新選前 "
+        f"{m.get('topn')} 名，持有{lab}後與**當日全池等權**的報酬相比。"
+        "所以「剛好買在起漲」與「買在漲完」都會發生上百次，不是靠某一天的運氣。",
+    ]
+    if u:
+        lines.append(
+            f"**可投資範圍**：{u.get('selection', '')}"
+            f"（候選 {u.get('pool')} 檔、每期取前 {u.get('per_period_cap')} 檔）。")
+    if cv.get("t_stat"):
+        lines.append(f"**t 值**：{cv['t_stat']}。")
+    if cv.get("survivorship"):
+        lines.append(f"⚠️ **生存者偏誤**：{cv['survivorship']}。")
+    return "\n\n".join("・" + x for x in lines)
+
+
+def nonoverlap_note(strategy_key: str, hold_days: int = 60) -> str:
+    """不重疊子樣本的 t 範圍 —— 重疊視窗的第二道佐證，由實證檔生成。"""
+    from services.evidence import nonoverlap_stats
+    n = nonoverlap_stats(strategy_key, hold_days)
+    if not n:
+        return ""
+    return (f"完全不重疊的子樣本（{n.get('subsamples')} 組、每組約 {n.get('n')} 期）："
+            f"t 中位 **{n.get('t_med'):+.2f}**，範圍 "
+            f"{n.get('t_min'):+.2f} ~ {n.get('t_max'):+.2f}。")
+
+
 def pe_addon_note(strategy_key: str, hold_days: int = 60) -> str:
     """
     加掛估值門檻對**這個策略**的實際影響 —— 一句話，由實證檔生成。

@@ -42,6 +42,7 @@ from services.ui import (
     overheat_badge, trend_cell, score_legend, bucket_table,
     health_cell, potential_cell, divergence_note, health_grade, health_explainer,
     strategy_caption, strategy_table, cross_evidence, pe_addon_note,
+    backtest_method_note, nonoverlap_note,
     hold_longer_note as _hold_longer_note, cmp_periods as _cmp_periods,
     trend_delta_badge,
     pe_badge, pe_inline, horizon_cells, evidence_badge, rr_cell,
@@ -2611,6 +2612,15 @@ def render_smart_screener_page():
         st.caption("⚠️ 走查前後半段變號（⚠️翻盤）代表該策略不穩定，全期平均會掩蓋這件事"
                    + (f"——超低本益比就是典型：前半 {_lw2['first_half']:+.2f}%、"
                       f"後半 {_lw2['second_half']:+.2f}%。" if _lw2 else "。"))
+        # 做法與限制一定要跟數字放在一起。使用者問過「真的有嚴格驗證過去
+        # 時間點嗎」——在那之前這裡只有好看的超額報酬，沒有任何一句話說
+        # t 是在重疊視窗上算的、或股票池只含今天還在上市的公司。
+        st.markdown("---")
+        st.markdown("##### 這些數字是怎麼來的、哪裡不能盡信")
+        st.markdown(backtest_method_note(60))
+        _no = nonoverlap_note(strategy, 60)
+        if _no:
+            st.caption(f"本策略的{_no}")
 
     with st.expander("📖 卡片上這些分數各自代表什麼？哪個能當選股指標？", expanded=False):
         st.markdown(score_legend())
@@ -3288,6 +3298,8 @@ def render_cross_screen_page():
     st.markdown("---")
     st.markdown("#### 各策略單獨的實證表現（同一次回測，可直接比）")
     st.markdown(strategy_table(60))
+    with st.expander("這些數字是怎麼來的、哪裡不能盡信", expanded=False):
+        st.markdown(backtest_method_note(60))
 
 
 # ─── Portfolio (我的持股) ─────────────────────────────────────────────────────

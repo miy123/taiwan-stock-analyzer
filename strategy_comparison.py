@@ -51,10 +51,68 @@ TOPN_DEFAULT = 10
 
 
 def _t(xs):
+    """
+    一般 t 值 —— **只在視窗不重疊時可以照字面解讀**。
+
+    ⚠️ 本回測每 `--every` 個交易日換一次股，但持有 `h` 天，所以相鄰
+    `h/every` 個期別的持有區間大幅重疊，139 個觀測**不是獨立樣本**。
+    直接用這個 t 會系統性高估顯著性。對外報告一律用 `_t_nw()`。
+    """
     if len(xs) < 3:
         return 0.0
     m, sd = float(np.mean(xs)), float(np.std(xs, ddof=1))
     return m / (sd / math.sqrt(len(xs))) if sd else 0.0
+
+
+def _t_nw(xs, lag):
+    """
+    Newey-West t 值 —— 重疊視窗的標準修正（Bartlett kernel）。
+
+    `lag` 取 `持有天數 / 換股間隔 − 1`：那正是還會與當期重疊的期別數
+    （每 5 天換股、持有 60 天 → lag=11）。自我相關被算進標準誤裡，
+    t 因此會比 `_t()` 小，那才是誠實的數字。
+
+    平均值本身是無偏的，重疊不影響它；被高估的只有顯著性。
+    """
+    n = len(xs)
+    if n < 3:
+        return 0.0
+    x = np.asarray(xs, dtype=float)
+    e = x - x.mean()
+    var = float(e @ e) / n
+    for l in range(1, min(int(lag), n - 1) + 1):
+        w = 1.0 - l / (lag + 1.0)                 # Bartlett 權重
+        var += 2.0 * w * float(e[l:] @ e[:-l]) / n
+    if var <= 0:
+        return 0.0
+    return float(x.mean()) / math.sqrt(var / n)
+
+
+def _nonoverlap(xs, stride):
+    """
+    完全不重疊的子樣本檢驗。
+
+    每隔 `stride` 期取一個（stride = 持有天數 / 換股間隔），得到互不重疊的
+    序列。`stride` 種起始位移各是一個獨立子樣本，**全部都算**再報 t 的範圍
+    ——只報其中一個等於挑對自己有利的那條。
+
+    回傳 {n, t_min, t_med, t_max}；平均值與全樣本相同，故不重複回傳。
+    """
+    stride = max(1, int(stride))
+    ts, ns = [], []
+    for off in range(stride):
+        sub = xs[off::stride]
+        if len(sub) < 3:
+            continue
+        ts.append(_t(sub))
+        ns.append(len(sub))
+    if not ts:
+        return {}
+    ts.sort()
+    return {"n": int(np.median(ns)), "subsamples": len(ts),
+            "t_min": round(ts[0], 2),
+            "t_med": round(float(np.median(ts)), 2),
+            "t_max": round(ts[-1], 2)}
 
 
 def _pct(c, n):
@@ -80,6 +138,10 @@ def _limit_up_at(d, pos):
 
 def main():
     ap = argparse.ArgumentParser()
+    # --pool  下載幾檔（0 ＝ 全部上市）。這一步用的是**今天**的成交金額排序，
+    #         所以池子開越大、前視偏誤越小；預設全抓。
+    # --stocks 每個換股日實際可投資幾檔，改由**當日**流動性排序決定（見下方）。
+    ap.add_argument("--pool", type=int, default=0)
     ap.add_argument("--stocks", type=int, default=400)
     ap.add_argument("--every", type=int, default=5)
     ap.add_argument("--years", type=float, default=3.0)
@@ -91,9 +153,9 @@ def main():
           f"選前{args.topn}名\n")
 
     snap = get_listed_snapshot()
-    codes = [c for c, _ in sorted(snap.items(),
-                                  key=lambda kv: -(kv[1].get("turnover") or 0))
-             ][:args.stocks]
+    _ranked = [c for c, _ in sorted(snap.items(),
+                                    key=lambda kv: -(kv[1].get("turnover") or 0))]
+    codes = _ranked if args.pool <= 0 else _ranked[:args.pool]
     frames = download_history_bulk(codes, period="5y", chunk=120)
     enriched = {}
     for c, d in frames.items():
@@ -148,18 +210,34 @@ def main():
         if k % 20 == 0:
             print(f"  {k}/{len(rebal)}  {date.date()}", flush=True)
 
-        rows, facts = [], []
+        # ① 投資範圍由**當日**的流動性決定 —— 不是拿今天的成交金額回頭挑池子。
+        #
+        # ⚠️ 這裡原本是「用今天的成交金額排序取前 400 檔」，那是直接與報酬相關的
+        #    前視偏誤：2023 年冷門、後來才變熱門的股票會被放進池子，而
+        #    「後來變熱門」常常就是因為它漲了很多。現在改成每個換股日各自用
+        #    當日往前 20 日的平均成交金額排序取前 `--stocks` 檔。
+        cand = []
         for code, d in enriched.items():
             pos = d.index.searchsorted(date, side="right") - 1
             if pos < MIN_HISTORY or pos >= len(d):
                 continue
             if abs((d.index[pos] - date).days) > 7:
                 continue
+            v20 = d["Vol_MA20"].iloc[pos] if "Vol_MA20" in d else None
+            if v20 != v20 or not v20:
+                continue
+            to = float(d["Close"].iloc[pos]) * float(v20)
+            if to < args.min_turnover:
+                continue
+            cand.append((to, code, pos))
+        cand.sort(reverse=True)
+        cand = cand[:args.stocks]
+
+        rows, facts = [], []
+        for _to, code, pos in cand:
+            d = enriched[code]
             sl = d.iloc[:pos + 1]
             close = float(sl["Close"].iloc[-1])
-            v20 = sl["Vol_MA20"].iloc[-1] if "Vol_MA20" in sl else None
-            if v20 != v20 or not v20 or close * float(v20) < args.min_turnover:
-                continue
             fwd, ok = {}, True
             for h in FWD:
                 if pos + h >= len(d):
@@ -258,8 +336,12 @@ def main():
     print(f"同一次回測、同一批日期、同一個基準 —— 選前 {args.topn} 名的超額報酬")
     print("=" * 100)
     label_of = {s["key"]: s["label"] for s in STRATEGIES}
+    # ⚠️ 對外報告的 t 一律是 **Newey-West**：每 `--every` 天換股、持有 h 天，
+    #    相鄰 h/every 期的持有區間重疊，139 個觀測不是獨立樣本。
+    #    `t_raw` 仍存進 json 供對照，但**不要拿它下結論**。
     print(f"{'策略':<22}{'有標的期數':>9}{'平均檔數':>8}"
-          + "".join(f"{'+' + str(h) + '日':>10}{'t':>7}{'贏率':>6}" for h in FWD))
+          + "".join(f"{'+' + str(h) + '日':>10}{'tNW':>7}{'t舊':>7}{'贏率':>6}"
+                    for h in FWD))
     out = {}
     for kk in keys:
         line = f"{label_of[kk]:<22}{len(res[kk][20]):>9}{np.mean(picked_n[kk]):>8.1f}"
@@ -268,18 +350,38 @@ def main():
         for h in FWD:
             xs = res[kk][h]
             if not xs:
-                line += f"{'—':>10}{'—':>7}{'—':>6}"
+                line += f"{'—':>10}{'—':>7}{'—':>7}{'—':>6}"
                 rec[f"h{h}"] = None
                 continue
             win = 100 * sum(1 for x in xs if x > 0) / len(xs)
-            line += f"{np.mean(xs):>+9.2f}%{_t(xs):>7.2f}{win:>5.0f}%"
+            overlap = h / args.every           # 重疊的期別數
+            tnw = _t_nw(xs, overlap - 1)
+            line += f"{np.mean(xs):>+9.2f}%{tnw:>7.2f}{_t(xs):>7.2f}{win:>5.0f}%"
             rec[f"h{h}"] = {"excess": round(float(np.mean(xs)), 2),
-                            "t": round(_t(xs), 2),
+                            "t": round(tnw, 2),          # ← 對外的 t 就是 NW
+                            "t_raw": round(_t(xs), 2),   # 舊的（高估），僅供對照
+                            "overlap": round(overlap, 1),
+                            "nonoverlap": _nonoverlap(xs, overlap),
                             "beat_rate": round(win, 1),
                             "periods": len(xs),
                             "net_excess": round(float(np.mean(xs)) - ROUND_TRIP_COST, 2)}
         print(line)
         out[kk] = rec
+
+    print()
+    print("=" * 100)
+    print("完全不重疊的子樣本檢驗（每 h/every 期取一個，所有起始位移都算）")
+    print("=" * 100)
+    for h in FWD:
+        print(f"  +{h}日（每組約 {int(len(rebal) / (h / args.every))} 期、"
+              f"{int(h / args.every)} 組）")
+        for kk in keys:
+            no = (out[kk].get(f"h{h}") or {}).get("nonoverlap") or {}
+            if not no:
+                print(f"    {label_of[kk]:<22} 樣本不足")
+                continue
+            print(f"    {label_of[kk]:<22} t 中位 {no['t_med']:+5.2f}"
+                  f"　範圍 {no['t_min']:+5.2f} ~ {no['t_max']:+5.2f}")
 
     # ── 交叉篩選：同時進兩個策略前 N 名 ──────────────────────────────────
     print("\n" + "=" * 100)
@@ -299,8 +401,9 @@ def main():
         rec = {"periods": len(xs20), "avg_picks": round(float(np.mean(cross_n[kk])), 1)}
         for h in FWD:
             xs = cross[kk][h]
-            line += f"{np.mean(xs):>+9.2f}%{_t(xs):>7.2f}"
-            rec[f"h{h}"] = {"excess": round(float(np.mean(xs)), 2), "t": round(_t(xs), 2),
+            _tnw = _t_nw(xs, h / args.every - 1)
+            line += f"{np.mean(xs):>+9.2f}%{_tnw:>7.2f}"
+            rec[f"h{h}"] = {"excess": round(float(np.mean(xs)), 2), "t": round(_tnw, 2),
                             "periods": len(xs)}
         print(line)
         cross_out[kk] = rec
@@ -326,8 +429,10 @@ def main():
                 continue
             m = len(xs) // 2
             a, b = xs[:m], xs[m:]
+            _lag = h / args.every - 1
             print(f"    {label_of[kk]:<22} 前半 {np.mean(a):+6.2f}%"
-                  f"（t={_t(a):+5.2f}）　後半 {np.mean(b):+6.2f}%（t={_t(b):+5.2f}）")
+                  f"（t={_t_nw(a, _lag):+5.2f}）　後半 {np.mean(b):+6.2f}%"
+                  f"（t={_t_nw(b, _lag):+5.2f}）")
             out[kk].setdefault("walk_forward", {})[f"h{h}"] = {
                 "first_half": round(float(np.mean(a)), 2),
                 "second_half": round(float(np.mean(b)), 2),
@@ -353,7 +458,8 @@ def main():
                 continue
             m, d = float(np.mean(xs)), float(np.mean(xs)) - float(np.mean(base))
             line += f"{m:>+9.2f}%{d:>+8.2f}%"
-            rec[f"h{h}"] = {"excess": round(m, 2), "t": round(_t(xs), 2),
+            rec[f"h{h}"] = {"excess": round(m, 2),
+                            "t": round(_t_nw(xs, h / args.every - 1), 2),
                             "delta_vs_base": round(d, 2), "periods": len(xs)}
         print(line)
         addon_out[kk] = rec
@@ -364,6 +470,21 @@ def main():
         "topn": args.topn,
         "method": ("同一次回測、同一批換股日、同一個當日等權基準；"
                    "直接呼叫 services/strategies.select()，測的就是 App 實跑的定義"),
+        "every": args.every,
+        "universe": {
+            "pool": len(codes),
+            "per_period_cap": args.stocks,
+            "selection": "每個換股日各自用當日往前 20 日的平均成交金額排序取前 N 檔",
+            "min_turnover": args.min_turnover,
+        },
+        # ⚠️ 畫面上要講的限制。t 已用 Newey-West 修正重疊視窗；
+        #    生存者偏誤修不掉（拿不到台股已下市公司的歷史），只能標明。
+        "caveats": {
+            "t_stat": ("t 值為 Newey-West（Bartlett kernel，lag = 持有天數/換股間隔 − 1），"
+                       "已修正重疊視窗造成的高估；`t_raw` 是未修正的舊算法，僅供對照"),
+            "survivorship": ("股票池取自**今天仍在上市**的公司，"
+                             "區間內已下市者完全不在樣本中——所有策略的數字都因此偏樂觀"),
+        },
         "strategies": out,
         "cross_screen": {"top_n_per_strategy": CROSS_N, "pairs": cross_out},
         # 使用者加選的估值門檻疊在每個策略上的實際影響。

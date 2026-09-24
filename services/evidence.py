@@ -253,6 +253,29 @@ def cross_stats(key_a: str, key_b: str, hold_days: int = 60) -> dict:
     return {}
 
 
+def method_meta() -> dict:
+    """
+    回測的做法與已知限制 —— 給畫面用。
+
+    ⚠️ 這些限制**必須看得見**。使用者問過「真的有嚴格驗證過嗎」，而在那之前
+    畫面上只有漂亮的超額報酬與 t 值，沒有任何一句話說 t 值是在重疊視窗上算的、
+    或股票池只含今天還在上市的公司。數字愈好看，限制愈該寫出來。
+    """
+    d = load_strategy_comparison()
+    return {"periods": d.get("generated_periods") or 0,
+            "date_range": d.get("date_range") or [],
+            "every": d.get("every"),
+            "universe": d.get("universe") or {},
+            "caveats": d.get("caveats") or {},
+            "topn": d.get("topn")}
+
+
+def nonoverlap_stats(key: str, hold_days: int = 60) -> dict:
+    """完全不重疊子樣本的 t 值範圍（strategy_comparison 的 nonoverlap 段）。"""
+    d = (load_strategy_comparison().get("strategies", {}).get(key) or {})
+    return dict((d.get(f"h{hold_days}") or {}).get("nonoverlap") or {})
+
+
 def total_periods() -> int:
     """策略對照回測的總期數 —— 畫面要講「N 期裡只有 M 期」時用，不要寫死。"""
     return load_strategy_comparison().get("generated_periods") or 0
