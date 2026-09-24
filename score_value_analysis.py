@@ -37,7 +37,10 @@ def _fwd(close, i, n):
 
 
 # 統計工具走 services/backtest_stats（唯一實作）。取樣視窗重疊，一律 Newey-West。
-def _tstat(xs, every=5, h=60):
+#
+# ⚠️ `h` 一定要傳**該組數列實際的持有天數**：lag = h/every − 1。
+#    本腳本 FWD = [20, 60]，一律用 60 會讓 20 日那組的 lag 大三倍。
+def _tstat(xs, every, h):
     return t_newey_west(xs, h / every - 1)
 
 
@@ -135,7 +138,7 @@ def main():
             win = 100 * sum(1 for x in series if x > 0) / len(series)
             r120m = (float(np.median(r120_by_score[sc]))
                      if r120_by_score.get(sc) else float("nan"))
-            rows.append((sc, len(series), mean, _tstat(series), win, r120m))
+            rows.append((sc, len(series), mean, _tstat(series, args.every, h), win, r120m))
         for sc, n, mean, t, win, r120m in rows:
             star = " ⬅" if sc in (88, 94) else ""
             print(f"{sc:>5} {n:>7} {'':>7} {mean:>+8.2f}% {t:>7.2f} {win:>7.1f}% "
@@ -155,7 +158,7 @@ def main():
         d = [s94[dt] - s88[dt] for dt in both]
         a94 = float(np.mean([s94[dt] for dt in both]))
         a88 = float(np.mean([s88[dt] for dt in both]))
-        t = _tstat(d)
+        t = _tstat(d, args.every, h)
         win = 100 * sum(1 for x in d if x > 0) / len(d)
         verdict = ("94 顯著較優" if t > 1.96 else
                    "88 顯著較優" if t < -1.96 else "**沒有顯著差異**")

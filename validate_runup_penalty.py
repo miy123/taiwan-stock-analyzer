@@ -67,9 +67,12 @@ def long_score_variant(sl, runup_bonus):
     return max(0, min(100, int(lg)))
 
 
-# 統計工具走 services/backtest_stats（唯一實作）。此腳本每 args.every 天取樣、
-# 持有 FWD 天，視窗重疊，所以 `_t` 一律代入 Newey-West。
-def _t(xs, every=5, h=60):
+# 統計工具走 services/backtest_stats（唯一實作）。取樣視窗重疊，一律 Newey-West。
+#
+# ⚠️ `h` 一定要傳**該組數列實際的持有天數**：lag = h/every − 1。
+#    本腳本 FWD = [20, 60]，若一律用 60 去算，20 日那組的 lag 會大三倍
+#    （11 vs 3）而過度保守。沒有預設值就是為了逼呼叫端講清楚。
+def _t(xs, every, h):
     return t_newey_west(xs, h / every - 1)
 
 
@@ -169,7 +172,7 @@ def main():
                     continue
                 win = 100 * sum(1 for x in xs if x > 0) / len(xs)
                 print(f"{v:<18} {h:>4}日 {len(xs):>5} {np.mean(xs):>+8.2f}% "
-                      f"{_t(xs):>7.2f} {win:>7.1f}%")
+                      f"{_t(xs, args.every, h):>7.2f} {win:>7.1f}%")
         # 配對檢定：B/C 相對 A 是否顯著更好
         for v in ("B 取消扣分(+10)", "C 反向加碼(+14)"):
             for h in FWD:
@@ -177,7 +180,7 @@ def main():
                 if len(a) != len(b) or not a:
                     continue
                 d = [y - x for x, y in zip(a, b)]
-                t = _t(d)
+                t = _t(d, args.every, h)
                 verd = ("顯著較優 ✅" if t > 1.96 else
                         "顯著較差 ❌" if t < -1.96 else "無顯著差異")
                 print(f"   {v} vs A，持有{h}日：{np.mean(d):+.2f}%  t={t:+.2f}  {verd}")
@@ -194,7 +197,7 @@ def main():
                 out = []
                 for tag, sl in (("前半", slice(0, mid)), ("後半", slice(mid, None))):
                     d = [y - x for x, y in zip(a[sl], b[sl])]
-                    t = _t(d)
+                    t = _t(d, args.every, h)
                     mark = "✅" if t > 1.96 else "❌" if t < -1.96 else "—"
                     out.append(f"{tag} {np.mean(d):+.2f}% (t={t:+.2f}){mark}")
                 print(f"    {v} 持有{h}日： " + "　｜　".join(out))
