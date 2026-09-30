@@ -42,7 +42,7 @@ from services.ui import (
     overheat_badge, trend_cell, score_legend, bucket_table,
     health_cell, potential_cell, divergence_note, health_grade, health_explainer,
     strategy_caption, strategy_table, cross_evidence, pe_addon_note,
-    backtest_method_note, nonoverlap_note, dist_basis_note,
+    backtest_method_note, nonoverlap_note, dist_basis_note, exit_plan,
     hold_longer_note as _hold_longer_note, cmp_periods as _cmp_periods,
     trend_delta_badge,
     pe_badge, pe_inline, horizon_cells, evidence_badge, rr_cell,
@@ -1320,6 +1320,10 @@ def render_recommendation_tab(
             )
             for _w in (a.get("trend_why") or []):
                 st.caption(f"· {_w}")
+            _xp_full = exit_plan(_long_sc, compact=False)
+            if _xp_full:
+                with st.expander("🚪 那什麼時候該賣？", expanded=False):
+                    st.markdown(_xp_full)
 
         # 綜合評分退居輔助 —— 只給**體質等級**，不給買賣動作。
         # 主視覺（上方儀表板）的動作詞是由趨勢結構分推導的；這裡若再給一個
@@ -3105,6 +3109,13 @@ def _render_smart_card(rank, r, strategy, horizon_key=None):
   </div>
   {diverge_html}
 </div>""", unsafe_allow_html=True)
+
+        # 出場條件 —— 使用者要「排序的同時也建議出場」。
+        # 給的是**條件**不是日期：實測「滿 60 個交易日就賣」是唯一年化超額
+        # 為負的規則（見 portfolio_sim.py 的出場規則比較）。
+        _xp = exit_plan(r.get("trend_score"), rank=rank)
+        if _xp:
+            st.caption(_xp)
 
         # Strategy-relevant "why" expander
         with st.expander(f"為什麼 {r['stock_id']} {r['company_name']}？", expanded=False):

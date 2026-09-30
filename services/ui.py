@@ -741,6 +741,66 @@ def cross_evidence(keys, hold_days: int = 60) -> str:
     return head + "\n".join(lines) + tail
 
 
+def exit_plan(trend_score, rank=None, compact=True) -> str:
+    """
+    出場建議 —— **給條件，不給日期**。三頁共用，數字全部由實測檔生成。
+
+    使用者問「能不能在排序的同時也建議出場時間」。量過之後答案是：
+    **不能給日期**。`portfolio_sim.py` 把五種出場規則放在同一條淨值曲線上比，
+    「滿 60 個交易日就賣」是**唯一年化超額為負**的一種；而兩種條件出場都是正的。
+    所以這裡給的是條件與「同規則下的中位持有天數」，不是一個到期日。
+
+    兩種條件各有取捨，都寫出來讓使用者自己選：
+      · 掉出前 N 名就換 —— 報酬最高，但換手與回檔也最大
+      · 跌破買進線才賣 —— 報酬略低，**回檔最小、交易成本只有三分之一**
+    """
+    from services.evidence import exit_rules
+    from services.scoring import BUY_BAR
+
+    def _days(d):
+        v = d.get("median_holding_days")
+        return f"{v:.0f}" if isinstance(v, (int, float)) else "—"
+
+    er = exit_rules()
+    if not er or trend_score is None:
+        return ""
+    rk, br = er.get("rank") or {}, er.get("bar") or {}
+    gap = trend_score - BUY_BAR
+    cond = (f"跌破 {BUY_BAR:.0f} 分（目前 {trend_score:.0f}，還有 {gap:.0f} 分緩衝）"
+            if gap >= 0 else f"**已跌破 {BUY_BAR:.0f} 分**（目前 {trend_score:.0f}）")
+    rank_txt = f"、或掉出前 {load_portfolio_sim_topn()} 名" + (
+        f"（目前第 {rank} 名）" if rank else "")
+    if compact:
+        return (f"🚪 出場條件：{cond}{rank_txt}"
+                f"　·　同規則中位持有 **{_days(br)} 日**")
+    # ⚠️ 先把值取出來再組字串：f-string 裡巢狀 `{}` 與同款引號在 Python 3.9
+    #    會直接語法錯誤，而**這個 App 實際是用 3.9 跑的**（見 CLAUDE.md）。
+    t60 = (er.get("time60") or {}).get("excess_annual_pct", 0)
+    b_exc = br.get("excess_annual_pct", 0)
+    b_mdd = br.get("max_drawdown_pct", 0)
+    b_days = _days(br)
+    b_to = (br.get("avg_turnover") or 0) * 100
+    r_exc = rk.get("excess_annual_pct", 0)
+    r_mdd = rk.get("max_drawdown_pct", 0)
+    r_days = _days(rk)
+    r_to = (rk.get("avg_turnover") or 0) * 100
+    return (
+        "**出場不看日期，看條件。**「滿 60 個交易日就賣」是實測裡"
+        f"**唯一年化超額為負**的規則（{t60:+.1f}%）。\n\n"
+        f"· **保守**：{cond} → 年化超額 {b_exc:+.1f}%、最大回檔 {b_mdd:.1f}%、"
+        f"中位持有 {b_days} 日、換手僅 {b_to:.0f}%\n\n"
+        f"· **積極**：掉出前 N 名就換 → 年化超額 {r_exc:+.1f}%、最大回檔 {r_mdd:.1f}%、"
+        f"中位持有 {r_days} 日、換手 {r_to:.0f}%\n\n"
+        "⚠️ 兩者的最大回檔都在 −40% 以上，而同期基準只有 −27%。"
+        "報酬是用「中途扛得住腰斬」換來的。"
+    )
+
+
+def load_portfolio_sim_topn() -> int:
+    from services.evidence import load_portfolio_sim
+    return load_portfolio_sim().get("topn") or 10
+
+
 def dist_basis_note() -> str:
     """
     趨勢分是對照**哪一天**的全市場分布算的 —— 三頁共用。

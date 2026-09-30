@@ -83,7 +83,7 @@ def main():
     print(f"網格 {len(grid)} 點（{common[grid[0]].date()} ~ {common[grid[-1]].date()}）\n")
 
     # ── 一次算好每個網格點的「選中名單」與「當日全池收盤」──────────────────
-    picks_at, universe_at, close_at = [], [], []
+    picks_at, universe_at, close_at, rank_at, score_at = [], [], [], [], []
     ctx = {"buy_bar": 58, "horizon_key": None, "trend_bar": 50}
     for k, di in enumerate(grid):
         date = common[di]
@@ -101,6 +101,7 @@ def main():
             facts.append(raw_factors(sl))
         if len(rows) < 50:
             picks_at.append(None); universe_at.append(None); close_at.append(None)
+            rank_at.append(None); score_at.append(None)
             continue
         ranks = {f: pct_rank_column([x.get(f) for x in facts]) for f in FACTOR_WEIGHTS}
         tw = sum(FACTOR_WEIGHTS.values())
@@ -113,6 +114,10 @@ def main():
         picks_at.append([r["stock_id"] for r in sel])
         universe_at.append([r["stock_id"] for r in rows])
         close_at.append(closes)
+        # 出場規則要用到「這一天的完整排序與分數」，不是只有前 N 名
+        ordered = sorted(rows, key=lambda r: -r.get("trend_score", 0))
+        rank_at.append({r["stock_id"]: i for i, r in enumerate(ordered)})
+        score_at.append({r["stock_id"]: r.get("trend_score", 0) for r in rows})
 
     # ── 用同一份選股結果，模擬不同換股頻率 ────────────────────────────────
     print("\n" + "=" * 96)
@@ -188,6 +193,97 @@ def main():
         }
     print(f"\n  基準（同池等權、不收成本）：總報酬 {bench_tot:+.1f}%　"
           f"最大回檔 {bench_mdd:.1f}%")
+    bench_eq_ref = 1 + bench_tot / 100
+
+    # ── 出場規則比較 ──────────────────────────────────────────────────────
+    #
+    # 使用者問「能不能順便建議出場時間」。**資料不支持給一個固定日期**：
+    # 每 5~10 日重新評估的績效遠勝每 20~60 日，代表該做的是「條件出場」
+    # 而不是「時間到了就賣」。這裡把四種出場規則放在同一條路徑上比。
+    #
+    # buffer（掉出前 2N 才賣）是刻意測的：買進用嚴格門檻、賣出用寬鬆門檻，
+    # 可以在不放棄訊號的前提下把換手壓下來——這是本專案沒試過的方向，
+    # 而且它**不是**「多加一層過濾」（那個已經被否定四次），是放寬而非收緊。
+    from services.scoring import BUY_BAR
+
+    def _simulate_exit(mode, step=2, buf_mult=2, hold_days=None):
+        held, eq, cost_sum, turns = [], 1.0, 0.0, []
+        entered = {}                      # code → 進場時的網格點
+        curve, lives = [1.0], []
+
+        def _ret(codes, a, b):
+            rs = []
+            for code in codes:
+                p0 = (close_at[a] or {}).get(code)
+                p1 = (close_at[b] or {}).get(code)
+                if p0 and p1:
+                    rs.append(p1 / p0 - 1)
+            return float(np.mean(rs)) if rs else 0.0
+
+        for k in range(len(grid) - 1):
+            if picks_at[k] is None or close_at[k] is None or close_at[k + 1] is None:
+                continue
+            if k % step == 0 and picks_at[k]:
+                top = picks_at[k]
+                if mode == "rank":
+                    keep = [c for c in held if c in top]
+                elif mode == "buffer":
+                    lim = args.topn * buf_mult
+                    keep = [c for c in held if (rank_at[k] or {}).get(c, 10**9) < lim]
+                elif mode == "bar":
+                    keep = [c for c in held
+                            if (score_at[k] or {}).get(c, 0) >= BUY_BAR]
+                elif mode == "time":
+                    keep = [c for c in held
+                            if (k - entered.get(c, k)) * args.grid < hold_days]
+                else:
+                    keep = []
+                new_set = keep + [c for c in top if c not in keep]
+                new_set = new_set[:args.topn]
+                for c in held:
+                    if c not in new_set:
+                        lives.append((k - entered.pop(c, k)) * args.grid)
+                for c in new_set:
+                    entered.setdefault(c, k)
+                turn = 1 - (len(set(new_set) & set(held)) / len(new_set)
+                            if held and new_set else 0.0)
+                turns.append(turn)
+                c_ = turn * ROUND_TRIP / 100
+                eq *= (1 - c_); cost_sum += c_
+                held = new_set
+            if held:
+                eq *= (1 + _ret(held, k, k + 1))
+            curve.append(eq)
+        return eq, cost_sum, turns, curve, lives
+
+    print("\n" + "=" * 96)
+    print(f"出場規則比較（每 {args.grid * 2} 交易日重新評估、買進一律取前 {args.topn} 名）")
+    print("=" * 96)
+    print(f"{'出場規則':<26}{'換手':>6}{'成本':>7}{'總報酬':>10}"
+          f"{'年化超額':>10}{'最大回檔':>9}{'平均持有':>10}")
+    exits = [("rank   掉出前 N 名就賣", "rank", None),
+             ("buffer 掉出前 2N 名才賣", "buffer", None),
+             ("bar    跌破買進線才賣", "bar", None),
+             ("time   滿 20 個交易日就賣", "time", 20),
+             ("time   滿 60 個交易日就賣", "time", 60)]
+    exit_out = {}
+    for label, mode, hd in exits:
+        eq, cost, turns, curve, lives = _simulate_exit(mode, hold_days=hd)
+        if len(curve) < 3:
+            continue
+        ann = ((eq ** (1 / years)) - (bench_eq_ref ** (1 / years))) * 100
+        life = float(np.median(lives)) if lives else float("nan")
+        print(f"{label:<26}{np.mean(turns) * 100:>5.0f}%{cost * 100:>6.1f}%"
+              f"{(eq - 1) * 100:>9.1f}%{ann:>9.1f}%"
+              f"{_max_drawdown(curve):>8.1f}%{life:>9.0f}日")
+        exit_out[mode + (str(hd) if hd else "")] = {
+            "label": label, "avg_turnover": round(float(np.mean(turns)), 3),
+            "cost_pct": round(cost * 100, 2),
+            "total_pct": round((eq - 1) * 100, 2),
+            "excess_annual_pct": round(ann, 2),
+            "max_drawdown_pct": round(_max_drawdown(curve), 2),
+            "median_holding_days": None if lives != lives else round(life, 1),
+        }
 
     print("\n讀表說明：")
     print("  · 換手 = 每次換股時，前 N 名裡有多少比例是新面孔（100% 代表整批換掉）")
@@ -198,7 +294,8 @@ def main():
     print("       看範圍再看中位數——如果範圍互相重疊，代表「最佳換股頻率」是雜訊。")
     with open("portfolio_sim.json", "w", encoding="utf-8") as f:
         json.dump({"strategy": args.strategy, "topn": args.topn,
-                   "years": round(years, 2), "by_interval": out}, f,
+                   "years": round(years, 2), "by_interval": out,
+                   "by_exit_rule": exit_out}, f,
                   ensure_ascii=False, indent=2)
     print("\n已存出 portfolio_sim.json")
 

@@ -286,6 +286,33 @@ def cross_stats(key_a: str, key_b: str, hold_days: int = 60) -> dict:
     return {}
 
 
+_sim_cache = None
+
+
+def load_portfolio_sim() -> dict:
+    """portfolio_sim.py 的滾動持倉模擬結果（出場規則、換股頻率、最大回檔）。"""
+    global _sim_cache
+    if _sim_cache is None:
+        try:
+            from pathlib import Path as _P
+            p = _P(__file__).resolve().parent.parent / "portfolio_sim.json"
+            _sim_cache = json.loads(p.read_text(encoding="utf-8"))
+        except (FileNotFoundError, json.JSONDecodeError):
+            _sim_cache = {}
+    return _sim_cache
+
+
+def exit_rules() -> dict:
+    """
+    各種出場規則的實測結果 —— {mode: {label, excess_annual_pct,
+    max_drawdown_pct, median_holding_days, avg_turnover, cost_pct}}。
+
+    ⚠️ **固定天數出場是唯一會賠錢的那一種**（滿 60 日就賣：年化超額 −7.3%），
+       所以畫面上不要給「建議出場日期」，要給**出場條件**。
+    """
+    return load_portfolio_sim().get("by_exit_rule") or {}
+
+
 def method_meta() -> dict:
     """
     回測的做法與已知限制 —— 給畫面用。
