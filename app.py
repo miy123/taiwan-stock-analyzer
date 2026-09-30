@@ -2015,7 +2015,7 @@ def render_smart_screener_page():
         exclude_otc = False
         if full_market:
             exclude_otc = st.checkbox(
-                "排除上櫃股（只看上市）", value=False, key="smart_ex_otc",
+                "排除上櫃股（只看上市）", value=True, key="smart_ex_otc",
                 help="只是**不顯示**上櫃股，不會重新掃描。趨勢結構分仍以上市＋上櫃的"
                      "全市場百分位計算，所以同一檔股票在各頁的分數不會因為這個開關而變。",
             )
@@ -2034,7 +2034,9 @@ def render_smart_screener_page():
             st.markdown("<div style='padding-top:8px;font-size:13px;color:#78909c;'>"
                         "熱門股池不需設流動性門檻</div>", unsafe_allow_html=True)
     with uc3:
-        top_n = st.selectbox("顯示前 N 名", [5, 10, 15, 20, 30], index=1)
+        # 預設 30 名。⚠️ `n_enrich = min(top_n*2+6, 40)` 已經觸頂，
+        # 所以顯示 30 名時後面 20 名不會有新聞與目標價（卡片會標「◷ 未深度分析」）。
+        top_n = st.selectbox("顯示前 N 名", [5, 10, 15, 20, 30], index=4)
         # 體質門檻 —— 加掛在**所選策略**上的額外條件（不是另一個策略）。
         # 排序仍由該策略有回測背書的訊號負責，這只是再濾掉體質不合格的。
         # 界線取自 ui.HEALTH_BANDS（基本面分的量表），不要沿用綜合評分的 68/58/48
@@ -2073,7 +2075,7 @@ def render_smart_screener_page():
         pe_bar = _pe_opts[_pe_label]
         st.session_state["smart_pe_bar"] = pe_bar
         skip_news = st.checkbox(
-            "⚡ 略過新聞分析", value=False, key="smart_skipnews",
+            "⚡ 略過新聞分析", value=True, key="smart_skipnews",
             help=("新聞抓取是掃描最慢的一環（每檔約 6 秒），略過可快 2–3 倍。"
                   "新聞面佔綜合評分 15%，但因為沒有歷史新聞快照，"
                   "它的貢獻**從未被回測驗證**。略過後消息面以中性 50 計；"
