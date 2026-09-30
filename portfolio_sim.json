@@ -1,0 +1,57 @@
+{
+  "strategy": "trend",
+  "topn": 10,
+  "years": 3.92,
+  "by_interval": {
+    "5": {
+      "offsets": 1,
+      "avg_turnover": 0.179,
+      "avg_cost_pct": 19.89,
+      "total_median_pct": 480.55,
+      "excess_annual_median_pct": 24.34,
+      "excess_annual_min_pct": 24.34,
+      "excess_annual_max_pct": 24.34,
+      "max_drawdown_median_pct": -47.92
+    },
+    "10": {
+      "offsets": 2,
+      "avg_turnover": 0.283,
+      "avg_cost_pct": 15.74,
+      "total_median_pct": 458.23,
+      "excess_annual_median_pct": 22.73,
+      "excess_annual_min_pct": 20.41,
+      "excess_annual_max_pct": 25.06,
+      "max_drawdown_median_pct": -50.56
+    },
+    "20": {
+      "offsets": 4,
+      "avg_turnover": 0.474,
+      "avg_cost_pct": 13.18,
+      "total_median_pct": 316.42,
+      "excess_annual_median_pct": 11.54,
+      "excess_annual_min_pct": 3.01,
+      "excess_annual_max_pct": 15.26,
+      "max_drawdown_median_pct": -52.17
+    },
+    "40": {
+      "offsets": 8,
+      "avg_turnover": 0.72,
+      "avg_cost_pct": 10.0,
+      "total_median_pct": 266.84,
+      "excess_annual_median_pct": 7.05,
+      "excess_annual_min_pct": 0.56,
+      "excess_annual_max_pct": 18.36,
+      "max_drawdown_median_pct": -51.49
+    },
+    "60": {
+      "offsets": 12,
+      "avg_turnover": 0.852,
+      "avg_cost_pct": 7.89,
+      "total_median_pct": 297.96,
+      "excess_annual_median_pct": 9.97,
+      "excess_annual_min_pct": -10.42,
+      "excess_annual_max_pct": 42.65,
+      "max_drawdown_median_pct": -48.36
+    }
+  }
+}
