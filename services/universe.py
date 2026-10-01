@@ -420,6 +420,8 @@ def scan_universe(min_turnover=1e7, period="2y", progress_cb=None, include_otc=T
                 "action": rec["action"], "action_en": rec["action_en"],
                 "color": rec["color"], "icon": rec["icon"],
                 "tech_score": tech_score, "fund_score": fund_score, "news_score": 50,
+                # 粗掃不抓新聞，50 是佔位值（與 has_financials 同一個道理）
+                "has_news": False,
                 # 粗掃只有證交所批次來的本益比／淨值比／殖利率，**沒有 ROE／
                 # 營收成長／淨利率**，fund_score 因此接近中性 50。
                 # 「無資料」與「剛好中等」在分數上長得一模一樣，所以必須另外標記，

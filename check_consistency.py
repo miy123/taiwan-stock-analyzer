@@ -45,7 +45,14 @@ UI_FILES = ["app.py", "services/ui.py"]
 
 # 寫死實證數字的樣式
 HARDCODED = [
-    (re.compile(r"[+\-−]\d+\.\d+\s*%"), "寫死的百分比"),
+    # ⚠️ 小數點不能當必要條件。原本是 `[+\-−]\d+\.\d+\s*%`，
+    #    於是 `ui.exit_plan` 裡寫死的「最大回檔都在 −40% 以上，而同期基準只有
+    #    −27%」整句漏掉——整數百分比一個都抓不到。
+    #    帶正負號的整數百分比幾乎一定是回測／回檔數字，固定費率走 ALLOW。
+    #    CSS 的 `translateX(-50%)` 不是回測數字，用定寬 lookbehind 排掉。
+    (re.compile(r"(?<!translateX\()(?<!translateY\()(?<!translate\()"
+                r"[+\-−]\d+(?:\.\d+)?\s*%"), "寫死的百分比"),
+    (re.compile(r"回檔\s*[^，。）]{0,6}?\d+\s*%"), "寫死的回檔數字"),
     (re.compile(r"\bt\s*=\s*[+\-−]?\d+\.\d+"), "寫死的 t 值"),
     (re.compile(r"\d{2,4}\s*期(?!數)"), "寫死的期數"),
     (re.compile(r"勝率\s*\d+\.?\d*\s*%"), "寫死的勝率"),

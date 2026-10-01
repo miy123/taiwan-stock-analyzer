@@ -2,103 +2,123 @@
   "strategy": "trend",
   "topn": 10,
   "years": 3.92,
+  "grid": 5,
+  "benchmark": {
+    "total_pct": 218.5,
+    "max_drawdown_pct": -33.05
+  },
   "by_interval": {
     "5": {
       "offsets": 1,
-      "avg_turnover": 0.186,
-      "avg_cost_pct": 20.71,
-      "total_median_pct": 518.91,
-      "excess_annual_median_pct": 24.96,
-      "excess_annual_min_pct": 24.96,
-      "excess_annual_max_pct": 24.96,
-      "max_drawdown_median_pct": -48.32
+      "avg_turnover": 0.181,
+      "avg_cost_pct": 19.92,
+      "total_median_pct": 416.92,
+      "excess_annual_median_pct": 17.68,
+      "excess_annual_min_pct": 17.68,
+      "excess_annual_max_pct": 17.68,
+      "max_drawdown_median_pct": -49.07
     },
     "10": {
       "offsets": 2,
-      "avg_turnover": 0.288,
-      "avg_cost_pct": 16.03,
-      "total_median_pct": 486.91,
-      "excess_annual_median_pct": 22.82,
-      "excess_annual_min_pct": 22.17,
-      "excess_annual_max_pct": 23.47,
-      "max_drawdown_median_pct": -48.78
+      "avg_turnover": 0.289,
+      "avg_cost_pct": 15.94,
+      "total_median_pct": 333.14,
+      "excess_annual_median_pct": 10.67,
+      "excess_annual_min_pct": 5.14,
+      "excess_annual_max_pct": 16.19,
+      "max_drawdown_median_pct": -52.18
     },
     "20": {
       "offsets": 4,
-      "avg_turnover": 0.482,
-      "avg_cost_pct": 13.4,
-      "total_median_pct": 299.08,
-      "excess_annual_median_pct": 8.11,
-      "excess_annual_min_pct": -2.09,
-      "excess_annual_max_pct": 15.8,
-      "max_drawdown_median_pct": -50.7
+      "avg_turnover": 0.474,
+      "avg_cost_pct": 13.01,
+      "total_median_pct": 292.89,
+      "excess_annual_median_pct": 7.39,
+      "excess_annual_min_pct": -8.4,
+      "excess_annual_max_pct": 11.7,
+      "max_drawdown_median_pct": -53.1
     },
     "40": {
       "offsets": 8,
-      "avg_turnover": 0.736,
-      "avg_cost_pct": 10.22,
-      "total_median_pct": 212.58,
-      "excess_annual_median_pct": -0.47,
-      "excess_annual_min_pct": -8.41,
-      "excess_annual_max_pct": 13.35,
-      "max_drawdown_median_pct": -50.1
+      "avg_turnover": 0.715,
+      "avg_cost_pct": 9.78,
+      "total_median_pct": 222.86,
+      "excess_annual_median_pct": 0.47,
+      "excess_annual_min_pct": -5.27,
+      "excess_annual_max_pct": 9.32,
+      "max_drawdown_median_pct": -54.06
     },
     "60": {
       "offsets": 12,
-      "avg_turnover": 0.867,
-      "avg_cost_pct": 8.03,
-      "total_median_pct": 272.13,
-      "excess_annual_median_pct": 5.6,
-      "excess_annual_min_pct": -6.38,
-      "excess_annual_max_pct": 34.21,
-      "max_drawdown_median_pct": -49.62
+      "avg_turnover": 0.834,
+      "avg_cost_pct": 7.58,
+      "total_median_pct": 258.98,
+      "excess_annual_median_pct": 3.98,
+      "excess_annual_min_pct": -13.31,
+      "excess_annual_max_pct": 35.8,
+      "max_drawdown_median_pct": -51.98
     }
   },
   "by_exit_rule": {
     "rank": {
       "label": "rank   掉出前 N 名就賣",
-      "avg_turnover": 0.288,
-      "cost_pct": 16.03,
-      "total_pct": 477.38,
-      "excess_annual_pct": 22.17,
-      "max_drawdown_pct": -47.22,
-      "median_holding_days": 30.0
+      "avg_turnover": 0.289,
+      "cost_pct": 15.94,
+      "excess_annual_pct": 10.67,
+      "excess_annual_min_pct": 5.14,
+      "excess_annual_max_pct": 16.19,
+      "max_drawdown_pct": -52.18,
+      "median_holding_days": 30.0,
+      "closed_positions": 540,
+      "open_at_end": 10
     },
     "buffer": {
       "label": "buffer 掉出前 2N 名才賣",
-      "avg_turnover": 0.199,
-      "cost_pct": 11.06,
-      "total_pct": 323.01,
-      "excess_annual_pct": 10.25,
-      "max_drawdown_pct": -49.47,
-      "median_holding_days": 40.0
+      "avg_turnover": 0.194,
+      "cost_pct": 10.64,
+      "excess_annual_pct": 10.39,
+      "excess_annual_min_pct": 8.77,
+      "excess_annual_max_pct": 12.02,
+      "max_drawdown_pct": -54.26,
+      "median_holding_days": 40.0,
+      "closed_positions": 359,
+      "open_at_end": 10
     },
     "bar": {
       "label": "bar    跌破買進線才賣",
-      "avg_turnover": 0.085,
-      "cost_pct": 4.74,
-      "total_pct": 389.68,
-      "excess_annual_pct": 15.74,
-      "max_drawdown_pct": -41.07,
-      "median_holding_days": 100.0
+      "avg_turnover": 0.08,
+      "cost_pct": 4.3,
+      "excess_annual_pct": 12.88,
+      "excess_annual_min_pct": 10.86,
+      "excess_annual_max_pct": 14.91,
+      "max_drawdown_pct": -45.32,
+      "median_holding_days": 100.0,
+      "closed_positions": 142,
+      "open_at_end": 10
     },
     "time20": {
-      "label": "time   滿 20 個交易日就賣",
-      "avg_turnover": 0.269,
-      "cost_pct": 14.98,
-      "total_pct": 372.55,
-      "excess_annual_pct": 14.39,
-      "max_drawdown_pct": -46.43,
-      "median_holding_days": 30.0
+      "label": "time   持滿 20 日就賣",
+      "avg_turnover": 0.521,
+      "cost_pct": 29.42,
+      "excess_annual_pct": 1.24,
+      "excess_annual_min_pct": -9.53,
+      "excess_annual_max_pct": 12.01,
+      "max_drawdown_pct": -53.77,
+      "median_holding_days": 20.0,
+      "closed_positions": 812,
+      "open_at_end": 10
     },
     "time60": {
-      "label": "time   滿 60 個交易日就賣",
-      "avg_turnover": 0.163,
-      "cost_pct": 9.07,
-      "total_pct": 154.16,
-      "excess_annual_pct": -7.34,
-      "max_drawdown_pct": -49.66,
-      "median_holding_days": 60.0
+      "label": "time   持滿 60 日就賣",
+      "avg_turnover": 0.168,
+      "cost_pct": 9.19,
+      "excess_annual_pct": -2.39,
+      "excess_annual_min_pct": -5.44,
+      "excess_annual_max_pct": 0.65,
+      "max_drawdown_pct": -56.0,
+      "median_holding_days": 60.0,
+      "closed_positions": 300,
+      "open_at_end": 10
     }
   }
 }

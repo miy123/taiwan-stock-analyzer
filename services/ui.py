@@ -775,25 +775,55 @@ def exit_plan(trend_score, rank=None, compact=True) -> str:
                 f"　·　同規則中位持有 **{_days(br)} 日**")
     # ⚠️ 先把值取出來再組字串：f-string 裡巢狀 `{}` 與同款引號在 Python 3.9
     #    會直接語法錯誤，而**這個 App 實際是用 3.9 跑的**（見 CLAUDE.md）。
-    t60 = (er.get("time60") or {}).get("excess_annual_pct", 0)
-    b_exc = br.get("excess_annual_pct", 0)
-    b_mdd = br.get("max_drawdown_pct", 0)
-    b_days = _days(br)
+    t60 = (er.get("time60") or {}).get("excess_annual_pct")
+    b_exc, r_exc = br.get("excess_annual_pct"), rk.get("excess_annual_pct")
+    b_mdd, r_mdd = br.get("max_drawdown_pct"), rk.get("max_drawdown_pct")
     b_to = (br.get("avg_turnover") or 0) * 100
-    r_exc = rk.get("excess_annual_pct", 0)
-    r_mdd = rk.get("max_drawdown_pct", 0)
-    r_days = _days(rk)
     r_to = (rk.get("avg_turnover") or 0) * 100
-    return (
-        "**出場不看日期，看條件。**「滿 60 個交易日就賣」是實測裡"
-        f"**唯一年化超額為負**的規則（{t60:+.1f}%）。\n\n"
-        f"· **保守**：{cond} → 年化超額 {b_exc:+.1f}%、最大回檔 {b_mdd:.1f}%、"
-        f"中位持有 {b_days} 日、換手僅 {b_to:.0f}%\n\n"
-        f"· **積極**：掉出前 N 名就換 → 年化超額 {r_exc:+.1f}%、最大回檔 {r_mdd:.1f}%、"
-        f"中位持有 {r_days} 日、換手 {r_to:.0f}%\n\n"
-        "⚠️ 兩者的最大回檔都在 −40% 以上，而同期基準只有 −27%。"
-        "報酬是用「中途扛得住腰斬」換來的。"
-    )
+
+    def _rng(d):
+        lo, hi = d.get("excess_annual_min_pct"), d.get("excess_annual_max_pct")
+        return f"（起始位移範圍 {lo:+.1f} ~ {hi:+.1f}）" if lo is not None else ""
+
+    head = "**出場不看日期，看條件。**"
+    if t60 is not None and t60 < 0:
+        head += f"「持滿 60 個交易日就賣」是實測裡唯一年化超額為負的規則（{t60:+.1f}%）。"
+
+    # ⚠️ 不要寫死「保守／積極」的框架。修正模擬之後「跌破買進線才賣」在
+    #    報酬、回檔、成本三個面向同時勝出，再叫它「保守但報酬略低」就是
+    #    畫面在講一個資料不支持的故事。哪個比較好由數字自己排。
+    lines = [head]
+    rows = [("跌破買進線才賣", b_exc, b_mdd, b_to, _days(br), _rng(br)),
+            ("掉出前 N 名就換", r_exc, r_mdd, r_to, _days(rk), _rng(rk))]
+    rows = [x for x in rows if x[1] is not None]
+    rows.sort(key=lambda x: -x[1])
+    for i, (name, exc, mdd, to, days, rng) in enumerate(rows):
+        tag = "**較優**" if i == 0 and len(rows) > 1 else ""
+        lines.append(f"· **{name}** {tag} → 年化超額 {exc:+.1f}%{rng}、"
+                     f"最大回檔 {mdd:.1f}%、中位持有 {days} 日、換手 {to:.0f}%")
+    return "\n\n".join(lines) + "\n\n" + _drawdown_warning(b_mdd, r_mdd)
+
+
+def _drawdown_warning(*mdds) -> str:
+    """
+    回檔警語 —— **由實證檔生成**，不要寫死數字。
+
+    ⚠️ 這句原本寫死「兩者的最大回檔都在 −40% 以上，而同期基準只有 −27%」。
+       `check_consistency` 檢查 1 當時抓不到，因為它的樣式要求小數點，
+       而這兩個是整數百分比（樣式已修）。重跑一次模擬數字就會變，
+       寫死等於在畫面上斷言一個不再成立的下限。
+    """
+    from services.evidence import load_portfolio_sim
+    b = (load_portfolio_sim().get("benchmark") or {}).get("max_drawdown_pct")
+    worst = min([m for m in mdds if m], default=None)
+    if worst is None:
+        return ""
+    # 「都在 X% 附近」會誇大表現較好的那個——取最深的那一個並說成「最深到」
+    if b is None:
+        return (f"⚠️ 最深的一次回檔到 {worst:.0f}%，"
+                "報酬是用「中途抱得住」換來的。")
+    return (f"⚠️ 最深的一次回檔到 {worst:.0f}%，而同期基準只有 {b:.0f}%。"
+            "報酬是用「中途抱得住」換來的。")
 
 
 def load_portfolio_sim_topn() -> int:

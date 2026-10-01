@@ -1910,6 +1910,13 @@ def _analyze_one_stock(stock_id: str, period: str = None, limit_up_info=None,
             #    早就不是這個旗標的意思了。）
             "has_financials": bool(fundamentals.get("has_financials")),
             "news_score":   news_score,
+            # ⚠️ 略過新聞時 `news_score` 是佔位的中性 50，不是量出來的。
+            #    這與 `has_financials` 完全同一類：**50 不能同時代表「中性」
+            #    與「沒抓」**。先前只靠 `preliminary` 區分，但深度分析過的列
+            #    會把它設成 False，於是 skip_news 開啟時卡片照印一個實心的 50、
+            #    黃色長條畫到一半、而且沒有任何註記——2026-09-30 把
+            #    「略過新聞」改成預設開啟之後，那變成每位使用者的預設狀態。
+            "has_news":     not skip_news,
             "target_price": tp.get("recommended_target"),
             "upside_pct":   tp.get("upside_pct"),
             "target_low":   tp.get("target_low"),
@@ -3007,8 +3014,12 @@ def _render_smart_card(rank, r, strategy, horizon_key=None):
     pot_total = p.get("total", 0)
     comb = r.get("combined_score", 0)
     t_w = r["tech_score"]; f_w = r["fund_score"]; n_w = r["news_score"]
-    n_str = "—" if prelim else str(n_w)
-    n_bar = 0.0 if prelim else n_w * 1.2
+    # 消息面只有「真的抓過新聞」才顯示數字。兩種沒抓的情況都要擋：
+    #   · preliminary —— 還沒輪到它做深度分析
+    #   · has_news=False —— 使用者勾了「略過新聞分析」（現在是預設開啟）
+    no_news = prelim or not r.get("has_news", True)
+    n_str = "—" if no_news else str(n_w)
+    n_bar = 0.0 if no_news else n_w * 1.2
     prelim_badge = ("<span title='新聞情緒與目標價只對初篩最前的數十檔逐檔補齊。"
                     "這一檔的消息面是佔位的中性 50、目標價尚未計算，"
                     "所以綜合評分只是半成品——趨勢結構分不含這兩項，不受影響。' "
@@ -3016,6 +3027,13 @@ def _render_smart_card(rank, r, strategy, horizon_key=None):
                     "border:1px solid #37474f;border-radius:4px;padding:1px 6px;"
                     "margin-left:6px;white-space:nowrap;'>◷ 未深度分析</span>"
                     ) if prelim else ""
+    news_badge = ("<span title='你勾選了「略過新聞分析」，所以消息面是佔位的中性 50、"
+                  "沒有實際抓新聞。綜合評分裡有 15% 是消息面，因此那個數字只是半成品；"
+                  "趨勢結構分不含新聞，排序不受影響。' "
+                  "style='font-size:11px;background:#263238;color:#90a4ae;"
+                  "border:1px solid #37474f;border-radius:4px;padding:1px 6px;"
+                  "margin-left:6px;white-space:nowrap;'>◷ 未抓新聞</span>"
+                  ) if (no_news and not prelim) else ""
     rank_emoji = ["🥇", "🥈", "🥉"][rank - 1] if rank <= 3 else f"#{rank}"
 
     # Limit-up badge
@@ -3076,7 +3094,7 @@ def _render_smart_card(rank, r, strategy, horizon_key=None):
     <div style="min-width:150px;">
       <div style="font-size:17px;font-weight:900;">{r['stock_id']}
         <span style="font-size:13px;font-weight:600;color:#ccc;">{r['company_name']}</span></div>
-      <div style="font-size:12px;">{overheat_badge(r.get("overheat"))}{lu_badge}{margin_badge}{prelim_badge}</div>
+      <div style="font-size:12px;">{overheat_badge(r.get("overheat"))}{lu_badge}{margin_badge}{prelim_badge}{news_badge}</div>
     </div>
     <div style="min-width:78px;">
       <div style="font-size:15px;font-weight:700;">TWD {current:.2f}</div>

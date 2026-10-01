@@ -297,7 +297,9 @@ def load_portfolio_sim() -> dict:
             from pathlib import Path as _P
             p = _P(__file__).resolve().parent.parent / "portfolio_sim.json"
             _sim_cache = json.loads(p.read_text(encoding="utf-8"))
-        except (FileNotFoundError, json.JSONDecodeError):
+        except Exception:
+            # 與 load_strategy_comparison / load_trend_buckets 一致：
+            # 讀不到就當沒有，不要讓 ui.exit_plan 把整頁 render 拖掛。
             _sim_cache = {}
     return _sim_cache
 
